@@ -79,13 +79,15 @@ export default function OnboardingScreen() {
     { value: "org_admin", label: "Organization Admin", description: "I manage an organization" },
   ] as const;
 
+  const secondaryTextColor = colors.text + '99';
+
   return (
     <>
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
             <Text style={[styles.title, { color: colors.text }]}>Welcome to BCCT</Text>
-            <Text style={[styles.subtitle, { color: colors.text, opacity: 0.7 }]}>
+            <Text style={[styles.subtitle, { color: secondaryTextColor }]}>
               Let&apos;s set up your profile
             </Text>
           </View>
@@ -98,7 +100,7 @@ export default function OnboardingScreen() {
               value={name}
               onChangeText={setName}
               placeholder="Enter your name"
-              placeholderTextColor={colors.text + "80"}
+              placeholderTextColor={secondaryTextColor}
             />
           </View>
 
@@ -109,7 +111,7 @@ export default function OnboardingScreen() {
               value={phone}
               onChangeText={setPhone}
               placeholder="Enter your phone number"
-              placeholderTextColor={colors.text + "80"}
+              placeholderTextColor={secondaryTextColor}
               keyboardType="phone-pad"
             />
           </View>
@@ -130,7 +132,7 @@ export default function OnboardingScreen() {
                 >
                   <View style={styles.roleContent}>
                     <Text style={[styles.roleLabel, { color: colors.text }]}>{option.label}</Text>
-                    <Text style={[styles.roleDescription, { color: colors.text, opacity: 0.6 }]}>
+                    <Text style={[styles.roleDescription, { color: secondaryTextColor }]}>
                       {option.description}
                     </Text>
                   </View>
@@ -154,7 +156,7 @@ export default function OnboardingScreen() {
                 value={goals}
                 onChangeText={setGoals}
                 placeholder="What do you want to achieve?"
-                placeholderTextColor={colors.text + "80"}
+                placeholderTextColor={secondaryTextColor}
                 multiline
                 numberOfLines={4}
                 textAlignVertical="top"
@@ -185,11 +187,11 @@ export default function OnboardingScreen() {
       animationOut="fadeOut"
       backdropOpacity={0.5}
     >
-      <View style={styles.modalContent}>
-        <Text style={styles.modalTitle}>{modalTitle}</Text>
-        <Text style={styles.modalMessage}>{modalMessage}</Text>
+      <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+        <Text style={[styles.modalTitle, { color: "#ef4444" }]}>{modalTitle}</Text>
+        <Text style={[styles.modalMessage, { color: secondaryTextColor }]}>{modalMessage}</Text>
         <TouchableOpacity
-          style={styles.modalButton}
+          style={[styles.modalButton, { backgroundColor: "#ef4444" }]}
           onPress={() => setModalVisible(false)}
         >
           <Text style={styles.modalButtonText}>OK</Text>
@@ -282,7 +284,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   modalContent: {
-    backgroundColor: "#fff",
     borderRadius: 16,
     padding: 24,
     alignItems: "center",
@@ -291,16 +292,13 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "bold",
     marginBottom: 12,
-    color: "#ef4444",
   },
   modalMessage: {
     fontSize: 16,
     textAlign: "center",
     marginBottom: 24,
-    color: "#666",
   },
   modalButton: {
-    backgroundColor: "#ef4444",
     paddingHorizontal: 32,
     paddingVertical: 12,
     borderRadius: 8,

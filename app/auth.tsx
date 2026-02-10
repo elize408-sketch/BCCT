@@ -1,3 +1,4 @@
+
 import React, { useState } from "react";
 import {
   View,
@@ -13,11 +14,13 @@ import {
 import Modal from "react-native-modal";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "expo-router";
+import { useTheme } from "@react-navigation/native";
 
 type Mode = "signin" | "signup";
 
 export default function AuthScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
   const { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithApple, signInWithGitHub, loading: authLoading } =
     useAuth();
 
@@ -40,8 +43,8 @@ export default function AuthScreen() {
 
   if (authLoading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
+      <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
@@ -91,22 +94,35 @@ export default function AuthScreen() {
     }
   };
 
+  const inputBackgroundColor = colors.card;
+  const inputTextColor = colors.text;
+  const inputBorderColor = colors.border;
+  const secondaryTextColor = colors.text + '99';
+
   return (
     <>
       <KeyboardAvoidingView
-        style={styles.container}
+        style={[styles.container, { backgroundColor: colors.background }]}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.content}>
-            <Text style={styles.title}>
+            <Text style={[styles.title, { color: colors.text }]}>
               {mode === "signin" ? "Sign In" : "Sign Up"}
             </Text>
 
             {mode === "signup" && (
               <TextInput
-                style={styles.input}
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: inputBackgroundColor,
+                    borderColor: inputBorderColor,
+                    color: inputTextColor,
+                  },
+                ]}
                 placeholder="Name (optional)"
+                placeholderTextColor={secondaryTextColor}
                 value={name}
                 onChangeText={setName}
                 autoCapitalize="words"
@@ -114,8 +130,16 @@ export default function AuthScreen() {
             )}
 
             <TextInput
-              style={styles.input}
+              style={[
+                styles.input,
+                {
+                  backgroundColor: inputBackgroundColor,
+                  borderColor: inputBorderColor,
+                  color: inputTextColor,
+                },
+              ]}
               placeholder="Email"
+              placeholderTextColor={secondaryTextColor}
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
@@ -124,8 +148,16 @@ export default function AuthScreen() {
             />
 
             <TextInput
-              style={styles.input}
+              style={[
+                styles.input,
+                {
+                  backgroundColor: inputBackgroundColor,
+                  borderColor: inputBorderColor,
+                  color: inputTextColor,
+                },
+              ]}
               placeholder="Password"
+              placeholderTextColor={secondaryTextColor}
               value={password}
               onChangeText={setPassword}
               secureTextEntry
@@ -133,7 +165,11 @@ export default function AuthScreen() {
             />
 
             <TouchableOpacity
-              style={[styles.primaryButton, loading && styles.buttonDisabled]}
+              style={[
+                styles.primaryButton,
+                { backgroundColor: colors.primary },
+                loading && styles.buttonDisabled,
+              ]}
               onPress={handleEmailAuth}
               disabled={loading}
             >
@@ -150,7 +186,7 @@ export default function AuthScreen() {
               style={styles.switchModeButton}
               onPress={() => setMode(mode === "signin" ? "signup" : "signin")}
             >
-              <Text style={styles.switchModeText}>
+              <Text style={[styles.switchModeText, { color: colors.primary }]}>
                 {mode === "signin"
                   ? "Don't have an account? Sign Up"
                   : "Already have an account? Sign In"}
@@ -158,17 +194,23 @@ export default function AuthScreen() {
             </TouchableOpacity>
 
             <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>or continue with</Text>
-              <View style={styles.dividerLine} />
+              <View style={[styles.dividerLine, { backgroundColor: inputBorderColor }]} />
+              <Text style={[styles.dividerText, { color: secondaryTextColor }]}>or continue with</Text>
+              <View style={[styles.dividerLine, { backgroundColor: inputBorderColor }]} />
             </View>
 
             <TouchableOpacity
-              style={styles.socialButton}
+              style={[
+                styles.socialButton,
+                {
+                  backgroundColor: inputBackgroundColor,
+                  borderColor: inputBorderColor,
+                },
+              ]}
               onPress={() => handleSocialAuth("google")}
               disabled={loading}
             >
-              <Text style={styles.socialButtonText}>Continue with Google</Text>
+              <Text style={[styles.socialButtonText, { color: colors.text }]}>Continue with Google</Text>
             </TouchableOpacity>
 
             {Platform.OS === "ios" && (
@@ -194,11 +236,11 @@ export default function AuthScreen() {
         animationOut="fadeOut"
         backdropOpacity={0.5}
       >
-        <View style={styles.modalContent}>
+        <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
           <Text style={[styles.modalTitle, { color: modalType === "error" ? "#ef4444" : "#10b981" }]}>
             {modalTitle}
           </Text>
-          <Text style={styles.modalMessage}>{modalMessage}</Text>
+          <Text style={[styles.modalMessage, { color: secondaryTextColor }]}>{modalMessage}</Text>
           <TouchableOpacity
             style={[styles.modalButton, { backgroundColor: modalType === "error" ? "#ef4444" : "#10b981" }]}
             onPress={() => setModalVisible(false)}
@@ -214,13 +256,11 @@ export default function AuthScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
   },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#fff",
   },
   scrollContent: {
     flexGrow: 1,
@@ -235,21 +275,17 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     marginBottom: 32,
     textAlign: "center",
-    color: "#000",
   },
   input: {
     height: 50,
     borderWidth: 1,
-    borderColor: "#ddd",
     borderRadius: 8,
     paddingHorizontal: 16,
     marginBottom: 16,
     fontSize: 16,
-    backgroundColor: "#fff",
   },
   primaryButton: {
     height: 50,
-    backgroundColor: "#007AFF",
     borderRadius: 8,
     justifyContent: "center",
     alignItems: "center",
@@ -268,7 +304,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   switchModeText: {
-    color: "#007AFF",
     fontSize: 14,
   },
   divider: {
@@ -279,26 +314,21 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: "#ddd",
   },
   dividerText: {
     marginHorizontal: 12,
-    color: "#666",
     fontSize: 14,
   },
   socialButton: {
     height: 50,
     borderWidth: 1,
-    borderColor: "#ddd",
     borderRadius: 8,
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 12,
-    backgroundColor: "#fff",
   },
   socialButtonText: {
     fontSize: 16,
-    color: "#000",
     fontWeight: "500",
   },
   appleButton: {
@@ -309,7 +339,6 @@ const styles = StyleSheet.create({
     color: "#fff",
   },
   modalContent: {
-    backgroundColor: "#fff",
     borderRadius: 16,
     padding: 24,
     alignItems: "center",
@@ -323,7 +352,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: "center",
     marginBottom: 24,
-    color: "#666",
   },
   modalButton: {
     paddingHorizontal: 32,

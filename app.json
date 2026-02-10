@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "BCCT Coaching",
-    "slug": "bcct-coaching",
+    "slug": "BCCT Coaching",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/app-icon-cws.png",
@@ -36,7 +36,7 @@
       "expo-router",
       "expo-web-browser"
     ],
-    "scheme": "bcct",
+    "scheme": "BCCT Coaching",
     "experiments": {
       "typedRoutes": true
     },
