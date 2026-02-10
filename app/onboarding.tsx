@@ -1,5 +1,5 @@
 
-import React, { useState } from "react";
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -8,26 +8,26 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-} from "react-native";
-import Modal from "react-native-modal";
-import { useRouter } from "expo-router";
-import { useTheme } from "@react-navigation/native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useAuth } from "@/contexts/AuthContext";
-import { authenticatedPut } from "@/utils/api";
+} from 'react-native';
+import Modal from 'react-native-modal';
+import { useRouter } from 'expo-router';
+import { useTheme } from '@react-navigation/native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 
 export default function OnboardingScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  const { user } = useAuth();
+  const { session } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [role, setRole] = useState<"client" | "coach" | "org_admin">("client");
-  const [goals, setGoals] = useState("");
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [role, setRole] = useState<'client' | 'coach' | 'org_admin'>('client');
+  const [goals, setGoals] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
-  const [modalTitle, setModalTitle] = useState("");
-  const [modalMessage, setModalMessage] = useState("");
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalMessage, setModalMessage] = useState('');
 
   const showModal = (title: string, message: string) => {
     setModalTitle(title);
@@ -36,47 +36,58 @@ export default function OnboardingScreen() {
   };
 
   const handleComplete = async () => {
-    console.log("[Onboarding] Starting profile setup", { name, phone, role });
-    
+    console.log('[Onboarding] Starting profile setup', { name, phone, role });
+
     if (!name.trim()) {
-      showModal("Error", "Please enter your name");
+      showModal('Error', 'Please enter your name');
       return;
     }
 
+    // CRITICAL: Check session before database operation
+    const {
+      data: { session: currentSession },
+    } = await supabase.auth.getSession();
+
+    if (!currentSession) {
+      console.error('[Onboarding] No session found');
+      showModal('Error', 'You are not logged in. Please sign in again.');
+      router.replace('/auth');
+      return;
+    }
+
+    console.log('[Onboarding] Session verified, user ID:', currentSession.user.id);
+
     setLoading(true);
     try {
-      console.log("[Onboarding] Calling PUT /api/profile");
-      
-      // Backend Integration: PUT /api/profile with { name, phone, goals }
-      // Note: role is not included in the update as it's set during account creation
-      const profileData: any = {
-        name: name.trim(),
-      };
-      
-      if (phone.trim()) {
-        profileData.phone = phone.trim();
+      // UPSERT profile using Supabase client directly
+      const { error } = await supabase.from('profiles').upsert({
+        id: currentSession.user.id,
+        full_name: name.trim(),
+        phone: phone.trim() || null,
+        role: role,
+        goals: goals.trim() || null,
+        onboarding_completed: true,
+      });
+
+      if (error) {
+        console.error('[Onboarding] Supabase error:', error);
+        throw error;
       }
-      
-      if (goals.trim()) {
-        profileData.goals = goals.trim();
-      }
-      
-      await authenticatedPut("/api/profile", profileData);
-      
-      console.log("[Onboarding] Profile saved successfully, redirecting to app");
-      router.replace("/(app)");
+
+      console.log('[Onboarding] Profile saved successfully, redirecting to app');
+      router.replace('/(app)');
     } catch (error: any) {
-      console.error("[Onboarding] Error saving profile", error);
-      showModal("Error", error.message || "Failed to save profile. Please try again.");
+      console.error('[Onboarding] Error saving profile', error);
+      showModal('Error', error.message || 'Failed to save profile. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   const roleOptions = [
-    { value: "client", label: "Client", description: "I want coaching" },
-    { value: "coach", label: "Coach", description: "I provide coaching" },
-    { value: "org_admin", label: "Organization Admin", description: "I manage an organization" },
+    { value: 'client', label: 'Client', description: 'I want coaching' },
+    { value: 'coach', label: 'Coach', description: 'I provide coaching' },
+    { value: 'org_admin', label: 'Organization Admin', description: 'I manage an organization' },
   ] as const;
 
   const secondaryTextColor = colors.text + '99';
@@ -87,118 +98,107 @@ export default function OnboardingScreen() {
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
             <Text style={[styles.title, { color: colors.text }]}>Welcome to BCCT</Text>
-            <Text style={[styles.subtitle, { color: secondaryTextColor }]}>
-              Let&apos;s set up your profile
-            </Text>
+            <Text style={[styles.subtitle, { color: secondaryTextColor }]}>Let&apos;s set up your profile</Text>
           </View>
 
-        <View style={styles.form}>
-          <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: colors.text }]}>Name *</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
-              value={name}
-              onChangeText={setName}
-              placeholder="Enter your name"
-              placeholderTextColor={secondaryTextColor}
-            />
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: colors.text }]}>Phone</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
-              value={phone}
-              onChangeText={setPhone}
-              placeholder="Enter your phone number"
-              placeholderTextColor={secondaryTextColor}
-              keyboardType="phone-pad"
-            />
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: colors.text }]}>I am a *</Text>
-            {roleOptions.map((option) => {
-              const isSelected = role === option.value;
-              return (
-                <TouchableOpacity
-                  key={option.value}
-                  style={[
-                    styles.roleOption,
-                    { backgroundColor: colors.card, borderColor: isSelected ? colors.primary : colors.border },
-                    isSelected && { borderWidth: 2 },
-                  ]}
-                  onPress={() => setRole(option.value)}
-                >
-                  <View style={styles.roleContent}>
-                    <Text style={[styles.roleLabel, { color: colors.text }]}>{option.label}</Text>
-                    <Text style={[styles.roleDescription, { color: secondaryTextColor }]}>
-                      {option.description}
-                    </Text>
-                  </View>
-                  <View
-                    style={[
-                      styles.radio,
-                      { borderColor: isSelected ? colors.primary : colors.border },
-                      isSelected && { backgroundColor: colors.primary },
-                    ]}
-                  />
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          {role === "client" && (
+          <View style={styles.form}>
             <View style={styles.inputGroup}>
-              <Text style={[styles.label, { color: colors.text }]}>Goals</Text>
+              <Text style={[styles.label, { color: colors.text }]}>Name *</Text>
               <TextInput
-                style={[styles.textArea, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
-                value={goals}
-                onChangeText={setGoals}
-                placeholder="What do you want to achieve?"
+                style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                value={name}
+                onChangeText={setName}
+                placeholder="Enter your name"
                 placeholderTextColor={secondaryTextColor}
-                multiline
-                numberOfLines={4}
-                textAlignVertical="top"
               />
             </View>
-          )}
 
-          <TouchableOpacity
-            style={[styles.button, { backgroundColor: colors.primary }]}
-            onPress={handleComplete}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>Complete Setup</Text>
+            <View style={styles.inputGroup}>
+              <Text style={[styles.label, { color: colors.text }]}>Phone</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                value={phone}
+                onChangeText={setPhone}
+                placeholder="Enter your phone number"
+                placeholderTextColor={secondaryTextColor}
+                keyboardType="phone-pad"
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={[styles.label, { color: colors.text }]}>I am a *</Text>
+              {roleOptions.map((option) => {
+                const isSelected = role === option.value;
+                return (
+                  <TouchableOpacity
+                    key={option.value}
+                    style={[
+                      styles.roleOption,
+                      { backgroundColor: colors.card, borderColor: isSelected ? colors.primary : colors.border },
+                      isSelected && { borderWidth: 2 },
+                    ]}
+                    onPress={() => setRole(option.value)}
+                  >
+                    <View style={styles.roleContent}>
+                      <Text style={[styles.roleLabel, { color: colors.text }]}>{option.label}</Text>
+                      <Text style={[styles.roleDescription, { color: secondaryTextColor }]}>{option.description}</Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.radio,
+                        { borderColor: isSelected ? colors.primary : colors.border },
+                        isSelected && { backgroundColor: colors.primary },
+                      ]}
+                    />
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {role === 'client' && (
+              <View style={styles.inputGroup}>
+                <Text style={[styles.label, { color: colors.text }]}>Goals</Text>
+                <TextInput
+                  style={[styles.textArea, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                  value={goals}
+                  onChangeText={setGoals}
+                  placeholder="What do you want to achieve?"
+                  placeholderTextColor={secondaryTextColor}
+                  multiline
+                  numberOfLines={4}
+                  textAlignVertical="top"
+                />
+              </View>
             )}
+
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: colors.primary }]}
+              onPress={handleComplete}
+              disabled={loading}
+            >
+              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Complete Setup</Text>}
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+
+      <Modal
+        isVisible={modalVisible}
+        onBackdropPress={() => setModalVisible(false)}
+        onBackButtonPress={() => setModalVisible(false)}
+        animationIn="fadeIn"
+        animationOut="fadeOut"
+        backdropOpacity={0.5}
+      >
+        <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+          <Text style={[styles.modalTitle, { color: '#ef4444' }]}>{modalTitle}</Text>
+          <Text style={[styles.modalMessage, { color: secondaryTextColor }]}>{modalMessage}</Text>
+          <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#ef4444' }]} onPress={() => setModalVisible(false)}>
+            <Text style={styles.modalButtonText}>OK</Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
-    </SafeAreaView>
-
-    <Modal
-      isVisible={modalVisible}
-      onBackdropPress={() => setModalVisible(false)}
-      onBackButtonPress={() => setModalVisible(false)}
-      animationIn="fadeIn"
-      animationOut="fadeOut"
-      backdropOpacity={0.5}
-    >
-      <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-        <Text style={[styles.modalTitle, { color: "#ef4444" }]}>{modalTitle}</Text>
-        <Text style={[styles.modalMessage, { color: secondaryTextColor }]}>{modalMessage}</Text>
-        <TouchableOpacity
-          style={[styles.modalButton, { backgroundColor: "#ef4444" }]}
-          onPress={() => setModalVisible(false)}
-        >
-          <Text style={styles.modalButtonText}>OK</Text>
-        </TouchableOpacity>
-      </View>
-    </Modal>
-  </>
+      </Modal>
+    </>
   );
 }
 
@@ -214,7 +214,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 32,
-    fontWeight: "bold",
+    fontWeight: 'bold',
     marginBottom: 8,
   },
   subtitle: {
@@ -228,7 +228,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 14,
-    fontWeight: "600",
+    fontWeight: '600',
   },
   input: {
     height: 48,
@@ -246,9 +246,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   roleOption: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
@@ -260,7 +260,7 @@ const styles = StyleSheet.create({
   },
   roleLabel: {
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: '600',
   },
   roleDescription: {
     fontSize: 14,
@@ -274,28 +274,28 @@ const styles = StyleSheet.create({
   button: {
     height: 56,
     borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
+    justifyContent: 'center',
+    alignItems: 'center',
     marginTop: 8,
   },
   buttonText: {
-    color: "#fff",
+    color: '#fff',
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: '600',
   },
   modalContent: {
     borderRadius: 16,
     padding: 24,
-    alignItems: "center",
+    alignItems: 'center',
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: "bold",
+    fontWeight: 'bold',
     marginBottom: 12,
   },
   modalMessage: {
     fontSize: 16,
-    textAlign: "center",
+    textAlign: 'center',
     marginBottom: 24,
   },
   modalButton: {
@@ -305,9 +305,9 @@ const styles = StyleSheet.create({
     minWidth: 100,
   },
   modalButtonText: {
-    color: "#fff",
+    color: '#fff',
     fontSize: 16,
-    fontWeight: "600",
-    textAlign: "center",
+    fontWeight: '600',
+    textAlign: 'center',
   },
 });

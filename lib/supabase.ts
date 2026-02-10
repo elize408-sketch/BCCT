@@ -1,32 +1,32 @@
-import "react-native-url-polyfill/auto";
-import { Platform } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
+import 'react-native-url-polyfill/auto';
+import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createClient } from '@supabase/supabase-js';
+import Constants from 'expo-constants';
 
-// Storage die werkt op Web + Mobile
-const storage =
-  Platform.OS === "web"
-    ? {
-        getItem: (key: string) => Promise.resolve(localStorage.getItem(key)),
-        setItem: (key: string, value: string) => {
-          localStorage.setItem(key, value);
-          return Promise.resolve();
-        },
-        removeItem: (key: string) => {
-          localStorage.removeItem(key);
-          return Promise.resolve();
-        },
-      }
-    : AsyncStorage;
+// Get Supabase credentials from app.config.ts extra field
+const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl;
+const supabaseAnonKey = Constants.expoConfig?.extra?.supabaseAnonKey;
 
+if (!supabaseUrl) {
+  throw new Error('EXPO_PUBLIC_SUPABASE_URL is required. Please add it to your .env file.');
+}
+
+if (!supabaseAnonKey) {
+  throw new Error('EXPO_PUBLIC_SUPABASE_ANON_KEY is required. Please add it to your .env file.');
+}
+
+console.log('[Supabase] Initializing client with URL:', supabaseUrl);
+
+// Create a single Supabase client for the entire app
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storage: storage as any,
-    persistSession: true,
+    storage: AsyncStorage,
     autoRefreshToken: true,
+    persistSession: true,
     detectSessionInUrl: false,
   },
 });
+
+console.log('[Supabase] Client initialized successfully');

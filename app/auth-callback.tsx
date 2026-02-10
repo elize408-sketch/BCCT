@@ -1,54 +1,26 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, ActivityIndicator, StyleSheet } from "react-native";
-import { Platform } from "react-native";
 
-type Status = "processing" | "success" | "error";
+import React, { useEffect } from 'react';
+import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useTheme } from '@react-navigation/native';
 
 export default function AuthCallbackScreen() {
-  const [status, setStatus] = useState<Status>("processing");
-  const [message, setMessage] = useState("Processing authentication...");
+  const router = useRouter();
+  const { colors } = useTheme();
 
   useEffect(() => {
-    if (Platform.OS !== "web") return;
-    handleCallback();
+    console.log('[AuthCallback] Processing auth callback');
+    // The Supabase client will automatically handle the session
+    // Just redirect to the app and let the auth state update
+    setTimeout(() => {
+      router.replace('/(app)');
+    }, 1000);
   }, []);
 
-  const handleCallback = () => {
-    try {
-      const urlParams = new URLSearchParams(window.location.search);
-      const token = urlParams.get("better_auth_token");
-      const error = urlParams.get("error");
-
-      if (error) {
-        setStatus("error");
-        setMessage(`Authentication failed: ${error}`);
-        window.opener?.postMessage({ type: "oauth-error", error }, "*");
-        return;
-      }
-
-      if (token) {
-        setStatus("success");
-        setMessage("Authentication successful! Closing...");
-        window.opener?.postMessage({ type: "oauth-success", token }, "*");
-        setTimeout(() => window.close(), 1000);
-      } else {
-        setStatus("error");
-        setMessage("No authentication token received");
-        window.opener?.postMessage({ type: "oauth-error", error: "No token" }, "*");
-      }
-    } catch (err) {
-      setStatus("error");
-      setMessage("Failed to process authentication");
-      console.error("Auth callback error:", err);
-    }
-  };
-
   return (
-    <View style={styles.container}>
-      {status === "processing" && <ActivityIndicator size="large" color="#007AFF" />}
-      {status === "success" && <Text style={styles.successIcon}>✓</Text>}
-      {status === "error" && <Text style={styles.errorIcon}>✗</Text>}
-      <Text style={styles.message}>{message}</Text>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <ActivityIndicator size="large" color={colors.primary} />
+      <Text style={[styles.text, { color: colors.text }]}>Completing sign in...</Text>
     </View>
   );
 }
@@ -56,23 +28,12 @@ export default function AuthCallbackScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-    backgroundColor: "#fff",
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
   },
-  successIcon: {
-    fontSize: 48,
-    color: "#34C759",
-  },
-  errorIcon: {
-    fontSize: 48,
-    color: "#FF3B30",
-  },
-  message: {
-    fontSize: 18,
-    marginTop: 20,
-    textAlign: "center",
-    color: "#333",
+  text: {
+    fontSize: 16,
+    marginTop: 16,
   },
 });
