@@ -7,8 +7,8 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
-  signInWithEmail: (email: string) => Promise<void>;
-  signUpWithEmail: (email: string, password: string, name?: string) => Promise<void>;
+  signInWithPassword: (email: string, password: string) => Promise<void>;
+  signUpWithPassword: (email: string, password: string, name?: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signInWithApple: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -47,24 +47,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const signInWithEmail = async (email: string) => {
-    console.log('[AuthContext] Sending magic link to:', email);
-    const { error } = await supabase.auth.signInWithOtp({
+  const signInWithPassword = async (email: string, password: string) => {
+    console.log('[AuthContext] Signing in with email:', email);
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
-      options: {
-        emailRedirectTo: 'bcct-coaching://auth-callback',
-      },
+      password,
     });
 
     if (error) {
-      console.error('[AuthContext] Magic link error:', error);
+      console.error('[AuthContext] Sign in error:', error);
       throw error;
     }
 
-    console.log('[AuthContext] Magic link sent successfully');
+    console.log('[AuthContext] Sign in successful:', data.user?.id);
   };
 
-  const signUpWithEmail = async (email: string, password: string, name?: string) => {
+  const signUpWithPassword = async (email: string, password: string, name?: string) => {
     console.log('[AuthContext] Signing up with email:', email);
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -134,8 +132,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         session,
         loading,
-        signInWithEmail,
-        signUpWithEmail,
+        signInWithPassword,
+        signUpWithPassword,
         signInWithGoogle,
         signInWithApple,
         signOut,

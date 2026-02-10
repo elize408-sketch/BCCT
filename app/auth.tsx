@@ -16,16 +16,17 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@react-navigation/native';
 
-type Mode = 'signin' | 'signup' | 'magic-link';
+type Mode = 'signin' | 'signup';
 
 export default function AuthScreen() {
   const router = useRouter();
   const { colors } = useTheme();
-  const { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithApple, loading: authLoading } = useAuth();
+  const { signInWithPassword, signUpWithPassword, signInWithGoogle, signInWithApple, loading: authLoading } = useAuth();
 
-  const [mode, setMode] = useState<Mode>('magic-link');
+  const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -49,42 +50,72 @@ export default function AuthScreen() {
   }
 
   const handleEmailAuth = async () => {
+    console.log('[Auth] handleEmailAuth called, mode:', mode);
+    
     if (!email) {
       showModal('Error', 'Please enter your email');
       return;
     }
 
-    if (mode === 'signup' && !password) {
+    if (!password) {
       showModal('Error', 'Please enter a password');
       return;
     }
 
+    // Validation for sign up
+    if (mode === 'signup') {
+      if (password.length < 6) {
+        showModal('Error', 'Password must be at least 6 characters');
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        showModal('Error', 'Passwords do not match');
+        return;
+      }
+    }
+
     setLoading(true);
     try {
-      if (mode === 'magic-link') {
-        await signInWithEmail(email);
+      if (mode === 'signup') {
+        console.log('[Auth] Signing up user');
+        await signUpWithPassword(email, password, name);
         showModal(
           'Success',
-          'Check your email! We sent you a magic link to sign in.',
+          'Account created successfully! You can now sign in.',
           'success'
         );
-      } else if (mode === 'signup') {
-        await signUpWithEmail(email, password, name);
-        showModal(
-          'Success',
-          'Account created! Please check your email to verify your account.',
-          'success'
-        );
+        // Switch to sign in mode after successful signup
+        setMode('signin');
+        setPassword('');
+        setConfirmPassword('');
+      } else {
+        console.log('[Auth] Signing in user');
+        await signInWithPassword(email, password);
+        // Navigation will be handled by auth state change
       }
     } catch (error: any) {
       console.error('[Auth] Error:', error);
-      showModal('Error', error.message || 'Authentication failed');
+      
+      // Handle specific error messages
+      let errorMessage = error.message || 'Authentication failed';
+      
+      if (errorMessage.includes('Invalid login credentials')) {
+        errorMessage = 'Invalid email or password';
+      } else if (errorMessage.includes('User already registered')) {
+        errorMessage = 'An account with this email already exists';
+      } else if (errorMessage.includes('Password should be at least 6 characters')) {
+        errorMessage = 'Password must be at least 6 characters';
+      }
+      
+      showModal('Error', errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
   const handleSocialAuth = async (provider: 'google' | 'apple') => {
+    console.log('[Auth] Social auth initiated:', provider);
     setLoading(true);
     try {
       if (provider === 'google') {
@@ -105,8 +136,11 @@ export default function AuthScreen() {
   const inputBorderColor = colors.border;
   const secondaryTextColor = colors.text + '99';
 
-  const modeTitle = mode === 'magic-link' ? 'Sign In with Magic Link' : mode === 'signup' ? 'Create Account' : 'Sign In';
-  const modeButtonText = mode === 'magic-link' ? 'Send Magic Link' : mode === 'signup' ? 'Sign Up' : 'Sign In';
+  const modeTitle = mode === 'signup' ? 'Create Account' : 'Sign In';
+  const modeButtonText = mode === 'signup' ? 'Sign Up' : 'Sign In';
+  const switchModeText = mode === 'signup' 
+    ? 'Already have an account? Sign In' 
+    : "Don't have an account? Sign Up";
 
   return (
     <>
@@ -154,6 +188,23 @@ export default function AuthScreen() {
               autoCorrect={false}
             />
 
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: inputBackgroundColor,
+                  borderColor: inputBorderColor,
+                  color: inputTextColor,
+                },
+              ]}
+              placeholder="Password"
+              placeholderTextColor={secondaryTextColor}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              autoCapitalize="none"
+            />
+
             {mode === 'signup' && (
               <TextInput
                 style={[
@@ -164,10 +215,10 @@ export default function AuthScreen() {
                     color: inputTextColor,
                   },
                 ]}
-                placeholder="Password"
+                placeholder="Confirm Password"
                 placeholderTextColor={secondaryTextColor}
-                value={password}
-                onChangeText={setPassword}
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
                 secureTextEntry
                 autoCapitalize="none"
               />
@@ -183,10 +234,14 @@ export default function AuthScreen() {
 
             <TouchableOpacity
               style={styles.switchModeButton}
-              onPress={() => setMode(mode === 'magic-link' ? 'signup' : 'magic-link')}
+              onPress={() => {
+                setMode(mode === 'signup' ? 'signin' : 'signup');
+                setPassword('');
+                setConfirmPassword('');
+              }}
             >
               <Text style={[styles.switchModeText, { color: colors.primary }]}>
-                {mode === 'magic-link' ? "Don't have an account? Sign Up" : 'Already have an account? Use Magic Link'}
+                {switchModeText}
               </Text>
             </TouchableOpacity>
 
