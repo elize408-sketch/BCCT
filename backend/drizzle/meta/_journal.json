@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1770752323736,
+      "tag": "20260210193843_closed_betty_brant",
+      "breakpoints": true
+    }
+  ]
+}
