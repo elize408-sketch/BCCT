@@ -13,3 +13,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: false,
   },
 });
+supabase.auth.getSession().then(({ data }) => {
+  console.log("BOOT SESSION:", data.session?.user?.id);
+});
