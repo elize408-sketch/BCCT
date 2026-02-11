@@ -281,135 +281,69 @@ export const setupErrorLogging = () => {
   }
 
   // Store original console methods BEFORE any modifications
-  // Use a safe approach that doesn't rely on __proto__ or .call/.apply
-  const originalConsoleLog = console.log.bind(console);
-  const originalConsoleWarn = console.warn.bind(console);
-  const originalConsoleError = console.error.bind(console);
+  const originalConsoleLog = console.log;
+  const originalConsoleWarn = console.warn;
+  const originalConsoleError = console.error;
 
   // Log initialization info using original console (not intercepted)
   const logServerUrl = getLogServerUrl();
-  try {
-    originalConsoleLog('[Natively] Setting up error logging...');
-    originalConsoleLog('[Natively] Log server URL:', logServerUrl || 'NOT AVAILABLE');
-    originalConsoleLog('[Natively] Platform:', Platform.OS);
-  } catch (e) {
-    // Silently fail if logging fails
-  }
+  originalConsoleLog('[Natively] Setting up error logging...');
+  originalConsoleLog('[Natively] Log server URL:', logServerUrl || 'NOT AVAILABLE');
+  originalConsoleLog('[Natively] Platform:', Platform.OS);
 
   // Override console.log to capture and send to server
   console.log = (...args: any[]) => {
-    // Always call original first - safely
-    try {
-      if (typeof originalConsoleLog === 'function') {
-        originalConsoleLog(...args);
-      }
-    } catch (e) {
-      // Fallback: try native console if our wrapper fails
-      try {
-        if (typeof console !== 'undefined' && console.log) {
-          console.log(...args);
-        }
-      } catch (e2) {
-        // Silent fail - don't crash the app
-      }
-    }
+    // Always call original first
+    originalConsoleLog.apply(console, args);
 
     // Queue log for sending to server
-    try {
-      const message = stringifyArgs(args);
-      const source = getCallerInfo();
-      queueLog('log', message, source);
-    } catch (e) {
-      // Silent fail - don't crash the app
-    }
+    const message = stringifyArgs(args);
+    const source = getCallerInfo();
+    queueLog('log', message, source);
   };
 
   // Override console.warn to capture and send to server
   console.warn = (...args: any[]) => {
-    // Always call original first - safely
-    try {
-      if (typeof originalConsoleWarn === 'function') {
-        originalConsoleWarn(...args);
-      }
-    } catch (e) {
-      // Fallback: try native console if our wrapper fails
-      try {
-        if (typeof console !== 'undefined' && console.warn) {
-          console.warn(...args);
-        }
-      } catch (e2) {
-        // Silent fail - don't crash the app
-      }
-    }
+    // Always call original first
+    originalConsoleWarn.apply(console, args);
 
     // Queue log for sending to server (skip muted messages)
-    try {
-      const message = stringifyArgs(args);
-      if (shouldMuteMessage(message)) return;
+    const message = stringifyArgs(args);
+    if (shouldMuteMessage(message)) return;
 
-      const source = getCallerInfo();
-      queueLog('warn', message, source);
-    } catch (e) {
-      // Silent fail - don't crash the app
-    }
+    const source = getCallerInfo();
+    queueLog('warn', message, source);
   };
 
   // Override console.error to capture and send to server
   console.error = (...args: any[]) => {
     // Queue log for sending to server (skip muted messages)
-    let message = '';
-    try {
-      message = stringifyArgs(args);
-      if (shouldMuteMessage(message)) return;
-    } catch (e) {
-      // Silent fail - don't crash the app
-    }
+    const message = stringifyArgs(args);
+    if (shouldMuteMessage(message)) return;
 
-    // Always call original first - safely
-    try {
-      if (typeof originalConsoleError === 'function') {
-        originalConsoleError(...args);
-      }
-    } catch (e) {
-      // Fallback: try native console if our wrapper fails
-      try {
-        if (typeof console !== 'undefined' && console.error) {
-          console.error(...args);
-        }
-      } catch (e2) {
-        // Silent fail - don't crash the app
-      }
-    }
+    // Always call original first
+    originalConsoleError.apply(console, args);
 
-    // Queue log for sending to server
-    try {
-      const source = getCallerInfo();
-      queueLog('error', message, source);
+    const source = getCallerInfo();
+    queueLog('error', message, source);
 
-      // Also send to parent window for web iframe mode
-      sendErrorToParent('error', 'Console Error', message);
-    } catch (e) {
-      // Silent fail - don't crash the app
-    }
+    // Also send to parent window for web iframe mode
+    sendErrorToParent('error', 'Console Error', message);
   };
 
   // Capture unhandled errors in web environment
   if (typeof window !== 'undefined') {
     // Override window.onerror to catch JavaScript errors
     window.onerror = (message, source, lineno, colno, error) => {
-      try {
-        const sourceFile = source ? source.split('/').pop() : 'unknown';
-        const errorMessage = `RUNTIME ERROR: ${message} at ${sourceFile}:${lineno}:${colno}`;
+      const sourceFile = source ? source.split('/').pop() : 'unknown';
+      const errorMessage = `RUNTIME ERROR: ${message} at ${sourceFile}:${lineno}:${colno}`;
 
-        queueLog('error', errorMessage, `${sourceFile}:${lineno}:${colno}`);
-        sendErrorToParent('error', 'JavaScript Runtime Error', {
-          message,
-          source: `${sourceFile}:${lineno}:${colno}`,
-          error: error?.stack || error,
-        });
-      } catch (e) {
-        // Silent fail - don't crash the error handler
-      }
+      queueLog('error', errorMessage, `${sourceFile}:${lineno}:${colno}`);
+      sendErrorToParent('error', 'JavaScript Runtime Error', {
+        message,
+        source: `${sourceFile}:${lineno}:${colno}`,
+        error: error?.stack || error,
+      });
 
       return false; // Don't prevent default error handling
     };
@@ -417,13 +351,9 @@ export const setupErrorLogging = () => {
     // Capture unhandled promise rejections (web only)
     if (Platform.OS === 'web') {
       window.addEventListener('unhandledrejection', (event) => {
-        try {
-          const message = `UNHANDLED PROMISE REJECTION: ${event.reason}`;
-          queueLog('error', message, '');
-          sendErrorToParent('error', 'Unhandled Promise Rejection', { reason: event.reason });
-        } catch (e) {
-          // Silent fail - don't crash the error handler
-        }
+        const message = `UNHANDLED PROMISE REJECTION: ${event.reason}`;
+        queueLog('error', message, '');
+        sendErrorToParent('error', 'Unhandled Promise Rejection', { reason: event.reason });
       });
     }
   }
