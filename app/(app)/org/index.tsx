@@ -67,7 +67,7 @@ export default function OrgAdminDashboardScreen() {
       }
     } catch (error: any) {
       console.error("[OrgAdmin] Error fetching dashboard data", error);
-      showModal("Error", "Failed to load dashboard data");
+      showModal("Fout", "Kon dashboardgegevens niet laden");
     } finally {
       setLoading(false);
     }
@@ -82,36 +82,36 @@ export default function OrgAdminDashboardScreen() {
       router.replace("/auth");
     } catch (error: any) {
       console.error("[OrgAdmin] Sign out error", error);
-      showModal("Error", "Failed to sign out");
+      showModal("Fout", "Uitloggen mislukt");
     } finally {
       setSigningOut(false);
     }
   };
 
   const stats = [
-    { label: "Organizations", value: organizations.length.toString(), icon: "business" as const, color: "#6366f1" },
-    { label: "Total Members", value: orgStats?.memberCount.toString() || "0", icon: "group" as const, color: "#10b981" },
-    { label: "Active Coaches", value: orgStats?.coachCount.toString() || "0", icon: "person" as const, color: "#f59e0b" },
-    { label: "Active Clients", value: orgStats?.clientCount.toString() || "0", icon: "people" as const, color: "#ef4444" },
+    { label: "Organisaties", value: organizations.length.toString(), icon: "business" as const, color: "#6366f1" },
+    { label: "Totaal Leden", value: orgStats?.memberCount.toString() || "0", icon: "group" as const, color: "#10b981" },
+    { label: "Actieve Coaches", value: orgStats?.coachCount.toString() || "0", icon: "person" as const, color: "#f59e0b" },
+    { label: "Actieve Cliënten", value: orgStats?.clientCount.toString() || "0", icon: "people" as const, color: "#ef4444" },
   ];
 
   const quickActions = [
     {
       id: "organizations",
-      title: "Organizations",
-      description: "Manage organizations",
+      title: "Organisaties",
+      description: "Beheer organisaties",
       icon: "business" as const,
     },
     {
       id: "members",
-      title: "Members",
-      description: "View and manage members",
+      title: "Leden",
+      description: "Bekijk en beheer leden",
       icon: "group" as const,
     },
     {
       id: "stats",
-      title: "Statistics",
-      description: "View aggregated data",
+      title: "Statistieken",
+      description: "Bekijk geaggregeerde gegevens",
       icon: "bar-chart" as const,
     },
   ];
@@ -133,7 +133,7 @@ export default function OrgAdminDashboardScreen() {
           <View style={styles.header}>
             <View>
               <Text style={[styles.greeting, { color: colors.text, opacity: 0.7 }]}>Admin Dashboard</Text>
-              <Text style={[styles.name, { color: colors.text }]}>{user?.name || "Organization"}</Text>
+              <Text style={[styles.name, { color: colors.text }]}>{user?.name || "Organisatie"}</Text>
             </View>
             <TouchableOpacity
               style={[styles.signOutButton, { backgroundColor: colors.card }]}
@@ -150,7 +150,7 @@ export default function OrgAdminDashboardScreen() {
           </View>
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Overview</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Overzicht</Text>
           <View style={styles.statsGrid}>
             {stats.map((stat, index) => (
               <View key={index} style={[styles.statCard, { backgroundColor: colors.card }]}>
@@ -172,7 +172,7 @@ export default function OrgAdminDashboardScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Actions</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Snelle Acties</Text>
           <View style={styles.actionsGrid}>
             {quickActions.map((action) => (
               <TouchableOpacity
@@ -212,14 +212,14 @@ export default function OrgAdminDashboardScreen() {
             color={colors.primary}
           />
           <Text style={[styles.privacyText, { color: colors.text }]}>
-            Privacy Protected: You can only view aggregated statistics. Individual client data is not accessible.
+            Privacy Beschermd: Je kunt alleen geaggregeerde statistieken bekijken. Individuele cliëntgegevens zijn niet toegankelijk.
           </Text>
         </View>
 
         <View style={styles.section}>
           <Text style={[styles.infoText, { color: colors.text, opacity: 0.6 }]}>
-            This is your organization admin dashboard. Manage organizations, members, and view
-            privacy-protected aggregated statistics.
+            Dit is je organisatie admin dashboard. Beheer organisaties, leden, en bekijk
+            privacy-beschermde geaggregeerde statistieken.
           </Text>
         </View>
       </ScrollView>

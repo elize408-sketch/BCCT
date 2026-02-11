@@ -53,7 +53,7 @@ export default function ClientHomeScreen() {
       setHomeData(data);
     } catch (error: any) {
       console.error("[Client] Error fetching home data", error);
-      showModal("Error", "Failed to load home data");
+      showModal("Fout", "Kon thuisgegevens niet laden");
     } finally {
       setLoading(false);
     }
@@ -68,7 +68,7 @@ export default function ClientHomeScreen() {
       router.replace("/auth");
     } catch (error: any) {
       console.error("[Client] Sign out error", error);
-      showModal("Error", "Failed to sign out");
+      showModal("Fout", "Uitloggen mislukt");
     } finally {
       setSigningOut(false);
     }
@@ -77,29 +77,29 @@ export default function ClientHomeScreen() {
   const quickActions = [
     {
       id: "checkin",
-      title: "Daily Check-in",
-      description: "Log your stress, energy, sleep & mood",
+      title: "Dagelijkse Check-in",
+      description: "Log je stress, energie, slaap & stemming",
       icon: "favorite" as const,
       color: "#ef4444",
     },
     {
       id: "program",
-      title: "My Program",
-      description: "Continue your coaching journey",
+      title: "Mijn Programma",
+      description: "Ga verder met je coachingtraject",
       icon: "school" as const,
       color: "#6366f1",
     },
     {
       id: "chat",
-      title: "Chat with Coach",
-      description: "Send a message to your coach",
+      title: "Chat met Coach",
+      description: "Stuur een bericht naar je coach",
       icon: "chat" as const,
       color: "#10b981",
     },
     {
       id: "appointments",
-      title: "Appointments",
-      description: "View upcoming sessions",
+      title: "Afspraken",
+      description: "Bekijk aankomende sessies",
       icon: "calendar-today" as const,
       color: "#f59e0b",
     },
@@ -121,8 +121,8 @@ export default function ClientHomeScreen() {
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
             <View>
-              <Text style={[styles.greeting, { color: colors.text, opacity: 0.7 }]}>Welcome back</Text>
-              <Text style={[styles.name, { color: colors.text }]}>{user?.name || "Client"}</Text>
+              <Text style={[styles.greeting, { color: colors.text, opacity: 0.7 }]}>Welkom terug</Text>
+              <Text style={[styles.name, { color: colors.text }]}>{user?.name || "Cliënt"}</Text>
             </View>
             <TouchableOpacity
               style={[styles.signOutButton, { backgroundColor: colors.card }]}
@@ -139,7 +139,7 @@ export default function ClientHomeScreen() {
           </View>
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Actions</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Snelle Acties</Text>
           <View style={styles.actionsGrid}>
             {quickActions.map((action) => (
               <TouchableOpacity
@@ -165,7 +165,7 @@ export default function ClientHomeScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Today&apos;s Overview</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Overzicht van Vandaag</Text>
           <View style={[styles.overviewCard, { backgroundColor: colors.card }]}>
             <View style={styles.overviewItem}>
               <IconSymbol
@@ -179,7 +179,7 @@ export default function ClientHomeScreen() {
                   Check-in Status
                 </Text>
                 <Text style={[styles.overviewValue, { color: colors.text }]}>
-                  {homeData?.checkinStatus || "Not completed"}
+                  {homeData?.checkinStatus || "Niet voltooid"}
                 </Text>
               </View>
             </View>
@@ -193,10 +193,10 @@ export default function ClientHomeScreen() {
               />
               <View style={styles.overviewText}>
                 <Text style={[styles.overviewLabel, { color: colors.text, opacity: 0.7 }]}>
-                  Next Appointment
+                  Volgende Afspraak
                 </Text>
                 <Text style={[styles.overviewValue, { color: colors.text }]}>
-                  {homeData?.nextAppointment ? "Scheduled" : "No upcoming"}
+                  {homeData?.nextAppointment ? "Ingepland" : "Geen aankomende"}
                 </Text>
               </View>
             </View>
@@ -212,7 +212,7 @@ export default function ClientHomeScreen() {
                   />
                   <View style={styles.overviewText}>
                     <Text style={[styles.overviewLabel, { color: colors.text, opacity: 0.7 }]}>
-                      Unread Messages
+                      Ongelezen Berichten
                     </Text>
                     <Text style={[styles.overviewValue, { color: colors.text }]}>
                       {homeData.unreadChatCount}
@@ -226,8 +226,8 @@ export default function ClientHomeScreen() {
 
         <View style={styles.section}>
           <Text style={[styles.infoText, { color: colors.text, opacity: 0.6 }]}>
-            This is your client dashboard. Complete your daily check-in, work on your program tasks,
-            and stay connected with your coach.
+            Dit is je cliënt dashboard. Voltooi je dagelijkse check-in, werk aan je programmataken,
+            en blijf in contact met je coach.
           </Text>
         </View>
       </ScrollView>

@@ -53,24 +53,24 @@ export default function AuthScreen() {
     console.log('[Auth] handleEmailAuth called, mode:', mode);
     
     if (!email) {
-      showModal('Error', 'Please enter your email');
+      showModal('Fout', 'Voer je e-mailadres in');
       return;
     }
 
     if (!password) {
-      showModal('Error', 'Please enter a password');
+      showModal('Fout', 'Voer een wachtwoord in');
       return;
     }
 
     // Validation for sign up
     if (mode === 'signup') {
       if (password.length < 6) {
-        showModal('Error', 'Password must be at least 6 characters');
+        showModal('Fout', 'Wachtwoord moet minimaal 6 tekens bevatten');
         return;
       }
 
       if (password !== confirmPassword) {
-        showModal('Error', 'Passwords do not match');
+        showModal('Fout', 'Wachtwoorden komen niet overeen');
         return;
       }
     }
@@ -81,8 +81,8 @@ export default function AuthScreen() {
         console.log('[Auth] Signing up user');
         await signUpWithPassword(email, password, name);
         showModal(
-          'Success',
-          'Account created successfully! You can now sign in.',
+          'Gelukt',
+          'Account succesvol aangemaakt! Je kunt nu inloggen.',
           'success'
         );
         // Switch to sign in mode after successful signup
@@ -98,17 +98,17 @@ export default function AuthScreen() {
       console.error('[Auth] Error:', error);
       
       // Handle specific error messages
-      let errorMessage = error.message || 'Authentication failed';
+      let errorMessage = error.message || 'Authenticatie mislukt';
       
       if (errorMessage.includes('Invalid login credentials')) {
-        errorMessage = 'Invalid email or password';
+        errorMessage = 'Ongeldig e-mailadres of wachtwoord';
       } else if (errorMessage.includes('User already registered')) {
-        errorMessage = 'An account with this email already exists';
+        errorMessage = 'Er bestaat al een account met dit e-mailadres';
       } else if (errorMessage.includes('Password should be at least 6 characters')) {
-        errorMessage = 'Password must be at least 6 characters';
+        errorMessage = 'Wachtwoord moet minimaal 6 tekens bevatten';
       }
       
-      showModal('Error', errorMessage);
+      showModal('Fout', errorMessage);
     } finally {
       setLoading(false);
     }
@@ -125,7 +125,7 @@ export default function AuthScreen() {
       }
     } catch (error: any) {
       console.error('[Auth] Social auth error:', error);
-      showModal('Error', error.message || 'Authentication failed');
+      showModal('Fout', error.message || 'Authenticatie mislukt');
     } finally {
       setLoading(false);
     }
@@ -136,11 +136,11 @@ export default function AuthScreen() {
   const inputBorderColor = colors.border;
   const secondaryTextColor = colors.text + '99';
 
-  const modeTitle = mode === 'signup' ? 'Create Account' : 'Sign In';
-  const modeButtonText = mode === 'signup' ? 'Sign Up' : 'Sign In';
+  const modeTitle = mode === 'signup' ? 'Account Aanmaken' : 'Inloggen';
+  const modeButtonText = mode === 'signup' ? 'Registreren' : 'Inloggen';
   const switchModeText = mode === 'signup' 
-    ? 'Already have an account? Sign In' 
-    : "Don't have an account? Sign Up";
+    ? 'Heb je al een account? Inloggen' 
+    : 'Nog geen account? Registreren';
 
   return (
     <>
@@ -162,7 +162,7 @@ export default function AuthScreen() {
                     color: inputTextColor,
                   },
                 ]}
-                placeholder="Name (optional)"
+                placeholder="Naam (optioneel)"
                 placeholderTextColor={secondaryTextColor}
                 value={name}
                 onChangeText={setName}
@@ -179,7 +179,7 @@ export default function AuthScreen() {
                   color: inputTextColor,
                 },
               ]}
-              placeholder="Email"
+              placeholder="E-mailadres"
               placeholderTextColor={secondaryTextColor}
               value={email}
               onChangeText={setEmail}
@@ -197,7 +197,7 @@ export default function AuthScreen() {
                   color: inputTextColor,
                 },
               ]}
-              placeholder="Password"
+              placeholder="Wachtwoord"
               placeholderTextColor={secondaryTextColor}
               value={password}
               onChangeText={setPassword}
@@ -215,7 +215,7 @@ export default function AuthScreen() {
                     color: inputTextColor,
                   },
                 ]}
-                placeholder="Confirm Password"
+                placeholder="Bevestig wachtwoord"
                 placeholderTextColor={secondaryTextColor}
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
@@ -247,7 +247,7 @@ export default function AuthScreen() {
 
             <View style={styles.divider}>
               <View style={[styles.dividerLine, { backgroundColor: inputBorderColor }]} />
-              <Text style={[styles.dividerText, { color: secondaryTextColor }]}>or continue with</Text>
+              <Text style={[styles.dividerText, { color: secondaryTextColor }]}>of ga verder met</Text>
               <View style={[styles.dividerLine, { backgroundColor: inputBorderColor }]} />
             </View>
 
@@ -262,7 +262,7 @@ export default function AuthScreen() {
               onPress={() => handleSocialAuth('google')}
               disabled={loading}
             >
-              <Text style={[styles.socialButtonText, { color: colors.text }]}>Continue with Google</Text>
+              <Text style={[styles.socialButtonText, { color: colors.text }]}>Doorgaan met Google</Text>
             </TouchableOpacity>
 
             {Platform.OS === 'ios' && (
@@ -271,7 +271,7 @@ export default function AuthScreen() {
                 onPress={() => handleSocialAuth('apple')}
                 disabled={loading}
               >
-                <Text style={[styles.socialButtonText, styles.appleButtonText]}>Continue with Apple</Text>
+                <Text style={[styles.socialButtonText, styles.appleButtonText]}>Doorgaan met Apple</Text>
               </TouchableOpacity>
             )}
           </View>

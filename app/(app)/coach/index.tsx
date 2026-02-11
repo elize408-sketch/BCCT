@@ -65,7 +65,7 @@ export default function CoachDashboardScreen() {
       setAppointments(appointmentsData);
     } catch (error: any) {
       console.error("[Coach] Error fetching dashboard data", error);
-      showModal("Error", "Failed to load dashboard data");
+      showModal("Fout", "Kon dashboardgegevens niet laden");
     } finally {
       setLoading(false);
     }
@@ -80,7 +80,7 @@ export default function CoachDashboardScreen() {
       router.replace("/auth");
     } catch (error: any) {
       console.error("[Coach] Sign out error", error);
-      showModal("Error", "Failed to sign out");
+      showModal("Fout", "Uitloggen mislukt");
     } finally {
       setSigningOut(false);
     }
@@ -90,35 +90,35 @@ export default function CoachDashboardScreen() {
   const clientsWithAlerts = clients.filter(c => c.alerts && c.alerts.length > 0).length;
 
   const stats = [
-    { label: "Active Clients", value: activeClients.toString(), icon: "person" as const, color: "#6366f1" },
-    { label: "Alerts", value: clientsWithAlerts.toString(), icon: "warning" as const, color: "#ef4444" },
-    { label: "Programs", value: programs.length.toString(), icon: "school" as const, color: "#10b981" },
-    { label: "Appointments", value: appointments.length.toString(), icon: "calendar-today" as const, color: "#f59e0b" },
+    { label: "Actieve Cliënten", value: activeClients.toString(), icon: "person" as const, color: "#6366f1" },
+    { label: "Waarschuwingen", value: clientsWithAlerts.toString(), icon: "warning" as const, color: "#ef4444" },
+    { label: "Programma's", value: programs.length.toString(), icon: "school" as const, color: "#10b981" },
+    { label: "Afspraken", value: appointments.length.toString(), icon: "calendar-today" as const, color: "#f59e0b" },
   ];
 
   const quickActions = [
     {
       id: "clients",
-      title: "View Clients",
-      description: "Manage your client list",
+      title: "Bekijk Cliënten",
+      description: "Beheer je cliëntenlijst",
       icon: "group" as const,
     },
     {
       id: "programs",
-      title: "Programs",
-      description: "Create and manage programs",
+      title: "Programma's",
+      description: "Maak en beheer programma's",
       icon: "school" as const,
     },
     {
       id: "appointments",
-      title: "Appointments",
-      description: "Schedule and manage sessions",
+      title: "Afspraken",
+      description: "Plan en beheer sessies",
       icon: "event" as const,
     },
     {
       id: "messages",
-      title: "Messages",
-      description: "Chat with clients",
+      title: "Berichten",
+      description: "Chat met cliënten",
       icon: "chat" as const,
     },
   ];
@@ -140,7 +140,7 @@ export default function CoachDashboardScreen() {
           <View style={styles.header}>
             <View>
               <Text style={[styles.greeting, { color: colors.text, opacity: 0.7 }]}>Coach Dashboard</Text>
-              <Text style={[styles.name, { color: colors.text }]}>{user?.name || "Welcome"}</Text>
+              <Text style={[styles.name, { color: colors.text }]}>{user?.name || "Welkom"}</Text>
             </View>
             <TouchableOpacity
               style={[styles.signOutButton, { backgroundColor: colors.card }]}
@@ -157,7 +157,7 @@ export default function CoachDashboardScreen() {
           </View>
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Overview</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Overzicht</Text>
           <View style={styles.statsGrid}>
             {stats.map((stat, index) => (
               <View key={index} style={[styles.statCard, { backgroundColor: colors.card }]}>
@@ -179,7 +179,7 @@ export default function CoachDashboardScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Actions</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Snelle Acties</Text>
           <View style={styles.actionsGrid}>
             {quickActions.map((action) => (
               <TouchableOpacity
@@ -213,8 +213,8 @@ export default function CoachDashboardScreen() {
 
         <View style={styles.section}>
           <Text style={[styles.infoText, { color: colors.text, opacity: 0.6 }]}>
-            This is your coach dashboard. Manage your clients, create programs, schedule appointments,
-            and monitor client progress.
+            Dit is je coach dashboard. Beheer je cliënten, maak programma&apos;s, plan afspraken,
+            en monitor de voortgang van cliënten.
           </Text>
         </View>
       </ScrollView>

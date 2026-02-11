@@ -40,12 +40,12 @@ export default function OnboardingScreen() {
     console.log('[Onboarding] Starting profile completion', { name, phone, role, goals });
 
     if (!name.trim()) {
-      showModal('Error', 'Please enter your name');
+      showModal('Fout', 'Voer je naam in');
       return;
     }
 
     if (!phone.trim()) {
-      showModal('Error', 'Please enter your phone number');
+      showModal('Fout', 'Voer je telefoonnummer in');
       return;
     }
 
@@ -58,7 +58,7 @@ export default function OnboardingScreen() {
 
       if (!currentSession) {
         console.error('[Onboarding] No session found');
-        showModal('Error', 'You are not logged in. Please sign in again.');
+        showModal('Fout', 'Je bent niet ingelogd. Log opnieuw in.');
         router.replace('/auth');
         setLoading(false);
         return;
@@ -78,7 +78,7 @@ export default function OnboardingScreen() {
 
       if (error) {
         console.error('[Onboarding] Error saving profile:', error);
-        showModal('Error', error.message || 'Failed to save profile. Please try again.');
+        showModal('Fout', error.message || 'Profiel opslaan mislukt. Probeer opnieuw.');
       } else {
         console.log('[Onboarding] Profile saved successfully, redirecting based on role:', role);
         
@@ -93,7 +93,7 @@ export default function OnboardingScreen() {
       }
     } catch (error: any) {
       console.error('[Onboarding] Unexpected error:', error);
-      showModal('Error', 'An unexpected error occurred. Please try again.');
+      showModal('Fout', 'Er is een onverwachte fout opgetreden. Probeer opnieuw.');
     } finally {
       setLoading(false);
     }
@@ -103,18 +103,18 @@ export default function OnboardingScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <Text style={[styles.title, { color: colors.text }]}>Complete Your Profile</Text>
+          <Text style={[styles.title, { color: colors.text }]}>Voltooi je profiel</Text>
           <Text style={[styles.subtitle, { color: colors.text, opacity: 0.7 }]}>
-            Tell us a bit about yourself
+            Vertel ons iets over jezelf
           </Text>
         </View>
 
         <View style={styles.form}>
           <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: colors.text }]}>Full Name *</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Volledige naam *</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
-              placeholder="Enter your full name"
+              placeholder="Voer je volledige naam in"
               placeholderTextColor={colors.text + '80'}
               value={name}
               onChangeText={setName}
@@ -123,10 +123,10 @@ export default function OnboardingScreen() {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: colors.text }]}>Phone Number *</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Telefoonnummer *</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
-              placeholder="Enter your phone number"
+              placeholder="Voer je telefoonnummer in"
               placeholderTextColor={colors.text + '80'}
               value={phone}
               onChangeText={setPhone}
@@ -135,7 +135,7 @@ export default function OnboardingScreen() {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: colors.text }]}>Role *</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Rol *</Text>
             <View style={styles.roleButtons}>
               <TouchableOpacity
                 style={[
@@ -146,7 +146,7 @@ export default function OnboardingScreen() {
                 onPress={() => setRole('client')}
               >
                 <Text style={[styles.roleButtonText, { color: role === 'client' ? '#fff' : colors.text }]}>
-                  Client
+                  Cliënt
                 </Text>
               </TouchableOpacity>
 
@@ -179,14 +179,14 @@ export default function OnboardingScreen() {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: colors.text }]}>Goals (Optional)</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Doelen (Optioneel)</Text>
             <TextInput
               style={[
                 styles.input,
                 styles.textArea,
                 { backgroundColor: colors.card, color: colors.text, borderColor: colors.border },
               ]}
-              placeholder="What are your goals?"
+              placeholder="Wat zijn je doelen?"
               placeholderTextColor={colors.text + '80'}
               value={goals}
               onChangeText={setGoals}
@@ -204,7 +204,7 @@ export default function OnboardingScreen() {
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.buttonText}>Complete Profile</Text>
+              <Text style={styles.buttonText}>Profiel voltooien</Text>
             )}
           </TouchableOpacity>
         </View>
