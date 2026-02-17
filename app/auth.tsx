@@ -18,6 +18,7 @@ import { useTheme } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { bcctColors, bcctTypography } from '@/styles/bcctTheme';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import AntDesign from '@expo/vector-icons/AntDesign';
 
 type Mode = 'signin' | 'signup';
 
@@ -340,7 +341,7 @@ export default function AuthScreen() {
               onPress={() => handleSocialAuth('google')}
               disabled={loading}
             >
-              <MaterialIcons name="g-translate" size={28} color="#DB4437" />
+              <AntDesign name="google" size={28} color="#DB4437" />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -354,7 +355,7 @@ export default function AuthScreen() {
               onPress={() => handleSocialAuth('apple')}
               disabled={loading}
             >
-              <MaterialIcons name="apple" size={28} color={colors.text} />
+              <AntDesign name="apple1" size={28} color={colors.text} />
             </TouchableOpacity>
           </View>
         </View>
