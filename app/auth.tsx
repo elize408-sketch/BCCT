@@ -419,7 +419,7 @@ const styles = StyleSheet.create({
   },
   roleCard: {
     flex: 1,
-    height: 100,
+    height: 45,
     borderRadius: 16,
     borderWidth: 2,
     justifyContent: 'center',
