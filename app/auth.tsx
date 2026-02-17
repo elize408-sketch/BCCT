@@ -177,14 +177,10 @@ export default function AuthScreen() {
                       end={{ x: 1, y: 0 }}
                       style={styles.roleCardGradient}
                     >
-                      <MaterialIcons name="person" size={32} color="#FFFFFF" />
                       <Text style={styles.roleCardTextActive}>Cliënt</Text>
                     </LinearGradient>
                   ) : (
-                    <>
-                      <MaterialIcons name="person" size={32} color={bcctColors.primaryOrange} />
-                      <Text style={[styles.roleCardText, { color: colors.text }]}>Cliënt</Text>
-                    </>
+                    <Text style={[styles.roleCardText, { color: colors.text }]}>Cliënt</Text>
                   )}
                 </TouchableOpacity>
 
@@ -203,14 +199,10 @@ export default function AuthScreen() {
                       end={{ x: 1, y: 0 }}
                       style={styles.roleCardGradient}
                     >
-                      <MaterialIcons name="school" size={32} color="#FFFFFF" />
                       <Text style={styles.roleCardTextActive}>Coach</Text>
                     </LinearGradient>
                   ) : (
-                    <>
-                      <MaterialIcons name="school" size={32} color={bcctColors.primaryOrange} />
-                      <Text style={[styles.roleCardText, { color: colors.text }]}>Coach</Text>
-                    </>
+                    <Text style={[styles.roleCardText, { color: colors.text }]}>Coach</Text>
                   )}
                 </TouchableOpacity>
               </View>
@@ -432,7 +424,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
   },
   roleCardActive: {
     overflow: 'hidden',
@@ -443,7 +434,6 @@ const styles = StyleSheet.create({
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
