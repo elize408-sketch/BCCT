@@ -7,7 +7,9 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
-  signInWithPassword: (email: string, password: string) => Promise<void>;
+  selectedRole: 'client' | 'coach';
+  setSelectedRole: (role: 'client' | 'coach') => void;
+  signInWithPassword: (email: string, password: string, role: 'client' | 'coach') => Promise<void>;
   signUpWithPassword: (email: string, password: string, name?: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signInWithApple: () => Promise<void>;
@@ -20,6 +22,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedRole, setSelectedRole] = useState<'client' | 'coach'>('client');
 
   useEffect(() => {
     console.log('[AuthContext] Bootstrapping session...');
@@ -47,8 +50,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const signInWithPassword = async (email: string, password: string) => {
-    console.log('[AuthContext] Signing in with email:', email);
+  const signInWithPassword = async (email: string, password: string, role: 'client' | 'coach') => {
+    console.log('[AuthContext] Signing in with email:', email, 'role:', role);
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -59,7 +62,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw error;
     }
 
-    console.log('[AuthContext] Sign in successful:', data.user?.id);
+    // Store the selected role
+    setSelectedRole(role);
+    console.log('[AuthContext] Sign in successful:', data.user?.id, 'with role:', role);
   };
 
   const signUpWithPassword = async (email: string, password: string, name?: string) => {
@@ -123,6 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Always clear local state
       setUser(null);
       setSession(null);
+      setSelectedRole('client'); // Reset to default
     }
   };
 
@@ -132,6 +138,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         session,
         loading,
+        selectedRole,
+        setSelectedRole,
         signInWithPassword,
         signUpWithPassword,
         signInWithGoogle,

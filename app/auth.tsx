@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   Platform,
   KeyboardAvoidingView,
-  ScrollView,
   Image,
 } from 'react-native';
 import Modal from 'react-native-modal';
@@ -24,7 +23,7 @@ type Mode = 'signin' | 'signup';
 export default function AuthScreen() {
   const router = useRouter();
   const { colors } = useTheme();
-  const { signInWithPassword, signUpWithPassword, signInWithGoogle, signInWithApple, loading: authLoading } = useAuth();
+  const { signInWithPassword, signUpWithPassword, signInWithGoogle, signInWithApple, loading: authLoading, selectedRole, setSelectedRole } = useAuth();
 
   const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
@@ -91,8 +90,8 @@ export default function AuthScreen() {
         setPassword('');
         setConfirmPassword('');
       } else {
-        console.log('[Auth] Signing in user');
-        await signInWithPassword(email, password);
+        console.log('[Auth] Signing in user with role:', selectedRole);
+        await signInWithPassword(email, password, selectedRole);
       }
     } catch (error: any) {
       console.error('[Auth] Error:', error);
@@ -147,46 +146,74 @@ export default function AuthScreen() {
         style={[styles.container, { backgroundColor: colors.background }]}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <View style={styles.content}>
-            {/* Logo and Branding Header */}
-            <View style={styles.brandingHeader}>
-              <Image
-                source={require('@/assets/images/1ac1fe99-d9d9-48ee-9ee0-6b721fbbfa04.png')}
-                style={styles.logo}
-                resizeMode="contain"
-              />
-              <Text style={[styles.welcomeText, { color: secondaryTextColor }]}>
-                Welkom bij
-              </Text>
-              <Text style={[styles.brandName, { color: colors.text }]}>
-                B-Connected
-              </Text>
-              <Text style={[styles.brandSubtitle, { color: secondaryTextColor }]}>
-                Coaching & Training
+        <View style={styles.content}>
+          {/* Logo and Branding Header */}
+          <View style={styles.brandingHeader}>
+            <Image
+              source={require('@/assets/images/1ac1fe99-d9d9-48ee-9ee0-6b721fbbfa04.png')}
+              style={styles.logo}
+              resizeMode="contain"
+            />
+            <Text style={[styles.welcomeText, { color: secondaryTextColor }]}>
+              Welkom bij
+            </Text>
+          </View>
+
+          {/* Role Selector - Only show on signin mode */}
+          {mode === 'signin' && (
+            <View style={styles.roleContainer}>
+              <View style={[styles.roleSelector, { backgroundColor: bcctColors.borderGray }]}>
+                <TouchableOpacity
+                  style={[
+                    styles.roleButton,
+                    selectedRole === 'client' && styles.roleButtonActive,
+                  ]}
+                  onPress={() => setSelectedRole('client')}
+                >
+                  {selectedRole === 'client' ? (
+                    <LinearGradient
+                      colors={[bcctColors.primaryBlue, bcctColors.gradientTeal]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={styles.roleButtonGradient}
+                    >
+                      <Text style={styles.roleButtonTextActive}>Cliënt</Text>
+                    </LinearGradient>
+                  ) : (
+                    <Text style={[styles.roleButtonText, { color: bcctColors.primaryBlue }]}>Cliënt</Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.roleButton,
+                    selectedRole === 'coach' && styles.roleButtonActive,
+                  ]}
+                  onPress={() => setSelectedRole('coach')}
+                >
+                  {selectedRole === 'coach' ? (
+                    <LinearGradient
+                      colors={[bcctColors.primaryBlue, bcctColors.gradientTeal]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={styles.roleButtonGradient}
+                    >
+                      <Text style={styles.roleButtonTextActive}>Coach</Text>
+                    </LinearGradient>
+                  ) : (
+                    <Text style={[styles.roleButtonText, { color: bcctColors.primaryBlue }]}>Coach</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+              <Text style={[styles.roleHelperText, { color: secondaryTextColor }]}>
+                Log in als cliënt of coach
               </Text>
             </View>
+          )}
 
-            <Text style={[styles.title, { color: colors.text }]}>{modeTitle}</Text>
+          <Text style={[styles.title, { color: colors.text }]}>{modeTitle}</Text>
 
-            {mode === 'signup' && (
-              <TextInput
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: inputBackgroundColor,
-                    borderColor: inputBorderColor,
-                    color: inputTextColor,
-                  },
-                ]}
-                placeholder="Naam (optioneel)"
-                placeholderTextColor={secondaryTextColor}
-                value={name}
-                onChangeText={setName}
-                autoCapitalize="words"
-              />
-            )}
-
+          {mode === 'signup' && (
             <TextInput
               style={[
                 styles.input,
@@ -196,15 +223,50 @@ export default function AuthScreen() {
                   color: inputTextColor,
                 },
               ]}
-              placeholder="E-mailadres"
+              placeholder="Naam (optioneel)"
               placeholderTextColor={secondaryTextColor}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
+              value={name}
+              onChangeText={setName}
+              autoCapitalize="words"
             />
+          )}
 
+          <TextInput
+            style={[
+              styles.input,
+              {
+                backgroundColor: inputBackgroundColor,
+                borderColor: inputBorderColor,
+                color: inputTextColor,
+              },
+            ]}
+            placeholder="E-mailadres"
+            placeholderTextColor={secondaryTextColor}
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+
+          <TextInput
+            style={[
+              styles.input,
+              {
+                backgroundColor: inputBackgroundColor,
+                borderColor: inputBorderColor,
+                color: inputTextColor,
+              },
+            ]}
+            placeholder="Wachtwoord"
+            placeholderTextColor={secondaryTextColor}
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            autoCapitalize="none"
+          />
+
+          {mode === 'signup' && (
             <TextInput
               style={[
                 styles.input,
@@ -214,96 +276,67 @@ export default function AuthScreen() {
                   color: inputTextColor,
                 },
               ]}
-              placeholder="Wachtwoord"
+              placeholder="Bevestig wachtwoord"
               placeholderTextColor={secondaryTextColor}
-              value={password}
-              onChangeText={setPassword}
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
               secureTextEntry
               autoCapitalize="none"
             />
+          )}
 
-            {mode === 'signup' && (
-              <TextInput
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: inputBackgroundColor,
-                    borderColor: inputBorderColor,
-                    color: inputTextColor,
-                  },
-                ]}
-                placeholder="Bevestig wachtwoord"
-                placeholderTextColor={secondaryTextColor}
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                secureTextEntry
-                autoCapitalize="none"
-              />
-            )}
-
-            <TouchableOpacity
-              style={[styles.primaryButtonContainer, loading && styles.buttonDisabled]}
-              onPress={handleEmailAuth}
-              disabled={loading}
+          <TouchableOpacity
+            style={[styles.primaryButtonContainer, loading && styles.buttonDisabled]}
+            onPress={handleEmailAuth}
+            disabled={loading}
+          >
+            <LinearGradient
+              colors={[bcctColors.primaryBlue, bcctColors.gradientTeal]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.primaryButton}
             >
-              <LinearGradient
-                colors={[bcctColors.primaryBlue, bcctColors.gradientTeal]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.primaryButton}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.primaryButtonText}>{modeButtonText}</Text>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.primaryButtonText}>{modeButtonText}</Text>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.switchModeButton}
-              onPress={() => {
-                setMode(mode === 'signup' ? 'signin' : 'signup');
-                setPassword('');
-                setConfirmPassword('');
-              }}
-            >
-              <Text style={[styles.switchModeText, { color: bcctColors.primaryBlue }]}>
-                {switchModeText}
-              </Text>
-            </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.switchModeButton}
+            onPress={() => {
+              setMode(mode === 'signup' ? 'signin' : 'signup');
+              setPassword('');
+              setConfirmPassword('');
+            }}
+          >
+            <Text style={[styles.switchModeText, { color: bcctColors.primaryBlue }]}>
+              {switchModeText}
+            </Text>
+          </TouchableOpacity>
 
-            <View style={styles.divider}>
-              <View style={[styles.dividerLine, { backgroundColor: inputBorderColor }]} />
-              <Text style={[styles.dividerText, { color: secondaryTextColor }]}>of ga verder met</Text>
-              <View style={[styles.dividerLine, { backgroundColor: inputBorderColor }]} />
-            </View>
-
-            <TouchableOpacity
-              style={[
-                styles.socialButton,
-                {
-                  backgroundColor: inputBackgroundColor,
-                  borderColor: bcctColors.primaryBlue,
-                },
-              ]}
-              onPress={() => handleSocialAuth('google')}
-              disabled={loading}
-            >
-              <Text style={[styles.socialButtonText, { color: colors.text }]}>Doorgaan met Google</Text>
-            </TouchableOpacity>
-
-            {Platform.OS === 'ios' && (
-              <TouchableOpacity
-                style={[styles.socialButton, styles.appleButton]}
-                onPress={() => handleSocialAuth('apple')}
-                disabled={loading}
-              >
-                <Text style={[styles.socialButtonText, styles.appleButtonText]}>Doorgaan met Apple</Text>
-              </TouchableOpacity>
-            )}
+          <View style={styles.divider}>
+            <View style={[styles.dividerLine, { backgroundColor: inputBorderColor }]} />
+            <Text style={[styles.dividerText, { color: secondaryTextColor }]}>of</Text>
+            <View style={[styles.dividerLine, { backgroundColor: inputBorderColor }]} />
           </View>
-        </ScrollView>
+
+          <TouchableOpacity
+            style={[
+              styles.socialButton,
+              {
+                backgroundColor: inputBackgroundColor,
+                borderColor: bcctColors.primaryBlue,
+              },
+            ]}
+            onPress={() => handleSocialAuth('google')}
+            disabled={loading}
+          >
+            <Text style={[styles.socialButtonText, { color: colors.text }]}>Google</Text>
+          </TouchableOpacity>
+        </View>
       </KeyboardAvoidingView>
 
       <Modal
@@ -338,9 +371,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  scrollContent: {
-    flexGrow: 1,
-  },
   content: {
     flex: 1,
     padding: 24,
@@ -348,35 +378,69 @@ const styles = StyleSheet.create({
   },
   brandingHeader: {
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: 20,
   },
   logo: {
-    width: 200,
-    height: 60,
-    marginBottom: 12,
+    width: 180,
+    height: 54,
+    marginBottom: 8,
   },
   welcomeText: {
     ...bcctTypography.small,
-    marginBottom: 4,
   },
-  brandName: {
-    ...bcctTypography.h2,
-    marginBottom: 4,
+  roleContainer: {
+    marginBottom: 20,
   },
-  brandSubtitle: {
-    ...bcctTypography.body,
+  roleSelector: {
+    flexDirection: 'row',
+    borderRadius: 22,
+    padding: 4,
+    marginBottom: 8,
+  },
+  roleButton: {
+    flex: 1,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 20,
+  },
+  roleButtonActive: {
+    overflow: 'hidden',
+  },
+  roleButtonGradient: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  roleButtonText: {
+    ...bcctTypography.bodyMedium,
+  },
+  roleButtonTextActive: {
+    ...bcctTypography.bodyMedium,
+    color: '#fff',
+  },
+  roleHelperText: {
+    ...bcctTypography.small,
+    textAlign: 'center',
   },
   title: {
-    ...bcctTypography.h1,
-    marginBottom: 24,
+    ...bcctTypography.h2,
+    marginBottom: 20,
     textAlign: 'center',
   },
   input: {
-    height: 50,
+    height: 48,
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 16,
-    marginBottom: 16,
+    marginBottom: 12,
     ...bcctTypography.body,
   },
   primaryButtonContainer: {
@@ -385,7 +449,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   primaryButton: {
-    height: 50,
+    height: 48,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -397,7 +461,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   switchModeButton: {
-    marginTop: 16,
+    marginTop: 12,
     alignItems: 'center',
   },
   switchModeText: {
@@ -406,7 +470,7 @@ const styles = StyleSheet.create({
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 24,
+    marginVertical: 16,
   },
   dividerLine: {
     flex: 1,
@@ -417,22 +481,14 @@ const styles = StyleSheet.create({
     ...bcctTypography.small,
   },
   socialButton: {
-    height: 50,
+    height: 48,
     borderWidth: 2,
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
   },
   socialButtonText: {
     ...bcctTypography.bodyMedium,
-  },
-  appleButton: {
-    backgroundColor: '#000',
-    borderColor: '#000',
-  },
-  appleButtonText: {
-    color: '#fff',
   },
   modalContent: {
     borderRadius: 20,
