@@ -41,7 +41,7 @@ export default function ClientLayout() {
         <Stack.Screen name="files" />
         <Stack.Screen name="settings" />
       </Stack>
-      <FloatingTabBar tabs={tabs} containerWidth={280} />
+      <FloatingTabBar tabs={tabs} />
     </>
   );
 }

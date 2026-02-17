@@ -38,16 +38,21 @@ interface FloatingTabBarProps {
   bottomMargin?: number;
 }
 
+const ORANGE_COLOR = '#FF8C00';
+
 export default function FloatingTabBar({
   tabs,
-  containerWidth = screenWidth / 2.5,
-  borderRadius = 35,
+  containerWidth,
+  borderRadius = 0,
   bottomMargin
 }: FloatingTabBarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const theme = useTheme();
   const animatedValue = useSharedValue(0);
+
+  // Use full screen width if containerWidth not provided
+  const effectiveWidth = containerWidth || screenWidth;
 
   // Check if any tab has a label
   const hasLabels = tabs.some(tab => tab.label && tab.label.trim() !== '');
@@ -105,7 +110,7 @@ export default function FloatingTabBar({
   const tabWidthPercent = ((100 / tabs.length) - 1).toFixed(2);
 
   const indicatorStyle = useAnimatedStyle(() => {
-    const tabWidth = (containerWidth - 8) / tabs.length; // Account for container padding (4px on each side)
+    const tabWidth = (effectiveWidth - 8) / tabs.length; // Account for container padding (4px on each side)
     return {
       transform: [
         {
@@ -149,9 +154,7 @@ export default function FloatingTabBar({
     },
     indicator: {
       ...styles.indicator,
-      backgroundColor: theme.dark
-        ? 'rgba(255, 255, 255, 0.08)' // Subtle white overlay in dark mode
-        : 'rgba(0, 0, 0, 0.04)', // Subtle black overlay in light mode
+      backgroundColor: ORANGE_COLOR,
       width: `${tabWidthPercent}%` as `${number}%`, // Dynamic width based on number of tabs
     },
   };
@@ -161,8 +164,8 @@ export default function FloatingTabBar({
       <View style={[
         styles.container,
         {
-          width: containerWidth,
-          marginBottom: bottomMargin ?? 20
+          width: effectiveWidth,
+          marginBottom: bottomMargin ?? 0
         }
       ]}>
         <BlurView
@@ -188,14 +191,14 @@ export default function FloatingTabBar({
                       android_material_icon_name={tab.icon}
                       ios_icon_name={tab.icon}
                       size={24}
-                      color={isActive ? theme.colors.primary : (theme.dark ? '#98989D' : '#000000')}
+                      color={isActive ? '#FFFFFF' : (theme.dark ? '#98989D' : '#000000')}
                     />
                     {showLabel && (
                       <Text
                         style={[
                           styles.tabLabel,
                           { color: theme.dark ? '#98989D' : '#8E8E93' },
-                          isActive && { color: theme.colors.primary, fontWeight: '600' },
+                          isActive && { color: '#FFFFFF', fontWeight: '600' },
                         ]}
                       >
                         {tab.label}
@@ -223,7 +226,6 @@ const styles = StyleSheet.create({
     alignItems: 'center', // Center the content
   },
   container: {
-    marginHorizontal: 20,
     alignSelf: 'center',
     // width and marginBottom handled dynamically via props
   },
