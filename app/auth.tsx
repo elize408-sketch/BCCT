@@ -17,6 +17,7 @@ import { useRouter } from 'expo-router';
 import { useTheme } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { bcctColors, bcctTypography } from '@/styles/bcctTheme';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
 type Mode = 'signin' | 'signup';
 
@@ -312,8 +313,11 @@ export default function AuthScreen() {
               setConfirmPassword('');
             }}
           >
-            <Text style={[styles.switchModeText, { color: bcctColors.primaryBlue }]}>
-              {switchModeText}
+            <Text style={[styles.switchModeText, { color: secondaryTextColor }]}>
+              {mode === 'signup' ? 'Heb je al een account? ' : 'Nog geen account? '}
+            </Text>
+            <Text style={[styles.switchModeTextAccent, { color: bcctColors.gradientTeal }]}>
+              {mode === 'signup' ? 'Inloggen' : 'Registreren'}
             </Text>
           </TouchableOpacity>
 
@@ -323,19 +327,36 @@ export default function AuthScreen() {
             <View style={[styles.dividerLine, { backgroundColor: inputBorderColor }]} />
           </View>
 
-          <TouchableOpacity
-            style={[
-              styles.socialButton,
-              {
-                backgroundColor: inputBackgroundColor,
-                borderColor: bcctColors.primaryBlue,
-              },
-            ]}
-            onPress={() => handleSocialAuth('google')}
-            disabled={loading}
-          >
-            <Text style={[styles.socialButtonText, { color: colors.text }]}>Google</Text>
-          </TouchableOpacity>
+          {/* Social Login Icons */}
+          <View style={styles.socialIconsContainer}>
+            <TouchableOpacity
+              style={[
+                styles.socialIconButton,
+                {
+                  backgroundColor: inputBackgroundColor,
+                  borderColor: inputBorderColor,
+                },
+              ]}
+              onPress={() => handleSocialAuth('google')}
+              disabled={loading}
+            >
+              <MaterialIcons name="g-translate" size={28} color="#DB4437" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.socialIconButton,
+                {
+                  backgroundColor: inputBackgroundColor,
+                  borderColor: inputBorderColor,
+                },
+              ]}
+              onPress={() => handleSocialAuth('apple')}
+              disabled={loading}
+            >
+              <MaterialIcons name="apple" size={28} color={colors.text} />
+            </TouchableOpacity>
+          </View>
         </View>
       </KeyboardAvoidingView>
 
@@ -381,8 +402,8 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   logo: {
-    width: 180,
-    height: 54,
+    width: 240,
+    height: 72,
     marginBottom: 8,
   },
   welcomeText: {
@@ -463,9 +484,15 @@ const styles = StyleSheet.create({
   switchModeButton: {
     marginTop: 12,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
   },
   switchModeText: {
     ...bcctTypography.small,
+  },
+  switchModeTextAccent: {
+    ...bcctTypography.small,
+    fontWeight: '600',
   },
   divider: {
     flexDirection: 'row',
@@ -480,15 +507,24 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
     ...bcctTypography.small,
   },
-  socialButton: {
-    height: 48,
-    borderWidth: 2,
-    borderRadius: 12,
+  socialIconsContainer: {
+    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
+    gap: 16,
   },
-  socialButtonText: {
-    ...bcctTypography.bodyMedium,
+  socialIconButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
   },
   modalContent: {
     borderRadius: 20,
