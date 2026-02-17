@@ -10,11 +10,14 @@ import {
   Platform,
   KeyboardAvoidingView,
   ScrollView,
+  Image,
 } from 'react-native';
 import Modal from 'react-native-modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { bcctColors, bcctTypography } from '@/styles/bcctTheme';
 
 type Mode = 'signin' | 'signup';
 
@@ -44,7 +47,7 @@ export default function AuthScreen() {
   if (authLoading) {
     return (
       <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={bcctColors.primaryBlue} />
       </View>
     );
   }
@@ -62,7 +65,6 @@ export default function AuthScreen() {
       return;
     }
 
-    // Validation for sign up
     if (mode === 'signup') {
       if (password.length < 6) {
         showModal('Fout', 'Wachtwoord moet minimaal 6 tekens bevatten');
@@ -85,19 +87,16 @@ export default function AuthScreen() {
           'Account succesvol aangemaakt! Je kunt nu inloggen.',
           'success'
         );
-        // Switch to sign in mode after successful signup
         setMode('signin');
         setPassword('');
         setConfirmPassword('');
       } else {
         console.log('[Auth] Signing in user');
         await signInWithPassword(email, password);
-        // Navigation will be handled by auth state change
       }
     } catch (error: any) {
       console.error('[Auth] Error:', error);
       
-      // Handle specific error messages
       let errorMessage = error.message || 'Authenticatie mislukt';
       
       if (errorMessage.includes('Invalid login credentials')) {
@@ -134,7 +133,7 @@ export default function AuthScreen() {
   const inputBackgroundColor = colors.card;
   const inputTextColor = colors.text;
   const inputBorderColor = colors.border;
-  const secondaryTextColor = colors.text + '99';
+  const secondaryTextColor = bcctColors.textSecondary;
 
   const modeTitle = mode === 'signup' ? 'Account Aanmaken' : 'Inloggen';
   const modeButtonText = mode === 'signup' ? 'Registreren' : 'Inloggen';
@@ -150,6 +149,21 @@ export default function AuthScreen() {
       >
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.content}>
+            {/* Logo and Branding Header */}
+            <View style={styles.brandingHeader}>
+              <Image
+                source={require('@/assets/images/c7338945-8805-48b4-9ae9-64bcfdd98381.png')}
+                style={styles.logo}
+                resizeMode="contain"
+              />
+              <Text style={[styles.welcomeText, { color: secondaryTextColor }]}>
+                Welkom bij
+              </Text>
+              <Text style={[styles.brandName, { color: colors.text }]}>
+                Connected Coaching
+              </Text>
+            </View>
+
             <Text style={[styles.title, { color: colors.text }]}>{modeTitle}</Text>
 
             {mode === 'signup' && (
@@ -225,11 +239,22 @@ export default function AuthScreen() {
             )}
 
             <TouchableOpacity
-              style={[styles.primaryButton, { backgroundColor: colors.primary }, loading && styles.buttonDisabled]}
+              style={[styles.primaryButtonContainer, loading && styles.buttonDisabled]}
               onPress={handleEmailAuth}
               disabled={loading}
             >
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>{modeButtonText}</Text>}
+              <LinearGradient
+                colors={[bcctColors.primaryBlue, bcctColors.gradientTeal]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.primaryButton}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.primaryButtonText}>{modeButtonText}</Text>
+                )}
+              </LinearGradient>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -240,7 +265,7 @@ export default function AuthScreen() {
                 setConfirmPassword('');
               }}
             >
-              <Text style={[styles.switchModeText, { color: colors.primary }]}>
+              <Text style={[styles.switchModeText, { color: bcctColors.primaryBlue }]}>
                 {switchModeText}
               </Text>
             </TouchableOpacity>
@@ -256,7 +281,7 @@ export default function AuthScreen() {
                 styles.socialButton,
                 {
                   backgroundColor: inputBackgroundColor,
-                  borderColor: inputBorderColor,
+                  borderColor: bcctColors.primaryBlue,
                 },
               ]}
               onPress={() => handleSocialAuth('google')}
@@ -287,10 +312,10 @@ export default function AuthScreen() {
         backdropOpacity={0.5}
       >
         <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-          <Text style={[styles.modalTitle, { color: modalType === 'error' ? '#ef4444' : '#10b981' }]}>{modalTitle}</Text>
+          <Text style={[styles.modalTitle, { color: modalType === 'error' ? bcctColors.error : bcctColors.success }]}>{modalTitle}</Text>
           <Text style={[styles.modalMessage, { color: secondaryTextColor }]}>{modalMessage}</Text>
           <TouchableOpacity
-            style={[styles.modalButton, { backgroundColor: modalType === 'error' ? '#ef4444' : '#10b981' }]}
+            style={[styles.modalButton, { backgroundColor: modalType === 'error' ? bcctColors.error : bcctColors.success }]}
             onPress={() => setModalVisible(false)}
           >
             <Text style={styles.modalButtonText}>OK</Text>
@@ -318,31 +343,49 @@ const styles = StyleSheet.create({
     padding: 24,
     justifyContent: 'center',
   },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
+  brandingHeader: {
+    alignItems: 'center',
     marginBottom: 32,
+  },
+  logo: {
+    width: 200,
+    height: 60,
+    marginBottom: 12,
+  },
+  welcomeText: {
+    ...bcctTypography.small,
+    marginBottom: 4,
+  },
+  brandName: {
+    ...bcctTypography.h2,
+    marginBottom: 8,
+  },
+  title: {
+    ...bcctTypography.h1,
+    marginBottom: 24,
     textAlign: 'center',
   },
   input: {
     height: 50,
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 12,
     paddingHorizontal: 16,
     marginBottom: 16,
-    fontSize: 16,
+    ...bcctTypography.body,
+  },
+  primaryButtonContainer: {
+    marginTop: 8,
+    borderRadius: 12,
+    overflow: 'hidden',
   },
   primaryButton: {
     height: 50,
-    borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 8,
   },
   primaryButtonText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    ...bcctTypography.button,
   },
   buttonDisabled: {
     opacity: 0.6,
@@ -352,7 +395,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   switchModeText: {
-    fontSize: 14,
+    ...bcctTypography.small,
   },
   divider: {
     flexDirection: 'row',
@@ -365,19 +408,18 @@ const styles = StyleSheet.create({
   },
   dividerText: {
     marginHorizontal: 12,
-    fontSize: 14,
+    ...bcctTypography.small,
   },
   socialButton: {
     height: 50,
-    borderWidth: 1,
-    borderRadius: 8,
+    borderWidth: 2,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 12,
   },
   socialButtonText: {
-    fontSize: 16,
-    fontWeight: '500',
+    ...bcctTypography.bodyMedium,
   },
   appleButton: {
     backgroundColor: '#000',
@@ -387,30 +429,28 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   modalContent: {
-    borderRadius: 16,
+    borderRadius: 20,
     padding: 24,
     alignItems: 'center',
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    ...bcctTypography.h3,
     marginBottom: 12,
   },
   modalMessage: {
-    fontSize: 16,
+    ...bcctTypography.body,
     textAlign: 'center',
     marginBottom: 24,
   },
   modalButton: {
     paddingHorizontal: 32,
     paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 12,
     minWidth: 100,
   },
   modalButtonText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    ...bcctTypography.button,
     textAlign: 'center',
   },
 });

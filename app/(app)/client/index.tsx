@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   TextInput,
+  Image,
 } from "react-native";
 import Modal from "react-native-modal";
 import { useTheme } from "@react-navigation/native";
@@ -18,6 +19,8 @@ import { useRouter } from "expo-router";
 import { authenticatedGet } from "@/utils/api";
 import { supabase } from "@/lib/supabase";
 import Slider from "@react-native-community/slider";
+import { LinearGradient } from "expo-linear-gradient";
+import { bcctColors, bcctTypography, getSliderColor, getStressLabel, getSleepLabel, getEnergyLabel } from "@/styles/bcctTheme";
 
 interface HomeData {
   checkinStatus: string | null;
@@ -38,43 +41,35 @@ interface CheckinData {
   locked_sleep: boolean;
 }
 
-interface BatterySliderProps {
+interface SliderProps {
   label: string;
   value: number;
   locked: boolean;
   onValueChange: (value: number) => void;
   onLockToggle: () => void;
+  type: 'energy' | 'stress' | 'sleep';
   colors: any;
 }
 
-function BatterySlider({ label, value, locked, onValueChange, onLockToggle, colors }: BatterySliderProps) {
-  const getBatteryColor = (val: number) => {
-    if (val <= 33) return "#10b981"; // groen
-    if (val <= 66) return "#f59e0b"; // geel
-    return "#ef4444"; // rood
-  };
+function CustomSlider({ label, value, locked, onValueChange, onLockToggle, type, colors }: SliderProps) {
+  const sliderColor = getSliderColor(value, type);
+  
+  let textLabel = '';
+  if (type === 'stress') {
+    textLabel = getStressLabel(value);
+  } else if (type === 'sleep') {
+    textLabel = getSleepLabel(value);
+  } else if (type === 'energy') {
+    textLabel = getEnergyLabel(value);
+  }
 
-  const batteryColor = getBatteryColor(value);
-  const valueLabel = `${label}: ${value}`;
+  const valueText = `${label}: ${value}`;
 
   return (
-    <View style={styles.batterySliderContainer}>
-      <View style={styles.batterySliderHeader}>
-        <View style={styles.batteryIconContainer}>
-          <View style={[styles.batteryIcon, { borderColor: colors.text }]}>
-            <View
-              style={[
-                styles.batteryFill,
-                {
-                  width: `${value}%`,
-                  backgroundColor: batteryColor,
-                },
-              ]}
-            />
-          </View>
-          <View style={[styles.batteryTip, { backgroundColor: colors.text }]} />
-        </View>
-        <Text style={[styles.batteryLabel, { color: colors.text }]}>{valueLabel}</Text>
+    <View style={styles.sliderContainer}>
+      <View style={styles.sliderHeader}>
+        <Text style={[styles.sliderLabel, { color: colors.text }]}>{valueText}</Text>
+        <Text style={[styles.sliderTextLabel, { color: sliderColor }]}>{textLabel}</Text>
         <TouchableOpacity
           style={[styles.lockButton, locked && styles.lockButtonActive]}
           onPress={onLockToggle}
@@ -83,9 +78,20 @@ function BatterySlider({ label, value, locked, onValueChange, onLockToggle, colo
             ios_icon_name={locked ? "lock.fill" : "lock.open"}
             android_material_icon_name={locked ? "lock" : "lock-open"}
             size={20}
-            color={locked ? "#ef4444" : colors.text}
+            color={locked ? bcctColors.error : colors.text}
           />
         </TouchableOpacity>
+      </View>
+      <View style={[styles.sliderTrack, { backgroundColor: colors.border }]}>
+        <View
+          style={[
+            styles.sliderFill,
+            {
+              width: `${value}%`,
+              backgroundColor: sliderColor,
+            },
+          ]}
+        />
       </View>
       <Slider
         style={styles.slider}
@@ -94,9 +100,9 @@ function BatterySlider({ label, value, locked, onValueChange, onLockToggle, colo
         step={1}
         value={value}
         onValueChange={onValueChange}
-        minimumTrackTintColor={batteryColor}
-        maximumTrackTintColor={colors.border}
-        thumbTintColor={batteryColor}
+        minimumTrackTintColor="transparent"
+        maximumTrackTintColor="transparent"
+        thumbTintColor={sliderColor}
         disabled={locked}
       />
     </View>
@@ -114,7 +120,6 @@ export default function ClientHomeScreen() {
   const [modalTitle, setModalTitle] = useState("");
   const [modalMessage, setModalMessage] = useState("");
 
-  // Check-in state
   const [checkinExpanded, setCheckinExpanded] = useState(true);
   const [checkinSaving, setCheckinSaving] = useState(false);
   const [checkinData, setCheckinData] = useState<CheckinData>({
@@ -218,7 +223,7 @@ export default function ClientHomeScreen() {
         locked_energy: checkinData.locked_energy,
         locked_stress: checkinData.locked_stress,
         locked_sleep: checkinData.locked_sleep,
-        mood: 5, // Default value for existing column
+        mood: 5,
       };
 
       const { data, error } = await supabase
@@ -268,28 +273,28 @@ export default function ClientHomeScreen() {
       title: "Dagelijkse Check-in",
       description: "Log je stress, energie, slaap & stemming",
       icon: "favorite" as const,
-      color: "#ef4444",
+      color: bcctColors.error,
     },
     {
       id: "program",
       title: "Mijn Programma",
       description: "Ga verder met je coachingtraject",
       icon: "school" as const,
-      color: "#6366f1",
+      color: bcctColors.primaryBlue,
     },
     {
       id: "chat",
       title: "Chat met Coach",
       description: "Stuur een bericht naar je coach",
       icon: "chat" as const,
-      color: "#10b981",
+      color: bcctColors.gradientTeal,
     },
     {
       id: "appointments",
       title: "Afspraken",
       description: "Bekijk aankomende sessies",
       icon: "calendar-today" as const,
-      color: "#f59e0b",
+      color: bcctColors.accentOrange,
     },
   ];
 
@@ -297,23 +302,41 @@ export default function ClientHomeScreen() {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={["top"]}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={bcctColors.primaryBlue} />
         </View>
       </SafeAreaView>
     );
   }
 
+  const greetingText = "Welkom terug";
+  const userName = user?.name || "Cliënt";
+
   return (
     <>
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={["top"]}>
         <ScrollView contentContainerStyle={styles.scrollContent}>
+          {/* Logo and Branding Header */}
+          <View style={styles.brandingHeader}>
+            <Image
+              source={require('@/assets/images/c7338945-8805-48b4-9ae9-64bcfdd98381.png')}
+              style={styles.logo}
+              resizeMode="contain"
+            />
+            <Text style={[styles.welcomeText, { color: bcctColors.textSecondary }]}>
+              Welkom bij
+            </Text>
+            <Text style={[styles.brandName, { color: colors.text }]}>
+              Connected Coaching
+            </Text>
+          </View>
+
           <View style={styles.header}>
             <View>
-              <Text style={[styles.greeting, { color: colors.text, opacity: 0.7 }]}>Welkom terug</Text>
-              <Text style={[styles.name, { color: colors.text }]}>{user?.name || "Cliënt"}</Text>
+              <Text style={[styles.greeting, { color: bcctColors.textSecondary }]}>{greetingText}</Text>
+              <Text style={[styles.name, { color: colors.text }]}>{userName}</Text>
             </View>
             <TouchableOpacity
-              style={[styles.signOutButton, { backgroundColor: colors.card }]}
+              style={[styles.signOutButton, { backgroundColor: colors.card, borderColor: colors.border }]}
               onPress={handleSignOut}
               disabled={signingOut}
             >
@@ -327,7 +350,7 @@ export default function ClientHomeScreen() {
           </View>
 
           {/* Check-in Card */}
-          <View style={[styles.checkinCard, { backgroundColor: colors.card }]}>
+          <View style={[styles.checkinCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             {todayCheckinSaved && !checkinExpanded ? (
               <TouchableOpacity
                 style={styles.checkinCollapsed}
@@ -338,7 +361,7 @@ export default function ClientHomeScreen() {
                     ios_icon_name="checkmark.circle.fill"
                     android_material_icon_name="check-circle"
                     size={24}
-                    color="#10b981"
+                    color={bcctColors.success}
                   />
                   <Text style={[styles.checkinCollapsedTitle, { color: colors.text }]}>
                     Vandaag opgeslagen
@@ -362,9 +385,9 @@ export default function ClientHomeScreen() {
                   Hoe voel je je vandaag?
                 </Text>
                 <TextInput
-                  style={[styles.checkinInput, { color: colors.text, borderColor: colors.border }]}
+                  style={[styles.checkinInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
                   placeholder="Typ hier hoe je je voelt…"
-                  placeholderTextColor={colors.text + "80"}
+                  placeholderTextColor={bcctColors.textSecondary}
                   value={checkinData.feeling_text}
                   onChangeText={(text) =>
                     setCheckinData({ ...checkinData, feeling_text: text })
@@ -372,14 +395,15 @@ export default function ClientHomeScreen() {
                   maxLength={250}
                   multiline
                 />
-                <Text style={[styles.charCount, { color: colors.text, opacity: 0.5 }]}>
+                <Text style={[styles.charCount, { color: bcctColors.textSecondary }]}>
                   {checkinData.feeling_text.length}/250
                 </Text>
 
-                <BatterySlider
+                <CustomSlider
                   label="Energie"
                   value={checkinData.energy}
                   locked={checkinData.locked_energy}
+                  type="energy"
                   onValueChange={(value) =>
                     setCheckinData({ ...checkinData, energy: Math.round(value) })
                   }
@@ -392,10 +416,11 @@ export default function ClientHomeScreen() {
                   colors={colors}
                 />
 
-                <BatterySlider
+                <CustomSlider
                   label="Stress"
                   value={checkinData.stress}
                   locked={checkinData.locked_stress}
+                  type="stress"
                   onValueChange={(value) =>
                     setCheckinData({ ...checkinData, stress: Math.round(value) })
                   }
@@ -408,10 +433,11 @@ export default function ClientHomeScreen() {
                   colors={colors}
                 />
 
-                <BatterySlider
+                <CustomSlider
                   label="Slaap"
                   value={checkinData.sleep}
                   locked={checkinData.locked_sleep}
+                  type="sleep"
                   onValueChange={(value) =>
                     setCheckinData({ ...checkinData, sleep: Math.round(value) })
                   }
@@ -425,18 +451,22 @@ export default function ClientHomeScreen() {
                 />
 
                 <TouchableOpacity
-                  style={[
-                    styles.saveButton,
-                    checkinSaving && styles.saveButtonDisabled,
-                  ]}
+                  style={[styles.saveButtonContainer]}
                   onPress={saveCheckin}
                   disabled={checkinSaving}
                 >
-                  {checkinSaving ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.saveButtonText}>Check-in opslaan</Text>
-                  )}
+                  <LinearGradient
+                    colors={[bcctColors.primaryBlue, bcctColors.gradientTeal]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={[styles.saveButton, checkinSaving && styles.saveButtonDisabled]}
+                  >
+                    {checkinSaving ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={styles.saveButtonText}>Check-in opslaan</Text>
+                    )}
+                  </LinearGradient>
                 </TouchableOpacity>
               </>
             )}
@@ -448,7 +478,7 @@ export default function ClientHomeScreen() {
             {quickActions.map((action) => (
               <TouchableOpacity
                 key={action.id}
-                style={[styles.actionCard, { backgroundColor: colors.card }]}
+                style={[styles.actionCard, { backgroundColor: colors.card, borderColor: colors.border }]}
                 onPress={() => console.log("Action pressed:", action.id)}
               >
                 <View style={[styles.actionIcon, { backgroundColor: action.color + "20" }]}>
@@ -460,7 +490,7 @@ export default function ClientHomeScreen() {
                   />
                 </View>
                 <Text style={[styles.actionTitle, { color: colors.text }]}>{action.title}</Text>
-                <Text style={[styles.actionDescription, { color: colors.text, opacity: 0.6 }]}>
+                <Text style={[styles.actionDescription, { color: bcctColors.textSecondary }]}>
                   {action.description}
                 </Text>
               </TouchableOpacity>
@@ -470,16 +500,16 @@ export default function ClientHomeScreen() {
 
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Overzicht van Vandaag</Text>
-          <View style={[styles.overviewCard, { backgroundColor: colors.card }]}>
+          <View style={[styles.overviewCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.overviewItem}>
               <IconSymbol
                 ios_icon_name="checkmark.circle"
                 android_material_icon_name="check-circle"
                 size={24}
-                color="#10b981"
+                color={bcctColors.success}
               />
               <View style={styles.overviewText}>
-                <Text style={[styles.overviewLabel, { color: colors.text, opacity: 0.7 }]}>
+                <Text style={[styles.overviewLabel, { color: bcctColors.textSecondary }]}>
                   Check-in Status
                 </Text>
                 <Text style={[styles.overviewValue, { color: colors.text }]}>
@@ -493,10 +523,10 @@ export default function ClientHomeScreen() {
                 ios_icon_name="calendar"
                 android_material_icon_name="event"
                 size={24}
-                color="#6366f1"
+                color={bcctColors.primaryBlue}
               />
               <View style={styles.overviewText}>
-                <Text style={[styles.overviewLabel, { color: colors.text, opacity: 0.7 }]}>
+                <Text style={[styles.overviewLabel, { color: bcctColors.textSecondary }]}>
                   Volgende Afspraak
                 </Text>
                 <Text style={[styles.overviewValue, { color: colors.text }]}>
@@ -512,10 +542,10 @@ export default function ClientHomeScreen() {
                     ios_icon_name="message"
                     android_material_icon_name="chat"
                     size={24}
-                    color="#f59e0b"
+                    color={bcctColors.accentOrange}
                   />
                   <View style={styles.overviewText}>
-                    <Text style={[styles.overviewLabel, { color: colors.text, opacity: 0.7 }]}>
+                    <Text style={[styles.overviewLabel, { color: bcctColors.textSecondary }]}>
                       Ongelezen Berichten
                     </Text>
                     <Text style={[styles.overviewValue, { color: colors.text }]}>
@@ -529,7 +559,7 @@ export default function ClientHomeScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={[styles.infoText, { color: colors.text, opacity: 0.6 }]}>
+          <Text style={[styles.infoText, { color: bcctColors.textSecondary }]}>
             Dit is je cliënt dashboard. Voltooi je dagelijkse check-in, werk aan je programmataken,
             en blijf in contact met je coach.
           </Text>
@@ -545,11 +575,11 @@ export default function ClientHomeScreen() {
       animationOut="fadeOut"
       backdropOpacity={0.5}
     >
-      <View style={styles.modalContent}>
-        <Text style={styles.modalTitle}>{modalTitle}</Text>
-        <Text style={styles.modalMessage}>{modalMessage}</Text>
+      <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+        <Text style={[styles.modalTitle, { color: bcctColors.primaryBlue }]}>{modalTitle}</Text>
+        <Text style={[styles.modalMessage, { color: bcctColors.textSecondary }]}>{modalMessage}</Text>
         <TouchableOpacity
-          style={styles.modalButton}
+          style={[styles.modalButton, { backgroundColor: bcctColors.primaryBlue }]}
           onPress={() => setModalVisible(false)}
         >
           <Text style={styles.modalButtonText}>OK</Text>
@@ -572,6 +602,23 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 20,
   },
+  brandingHeader: {
+    alignItems: 'center',
+    paddingTop: 20,
+    marginBottom: 24,
+  },
+  logo: {
+    width: 200,
+    height: 60,
+    marginBottom: 12,
+  },
+  welcomeText: {
+    ...bcctTypography.small,
+    marginBottom: 4,
+  },
+  brandName: {
+    ...bcctTypography.h2,
+  },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -579,106 +626,101 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   greeting: {
-    fontSize: 14,
+    ...bcctTypography.small,
     marginBottom: 4,
   },
   name: {
-    fontSize: 28,
-    fontWeight: "bold",
+    ...bcctTypography.h1,
   },
   signOutButton: {
     width: 48,
     height: 48,
     borderRadius: 24,
+    borderWidth: 1,
     justifyContent: "center",
     alignItems: "center",
   },
   checkinCard: {
     padding: 20,
-    borderRadius: 16,
+    borderRadius: 20,
+    borderWidth: 1,
     marginBottom: 32,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   checkinTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
+    ...bcctTypography.h3,
     marginBottom: 12,
   },
   checkinInput: {
     borderWidth: 1,
     borderRadius: 12,
     padding: 12,
-    fontSize: 16,
+    ...bcctTypography.body,
     minHeight: 80,
     textAlignVertical: "top",
     marginBottom: 4,
   },
   charCount: {
-    fontSize: 12,
+    ...bcctTypography.small,
     textAlign: "right",
     marginBottom: 16,
   },
-  batterySliderContainer: {
+  sliderContainer: {
     marginBottom: 20,
   },
-  batterySliderHeader: {
+  sliderHeader: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 8,
     gap: 12,
   },
-  batteryIconContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  batteryIcon: {
-    width: 32,
-    height: 16,
-    borderWidth: 2,
-    borderRadius: 3,
-    overflow: "hidden",
-    position: "relative",
-  },
-  batteryFill: {
-    height: "100%",
-    borderRadius: 1,
-  },
-  batteryTip: {
-    width: 3,
-    height: 8,
-    borderTopRightRadius: 2,
-    borderBottomRightRadius: 2,
-    marginLeft: -1,
-  },
-  batteryLabel: {
-    fontSize: 16,
-    fontWeight: "600",
+  sliderLabel: {
+    ...bcctTypography.bodyMedium,
     flex: 1,
+  },
+  sliderTextLabel: {
+    ...bcctTypography.smallMedium,
   },
   lockButton: {
     padding: 8,
     borderRadius: 8,
   },
   lockButtonActive: {
-    backgroundColor: "#ef444420",
+    backgroundColor: bcctColors.error + "20",
+  },
+  sliderTrack: {
+    height: 8,
+    borderRadius: 4,
+    overflow: "hidden",
+    marginBottom: -40,
+  },
+  sliderFill: {
+    height: "100%",
+    borderRadius: 4,
   },
   slider: {
     width: "100%",
     height: 40,
   },
-  saveButton: {
-    backgroundColor: "#6366f1",
-    paddingVertical: 14,
+  saveButtonContainer: {
     borderRadius: 12,
-    alignItems: "center",
+    overflow: 'hidden',
     marginTop: 8,
+  },
+  saveButton: {
+    paddingVertical: 14,
+    alignItems: "center",
   },
   saveButtonDisabled: {
     opacity: 0.6,
   },
   saveButtonText: {
     color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
+    ...bcctTypography.button,
   },
   checkinCollapsed: {
     gap: 12,
@@ -689,8 +731,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   checkinCollapsedTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
+    ...bcctTypography.h3,
   },
   checkinCollapsedValues: {
     flexDirection: "row",
@@ -698,15 +739,13 @@ const styles = StyleSheet.create({
     paddingLeft: 36,
   },
   checkinCollapsedValue: {
-    fontSize: 14,
-    fontWeight: "500",
+    ...bcctTypography.bodyMedium,
   },
   section: {
     marginBottom: 32,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
+    ...bcctTypography.h3,
     marginBottom: 16,
   },
   actionsGrid: {
@@ -717,8 +756,14 @@ const styles = StyleSheet.create({
   actionCard: {
     width: "48%",
     padding: 16,
-    borderRadius: 16,
+    borderRadius: 20,
+    borderWidth: 1,
     gap: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   actionIcon: {
     width: 56,
@@ -729,16 +774,21 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   actionTitle: {
-    fontSize: 16,
-    fontWeight: "600",
+    ...bcctTypography.bodyMedium,
   },
   actionDescription: {
-    fontSize: 12,
+    ...bcctTypography.small,
   },
   overviewCard: {
     padding: 20,
-    borderRadius: 16,
+    borderRadius: 20,
+    borderWidth: 1,
     gap: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   overviewItem: {
     flexDirection: "row",
@@ -750,48 +800,41 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   overviewLabel: {
-    fontSize: 14,
+    ...bcctTypography.small,
   },
   overviewValue: {
-    fontSize: 18,
-    fontWeight: "600",
+    ...bcctTypography.h3,
   },
   divider: {
     height: 1,
   },
   infoText: {
-    fontSize: 14,
-    lineHeight: 20,
+    ...bcctTypography.body,
+    lineHeight: 24,
   },
   modalContent: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
+    borderRadius: 20,
     padding: 24,
     alignItems: "center",
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
+    ...bcctTypography.h3,
     marginBottom: 12,
-    color: "#ef4444",
   },
   modalMessage: {
-    fontSize: 16,
+    ...bcctTypography.body,
     textAlign: "center",
     marginBottom: 24,
-    color: "#666",
   },
   modalButton: {
-    backgroundColor: "#ef4444",
+    borderRadius: 12,
     paddingHorizontal: 32,
     paddingVertical: 12,
-    borderRadius: 8,
     minWidth: 100,
   },
   modalButtonText: {
     color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
+    ...bcctTypography.button,
     textAlign: "center",
   },
 });

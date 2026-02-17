@@ -10,11 +10,14 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { useTheme } from '@react-navigation/native';
 import { useAuth } from '@/contexts/AuthContext';
 import Modal from 'react-native-modal';
 import { supabase } from '@/lib/supabase';
+import { LinearGradient } from 'expo-linear-gradient';
+import { bcctColors, bcctTypography } from '@/styles/bcctTheme';
 
 export default function OnboardingScreen() {
   const { session } = useAuth();
@@ -82,7 +85,6 @@ export default function OnboardingScreen() {
       } else {
         console.log('[Onboarding] Profile saved successfully, redirecting based on role:', role);
         
-        // Navigate based on role
         if (role === 'client') {
           router.replace('/(app)/client');
         } else if (role === 'coach') {
@@ -102,9 +104,24 @@ export default function OnboardingScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* Logo and Branding Header */}
+        <View style={styles.brandingHeader}>
+          <Image
+            source={require('@/assets/images/c7338945-8805-48b4-9ae9-64bcfdd98381.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
+          <Text style={[styles.welcomeText, { color: bcctColors.textSecondary }]}>
+            Welkom bij
+          </Text>
+          <Text style={[styles.brandName, { color: colors.text }]}>
+            Connected Coaching
+          </Text>
+        </View>
+
         <View style={styles.header}>
           <Text style={[styles.title, { color: colors.text }]}>Voltooi je profiel</Text>
-          <Text style={[styles.subtitle, { color: colors.text, opacity: 0.7 }]}>
+          <Text style={[styles.subtitle, { color: bcctColors.textSecondary }]}>
             Vertel ons iets over jezelf
           </Text>
         </View>
@@ -115,7 +132,7 @@ export default function OnboardingScreen() {
             <TextInput
               style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
               placeholder="Voer je volledige naam in"
-              placeholderTextColor={colors.text + '80'}
+              placeholderTextColor={bcctColors.textSecondary}
               value={name}
               onChangeText={setName}
               autoCapitalize="words"
@@ -127,7 +144,7 @@ export default function OnboardingScreen() {
             <TextInput
               style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
               placeholder="Voer je telefoonnummer in"
-              placeholderTextColor={colors.text + '80'}
+              placeholderTextColor={bcctColors.textSecondary}
               value={phone}
               onChangeText={setPhone}
               keyboardType="phone-pad"
@@ -141,7 +158,7 @@ export default function OnboardingScreen() {
                 style={[
                   styles.roleButton,
                   { borderColor: colors.border },
-                  role === 'client' && { backgroundColor: colors.primary, borderColor: colors.primary },
+                  role === 'client' && { backgroundColor: bcctColors.primaryBlue, borderColor: bcctColors.primaryBlue },
                 ]}
                 onPress={() => setRole('client')}
               >
@@ -154,7 +171,7 @@ export default function OnboardingScreen() {
                 style={[
                   styles.roleButton,
                   { borderColor: colors.border },
-                  role === 'coach' && { backgroundColor: colors.primary, borderColor: colors.primary },
+                  role === 'coach' && { backgroundColor: bcctColors.primaryBlue, borderColor: bcctColors.primaryBlue },
                 ]}
                 onPress={() => setRole('coach')}
               >
@@ -167,7 +184,7 @@ export default function OnboardingScreen() {
                 style={[
                   styles.roleButton,
                   { borderColor: colors.border },
-                  role === 'org_admin' && { backgroundColor: colors.primary, borderColor: colors.primary },
+                  role === 'org_admin' && { backgroundColor: bcctColors.primaryBlue, borderColor: bcctColors.primaryBlue },
                 ]}
                 onPress={() => setRole('org_admin')}
               >
@@ -187,7 +204,7 @@ export default function OnboardingScreen() {
                 { backgroundColor: colors.card, color: colors.text, borderColor: colors.border },
               ]}
               placeholder="Wat zijn je doelen?"
-              placeholderTextColor={colors.text + '80'}
+              placeholderTextColor={bcctColors.textSecondary}
               value={goals}
               onChangeText={setGoals}
               multiline
@@ -197,15 +214,22 @@ export default function OnboardingScreen() {
           </View>
 
           <TouchableOpacity
-            style={[styles.button, { backgroundColor: colors.primary }]}
+            style={[styles.buttonContainer]}
             onPress={handleComplete}
             disabled={loading}
           >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>Profiel voltooien</Text>
-            )}
+            <LinearGradient
+              colors={[bcctColors.primaryBlue, bcctColors.gradientTeal]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.button}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.buttonText}>Profiel voltooien</Text>
+              )}
+            </LinearGradient>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -213,9 +237,9 @@ export default function OnboardingScreen() {
       <Modal isVisible={modalVisible} onBackdropPress={() => setModalVisible(false)}>
         <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
           <Text style={[styles.modalTitle, { color: colors.text }]}>{modalTitle}</Text>
-          <Text style={[styles.modalMessage, { color: colors.text }]}>{modalMessage}</Text>
+          <Text style={[styles.modalMessage, { color: bcctColors.textSecondary }]}>{modalMessage}</Text>
           <TouchableOpacity
-            style={[styles.modalButton, { backgroundColor: colors.primary }]}
+            style={[styles.modalButton, { backgroundColor: bcctColors.primaryBlue }]}
             onPress={() => setModalVisible(false)}
           >
             <Text style={styles.modalButtonText}>OK</Text>
@@ -233,16 +257,32 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 20,
   },
+  brandingHeader: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  logo: {
+    width: 200,
+    height: 60,
+    marginBottom: 12,
+  },
+  welcomeText: {
+    ...bcctTypography.small,
+    marginBottom: 4,
+  },
+  brandName: {
+    ...bcctTypography.h2,
+    marginBottom: 8,
+  },
   header: {
     marginBottom: 32,
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
+    ...bcctTypography.h1,
     marginBottom: 8,
   },
   subtitle: {
-    fontSize: 16,
+    ...bcctTypography.body,
   },
   form: {
     gap: 20,
@@ -251,14 +291,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   label: {
-    fontSize: 16,
-    fontWeight: '600',
+    ...bcctTypography.label,
   },
   input: {
     borderWidth: 1,
     borderRadius: 12,
     padding: 16,
-    fontSize: 16,
+    ...bcctTypography.body,
   },
   textArea: {
     minHeight: 100,
@@ -269,49 +308,48 @@ const styles = StyleSheet.create({
   },
   roleButton: {
     flex: 1,
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
   },
   roleButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
+    ...bcctTypography.bodyMedium,
+  },
+  buttonContainer: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginTop: 12,
   },
   button: {
-    borderRadius: 12,
     padding: 16,
     alignItems: 'center',
-    marginTop: 12,
   },
   buttonText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    ...bcctTypography.button,
   },
   modalContent: {
-    borderRadius: 12,
+    borderRadius: 20,
     padding: 24,
     alignItems: 'center',
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    ...bcctTypography.h3,
     marginBottom: 12,
   },
   modalMessage: {
-    fontSize: 16,
+    ...bcctTypography.body,
     textAlign: 'center',
     marginBottom: 20,
   },
   modalButton: {
-    borderRadius: 8,
+    borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 32,
   },
   modalButtonText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    ...bcctTypography.button,
   },
 });
