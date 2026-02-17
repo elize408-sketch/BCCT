@@ -146,23 +146,6 @@ export default function OnboardingScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.brandingHeader}>
-          <Image
-            source={require('@/assets/images/8197d584-e819-49fe-80a6-96a6acac58fb.png')}
-            style={styles.logo}
-            resizeMode="contain"
-          />
-          <Text style={[styles.welcomeText, { color: bcctColors.textSecondary }]}>
-            Welkom bij
-          </Text>
-          <Text style={[styles.brandName, { color: colors.text }]}>
-            B-Connected
-          </Text>
-          <Text style={[styles.brandSubtitle, { color: bcctColors.textSecondary }]}>
-            Coaching & Training
-          </Text>
-        </View>
-
         <View style={styles.header}>
           <Text style={[styles.title, { color: colors.text }]}>Voltooi je profiel</Text>
           <Text style={[styles.subtitle, { color: bcctColors.textSecondary }]}>
@@ -193,50 +176,6 @@ export default function OnboardingScreen() {
               onChangeText={setPhone}
               keyboardType="phone-pad"
             />
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: colors.text }]}>Rol *</Text>
-            <View style={styles.roleButtons}>
-              <TouchableOpacity
-                style={[
-                  styles.roleButton,
-                  { borderColor: colors.border },
-                  role === 'client' && { backgroundColor: bcctColors.primaryOrange, borderColor: bcctColors.primaryOrange },
-                ]}
-                onPress={() => setRole('client')}
-              >
-                <Text style={[styles.roleButtonText, { color: role === 'client' ? '#fff' : colors.text }]}>
-                  Cliënt
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.roleButton,
-                  { borderColor: colors.border },
-                  role === 'coach' && { backgroundColor: bcctColors.primaryOrange, borderColor: bcctColors.primaryOrange },
-                ]}
-                onPress={() => setRole('coach')}
-              >
-                <Text style={[styles.roleButtonText, { color: role === 'coach' ? '#fff' : colors.text }]}>
-                  Coach
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.roleButton,
-                  { borderColor: colors.border },
-                  role === 'org_admin' && { backgroundColor: bcctColors.primaryOrange, borderColor: bcctColors.primaryOrange },
-                ]}
-                onPress={() => setRole('org_admin')}
-              >
-                <Text style={[styles.roleButtonText, { color: role === 'org_admin' ? '#fff' : colors.text }]}>
-                  Org Admin
-                </Text>
-              </TouchableOpacity>
-            </View>
           </View>
 
           <View style={styles.inputGroup}>
@@ -302,26 +241,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 20,
   },
-  brandingHeader: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  logo: {
-    width: 200,
-    height: 60,
-    marginBottom: 12,
-  },
-  welcomeText: {
-    ...bcctTypography.small,
-    marginBottom: 4,
-  },
-  brandName: {
-    ...bcctTypography.h2,
-    marginBottom: 4,
-  },
-  brandSubtitle: {
-    ...bcctTypography.body,
-  },
   header: {
     marginBottom: 32,
   },
@@ -349,20 +268,6 @@ const styles = StyleSheet.create({
   },
   textArea: {
     minHeight: 100,
-  },
-  roleButtons: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  roleButton: {
-    flex: 1,
-    borderWidth: 2,
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-  },
-  roleButtonText: {
-    ...bcctTypography.bodyMedium,
   },
   buttonContainer: {
     borderRadius: 12,
