@@ -1,5 +1,6 @@
 
 import { Theme } from '@react-navigation/native';
+import { typography, bcctTypography as typographyScale } from '@/constants/typography';
 
 // Connected Coaching & Training Brand Colors
 export const bcctColors = {
@@ -31,62 +32,8 @@ export const bcctColors = {
   success: '#22C55E',
 };
 
-// Typography scale
-export const bcctTypography = {
-  // Baloo (Headings)
-  h1: {
-    fontFamily: 'Baloo2_700Bold',
-    fontSize: 32,
-    lineHeight: 40,
-  },
-  h2: {
-    fontFamily: 'Baloo2_700Bold',
-    fontSize: 24,
-    lineHeight: 32,
-  },
-  h3: {
-    fontFamily: 'Baloo2_600SemiBold',
-    fontSize: 20,
-    lineHeight: 28,
-  },
-  button: {
-    fontFamily: 'Baloo2_600SemiBold',
-    fontSize: 16,
-    lineHeight: 24,
-  },
-  
-  // Poppins (Body)
-  body: {
-    fontFamily: 'Poppins_400Regular',
-    fontSize: 16,
-    lineHeight: 24,
-  },
-  bodyMedium: {
-    fontFamily: 'Poppins_500Medium',
-    fontSize: 16,
-    lineHeight: 24,
-  },
-  bodySemiBold: {
-    fontFamily: 'Poppins_600SemiBold',
-    fontSize: 16,
-    lineHeight: 24,
-  },
-  small: {
-    fontFamily: 'Poppins_400Regular',
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  smallMedium: {
-    fontFamily: 'Poppins_500Medium',
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  label: {
-    fontFamily: 'Poppins_500Medium',
-    fontSize: 14,
-    lineHeight: 20,
-  },
-};
+// Re-export typography scale for backwards compatibility
+export const bcctTypography = typographyScale;
 
 // Extended Theme interface to include fonts property
 interface BCCTTheme extends Theme {
@@ -123,19 +70,19 @@ export const BCCTLightTheme: BCCTTheme = {
   },
   fonts: {
     regular: {
-      fontFamily: 'Poppins_400Regular',
+      fontFamily: typography.body,
       fontWeight: 'normal',
     },
     medium: {
-      fontFamily: 'Poppins_500Medium',
+      fontFamily: typography.body,
       fontWeight: '500',
     },
     bold: {
-      fontFamily: 'Poppins_600SemiBold',
+      fontFamily: typography.body,
       fontWeight: 'bold',
     },
     heavy: {
-      fontFamily: 'Poppins_700Bold',
+      fontFamily: typography.heading,
       fontWeight: 'bold',
     },
   },
@@ -154,19 +101,19 @@ export const BCCTDarkTheme: BCCTTheme = {
   },
   fonts: {
     regular: {
-      fontFamily: 'Poppins_400Regular',
+      fontFamily: typography.body,
       fontWeight: 'normal',
     },
     medium: {
-      fontFamily: 'Poppins_500Medium',
+      fontFamily: typography.body,
       fontWeight: '500',
     },
     bold: {
-      fontFamily: 'Poppins_600SemiBold',
+      fontFamily: typography.body,
       fontWeight: 'bold',
     },
     heavy: {
-      fontFamily: 'Poppins_700Bold',
+      fontFamily: typography.heading,
       fontWeight: 'bold',
     },
   },
