@@ -107,7 +107,7 @@ export default function OnboardingScreen() {
         {/* Logo and Branding Header */}
         <View style={styles.brandingHeader}>
           <Image
-            source={require('@/assets/images/1ac1fe99-d9d9-48ee-9ee0-6b721fbbfa04.png')}
+            source={require('@/assets/images/8197d584-e819-49fe-80a6-96a6acac58fb.png')}
             style={styles.logo}
             resizeMode="contain"
           />
