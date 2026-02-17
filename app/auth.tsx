@@ -355,7 +355,7 @@ export default function AuthScreen() {
               onPress={() => handleSocialAuth('apple')}
               disabled={loading}
             >
-              <AntDesign name="apple1" size={28} color={colors.text} />
+              <AntDesign name="apple" size={28} color={colors.text} />
             </TouchableOpacity>
           </View>
         </View>
