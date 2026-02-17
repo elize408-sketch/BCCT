@@ -1,7 +1,7 @@
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -26,12 +26,46 @@ export default function OnboardingScreen() {
   const [role, setRole] = useState<'client' | 'coach' | 'org_admin'>('client');
   const [goals, setGoals] = useState('');
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const { colors } = useTheme();
   const router = useRouter();
 
   const [modalVisible, setModalVisible] = useState(false);
   const [modalTitle, setModalTitle] = useState('');
   const [modalMessage, setModalMessage] = useState('');
+
+  useEffect(() => {
+    const loadExistingProfile = async () => {
+      if (!session?.user?.id) {
+        setInitialLoading(false);
+        return;
+      }
+
+      try {
+        console.log('[Onboarding] Loading existing profile');
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+
+        if (profile) {
+          console.log('[Onboarding] Found existing profile:', profile);
+          // Pre-fill form with existing data
+          if (profile.full_name) setName(profile.full_name);
+          if (profile.phone) setPhone(profile.phone);
+          if (profile.role) setRole(profile.role);
+          if (profile.goals) setGoals(profile.goals);
+        }
+      } catch (error) {
+        console.error('[Onboarding] Error loading profile:', error);
+      } finally {
+        setInitialLoading(false);
+      }
+    };
+
+    loadExistingProfile();
+  }, [session]);
 
   const showModal = (title: string, message: string) => {
     setModalTitle(title);
@@ -100,6 +134,14 @@ export default function OnboardingScreen() {
       setLoading(false);
     }
   };
+
+  if (initialLoading) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>

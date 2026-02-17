@@ -19,13 +19,15 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { bcctColors, bcctTypography } from '@/styles/bcctTheme';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import AntDesign from '@expo/vector-icons/AntDesign';
+import { supabase } from '@/lib/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type Mode = 'signin' | 'signup';
 
 export default function AuthScreen() {
   const router = useRouter();
   const { colors } = useTheme();
-  const { signInWithPassword, signUpWithPassword, signInWithGoogle, signInWithApple, loading: authLoading, selectedRole, setSelectedRole } = useAuth();
+  const { signInWithPassword, signInWithGoogle, signInWithApple, loading: authLoading } = useAuth();
 
   const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
@@ -37,6 +39,7 @@ export default function AuthScreen() {
   const [modalTitle, setModalTitle] = useState('');
   const [modalMessage, setModalMessage] = useState('');
   const [modalType, setModalType] = useState<'success' | 'error'>('error');
+  const [selectedRole, setSelectedRole] = useState<'client' | 'coach'>('client');
 
   const showModal = (title: string, message: string, type: 'success' | 'error' = 'error') => {
     setModalTitle(title);
@@ -81,8 +84,47 @@ export default function AuthScreen() {
     setLoading(true);
     try {
       if (mode === 'signup') {
-        console.log('[Auth] Signing up user');
-        await signUpWithPassword(email, password, name);
+        console.log('[Auth] Signing up user with role:', selectedRole);
+        
+        // Step 1: Sign up with Supabase Auth
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email,
+          password,
+        });
+
+        if (signUpError) {
+          console.error('[Auth] Sign up error:', signUpError);
+          throw signUpError;
+        }
+
+        if (!signUpData.user) {
+          throw new Error('Signup failed - no user returned');
+        }
+
+        console.log('[Auth] User signed up successfully:', signUpData.user.id);
+
+        // Step 2: Create profile with selected role
+        const profileData = {
+          id: signUpData.user.id,
+          full_name: name || null,
+          role: selectedRole,
+          onboarding_completed: false,
+          created_at: new Date().toISOString(),
+        };
+
+        console.log('[Auth] Creating profile:', profileData);
+
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .upsert(profileData);
+
+        if (profileError) {
+          console.error('[Auth] Profile creation error:', profileError);
+          showModal('Waarschuwing', 'Account aangemaakt, maar profiel kon niet worden opgeslagen. Probeer opnieuw in te loggen.');
+        } else {
+          console.log('[Auth] Profile created successfully');
+        }
+
         showModal(
           'Gelukt',
           'Account succesvol aangemaakt! Je kunt nu inloggen.',
@@ -115,7 +157,11 @@ export default function AuthScreen() {
   };
 
   const handleSocialAuth = async (provider: 'google' | 'apple') => {
-    console.log('[Auth] Social auth initiated:', provider);
+    console.log('[Auth] Social auth initiated:', provider, 'with role:', selectedRole);
+    
+    // Store selected role in AsyncStorage before OAuth redirect
+    await AsyncStorage.setItem('pendingRole', selectedRole);
+    
     setLoading(true);
     try {
       if (provider === 'google') {
@@ -159,58 +205,56 @@ export default function AuthScreen() {
             />
           </View>
 
-          {mode === 'signin' && (
-            <View style={styles.roleContainer}>
-              <View style={styles.roleSelector}>
-                <TouchableOpacity
-                  style={[
-                    styles.roleCard,
-                    { backgroundColor: colors.card, borderColor: selectedRole === 'client' ? 'transparent' : `${bcctColors.primaryOrange}33` },
-                    selectedRole === 'client' && styles.roleCardActive,
-                  ]}
-                  onPress={() => setSelectedRole('client')}
-                >
-                  {selectedRole === 'client' ? (
-                    <LinearGradient
-                      colors={[bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={styles.roleCardGradient}
-                    >
-                      <Text style={styles.roleCardTextActive}>Cliënt</Text>
-                    </LinearGradient>
-                  ) : (
-                    <Text style={[styles.roleCardText, { color: colors.text }]}>Cliënt</Text>
-                  )}
-                </TouchableOpacity>
+          <View style={styles.roleContainer}>
+            <View style={styles.roleSelector}>
+              <TouchableOpacity
+                style={[
+                  styles.roleCard,
+                  { backgroundColor: colors.card, borderColor: selectedRole === 'client' ? 'transparent' : `${bcctColors.primaryOrange}33` },
+                  selectedRole === 'client' && styles.roleCardActive,
+                ]}
+                onPress={() => setSelectedRole('client')}
+              >
+                {selectedRole === 'client' ? (
+                  <LinearGradient
+                    colors={[bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.roleCardGradient}
+                  >
+                    <Text style={styles.roleCardTextActive}>Cliënt</Text>
+                  </LinearGradient>
+                ) : (
+                  <Text style={[styles.roleCardText, { color: colors.text }]}>Cliënt</Text>
+                )}
+              </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={[
-                    styles.roleCard,
-                    { backgroundColor: colors.card, borderColor: selectedRole === 'coach' ? 'transparent' : `${bcctColors.primaryOrange}33` },
-                    selectedRole === 'coach' && styles.roleCardActive,
-                  ]}
-                  onPress={() => setSelectedRole('coach')}
-                >
-                  {selectedRole === 'coach' ? (
-                    <LinearGradient
-                      colors={[bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={styles.roleCardGradient}
-                    >
-                      <Text style={styles.roleCardTextActive}>Coach</Text>
-                    </LinearGradient>
-                  ) : (
-                    <Text style={[styles.roleCardText, { color: colors.text }]}>Coach</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-              <Text style={[styles.roleHelperText, { color: secondaryTextColor }]}>
-                {loginText}
-              </Text>
+              <TouchableOpacity
+                style={[
+                  styles.roleCard,
+                  { backgroundColor: colors.card, borderColor: selectedRole === 'coach' ? 'transparent' : `${bcctColors.primaryOrange}33` },
+                  selectedRole === 'coach' && styles.roleCardActive,
+                ]}
+                onPress={() => setSelectedRole('coach')}
+              >
+                {selectedRole === 'coach' ? (
+                  <LinearGradient
+                    colors={[bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.roleCardGradient}
+                  >
+                    <Text style={styles.roleCardTextActive}>Coach</Text>
+                  </LinearGradient>
+                ) : (
+                  <Text style={[styles.roleCardText, { color: colors.text }]}>Coach</Text>
+                )}
+              </TouchableOpacity>
             </View>
-          )}
+            <Text style={[styles.roleHelperText, { color: secondaryTextColor }]}>
+              {loginText}
+            </Text>
+          </View>
 
           <Text style={[styles.title, { color: colors.text }]}>{modeTitle}</Text>
 

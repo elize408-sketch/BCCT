@@ -7,8 +7,6 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
-  selectedRole: 'client' | 'coach';
-  setSelectedRole: (role: 'client' | 'coach') => void;
   signInWithPassword: (email: string, password: string, role: 'client' | 'coach') => Promise<void>;
   signUpWithPassword: (email: string, password: string, name?: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
@@ -22,7 +20,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedRole, setSelectedRole] = useState<'client' | 'coach'>('client');
 
   useEffect(() => {
     console.log('[AuthContext] Bootstrapping session...');
@@ -62,8 +59,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw error;
     }
 
-    // Store the selected role
-    setSelectedRole(role);
     console.log('[AuthContext] Sign in successful:', data.user?.id, 'with role:', role);
   };
 
@@ -128,7 +123,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Always clear local state
       setUser(null);
       setSession(null);
-      setSelectedRole('client'); // Reset to default
     }
   };
 
@@ -138,8 +132,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         session,
         loading,
-        selectedRole,
-        setSelectedRole,
         signInWithPassword,
         signUpWithPassword,
         signInWithGoogle,
