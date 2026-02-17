@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   TextInput,
-  Image,
 } from "react-native";
 import Modal from "react-native-modal";
 import { useTheme } from "@react-navigation/native";
@@ -315,23 +314,6 @@ export default function ClientHomeScreen() {
     <>
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={["top"]}>
         <ScrollView contentContainerStyle={styles.scrollContent}>
-          <View style={styles.brandingHeader}>
-            <Image
-              source={require('@/assets/images/8197d584-e819-49fe-80a6-96a6acac58fb.png')}
-              style={styles.logo}
-              resizeMode="contain"
-            />
-            <Text style={[styles.welcomeText, { color: bcctColors.textSecondary }]}>
-              Welkom bij
-            </Text>
-            <Text style={[styles.brandName, { color: colors.text }]}>
-              B-Connected
-            </Text>
-            <Text style={[styles.brandSubtitle, { color: bcctColors.textSecondary }]}>
-              Coaching & Training
-            </Text>
-          </View>
-
           <View style={styles.header}>
             <View>
               <Text style={[styles.greeting, { color: bcctColors.textSecondary }]}>{greetingText}</Text>
@@ -604,32 +586,12 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 20,
   },
-  brandingHeader: {
-    alignItems: 'center',
-    paddingTop: 20,
-    marginBottom: 24,
-  },
-  logo: {
-    width: 200,
-    height: 60,
-    marginBottom: 12,
-  },
-  welcomeText: {
-    ...bcctTypography.small,
-    marginBottom: 4,
-  },
-  brandName: {
-    ...bcctTypography.h2,
-    marginBottom: 4,
-  },
-  brandSubtitle: {
-    ...bcctTypography.body,
-  },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 24,
+    marginTop: 20,
   },
   greeting: {
     ...bcctTypography.small,
