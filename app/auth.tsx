@@ -185,7 +185,9 @@ export default function AuthScreen() {
   const modeTitle = mode === 'signup' ? 'Account Aanmaken' : 'Inloggen';
   const modeButtonText = mode === 'signup' ? 'Registreren' : 'Inloggen';
   
-  const loginText = selectedRole === 'client' ? 'Log in als cliënt' : 'Log in als coach';
+  const roleText = mode === 'signup' 
+    ? (selectedRole === 'client' ? 'Registreer als cliënt' : 'Registreer als coach')
+    : (selectedRole === 'client' ? 'Log in als cliënt' : 'Log in als coach');
 
   return (
     <>
@@ -252,7 +254,7 @@ export default function AuthScreen() {
               </TouchableOpacity>
             </View>
             <Text style={[styles.roleHelperText, { color: secondaryTextColor }]}>
-              {loginText}
+              {roleText}
             </Text>
           </View>
 
