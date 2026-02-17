@@ -26,6 +26,7 @@ import {
   Poppins_700Bold,
 } from '@expo-google-fonts/poppins';
 
+// Prevent the splash screen from auto-hiding before fonts are loaded
 SplashScreen.preventAutoHideAsync();
 
 export const unstable_settings = {
@@ -34,32 +35,47 @@ export const unstable_settings = {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
-  const [loaded] = useFonts({
+  
+  // Load custom fonts
+  const [fontsLoaded, fontError] = useFonts({
     // Baloo 2 fonts for headings
-    Baloo2_400Regular,
-    Baloo2_500Medium,
-    Baloo2_600SemiBold,
-    Baloo2_700Bold,
-    Baloo2_800ExtraBold,
+    'Baloo2_400Regular': Baloo2_400Regular,
+    'Baloo2_500Medium': Baloo2_500Medium,
+    'Baloo2_600SemiBold': Baloo2_600SemiBold,
+    'Baloo2_700Bold': Baloo2_700Bold,
+    'Baloo2_800ExtraBold': Baloo2_800ExtraBold,
     // Poppins fonts for body text
-    Poppins_300Light,
-    Poppins_400Regular,
-    Poppins_500Medium,
-    Poppins_600SemiBold,
-    Poppins_700Bold,
+    'Poppins_300Light': Poppins_300Light,
+    'Poppins_400Regular': Poppins_400Regular,
+    'Poppins_500Medium': Poppins_500Medium,
+    'Poppins_600SemiBold': Poppins_600SemiBold,
+    'Poppins_700Bold': Poppins_700Bold,
     // Keep SpaceMono for backwards compatibility
-    SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
+    'SpaceMono': require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
 
   useEffect(() => {
-    if (loaded) {
+    if (fontsLoaded || fontError) {
+      console.log('Fonts loaded successfully, hiding splash screen');
+      // Hide the splash screen once fonts are loaded or if there's an error
       SplashScreen.hideAsync();
     }
-  }, [loaded]);
+  }, [fontsLoaded, fontError]);
 
-  if (!loaded) {
+  // Log font loading errors
+  useEffect(() => {
+    if (fontError) {
+      console.error('Font loading error:', fontError);
+    }
+  }, [fontError]);
+
+  // Keep splash screen visible until fonts are loaded
+  if (!fontsLoaded && !fontError) {
+    console.log('Waiting for fonts to load...');
     return null;
   }
+
+  console.log('Rendering app with theme and fonts');
 
   return (
     <>

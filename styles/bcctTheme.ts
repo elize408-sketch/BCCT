@@ -88,8 +88,30 @@ export const bcctTypography = {
   },
 };
 
+// Extended Theme interface to include fonts property
+interface BCCTTheme extends Theme {
+  fonts: {
+    regular: {
+      fontFamily: string;
+      fontWeight: 'normal';
+    };
+    medium: {
+      fontFamily: string;
+      fontWeight: '500';
+    };
+    bold: {
+      fontFamily: string;
+      fontWeight: 'bold';
+    };
+    heavy: {
+      fontFamily: string;
+      fontWeight: 'bold';
+    };
+  };
+}
+
 // Light theme for Connected Coaching & Training
-export const BCCTLightTheme: Theme = {
+export const BCCTLightTheme: BCCTTheme = {
   dark: false,
   colors: {
     primary: bcctColors.primaryOrange,
@@ -99,10 +121,28 @@ export const BCCTLightTheme: Theme = {
     border: bcctColors.borderGray,
     notification: bcctColors.error,
   },
+  fonts: {
+    regular: {
+      fontFamily: 'Poppins_400Regular',
+      fontWeight: 'normal',
+    },
+    medium: {
+      fontFamily: 'Poppins_500Medium',
+      fontWeight: '500',
+    },
+    bold: {
+      fontFamily: 'Poppins_600SemiBold',
+      fontWeight: 'bold',
+    },
+    heavy: {
+      fontFamily: 'Poppins_700Bold',
+      fontWeight: 'bold',
+    },
+  },
 };
 
 // Dark theme for Connected Coaching & Training
-export const BCCTDarkTheme: Theme = {
+export const BCCTDarkTheme: BCCTTheme = {
   dark: true,
   colors: {
     primary: bcctColors.primaryOrange,
@@ -111,6 +151,24 @@ export const BCCTDarkTheme: Theme = {
     text: '#F9FAFB',
     border: '#4B5563',
     notification: bcctColors.error,
+  },
+  fonts: {
+    regular: {
+      fontFamily: 'Poppins_400Regular',
+      fontWeight: 'normal',
+    },
+    medium: {
+      fontFamily: 'Poppins_500Medium',
+      fontWeight: '500',
+    },
+    bold: {
+      fontFamily: 'Poppins_600SemiBold',
+      fontWeight: 'bold',
+    },
+    heavy: {
+      fontFamily: 'Poppins_700Bold',
+      fontWeight: 'bold',
+    },
   },
 };
 
