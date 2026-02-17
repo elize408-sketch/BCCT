@@ -107,7 +107,7 @@ export default function OnboardingScreen() {
         {/* Logo and Branding Header */}
         <View style={styles.brandingHeader}>
           <Image
-            source={require('@/assets/images/c7338945-8805-48b4-9ae9-64bcfdd98381.png')}
+            source={require('@/assets/images/1ac1fe99-d9d9-48ee-9ee0-6b721fbbfa04.png')}
             style={styles.logo}
             resizeMode="contain"
           />
@@ -115,7 +115,10 @@ export default function OnboardingScreen() {
             Welkom bij
           </Text>
           <Text style={[styles.brandName, { color: colors.text }]}>
-            Connected Coaching
+            B-Connected
+          </Text>
+          <Text style={[styles.brandSubtitle, { color: bcctColors.textSecondary }]}>
+            Coaching & Training
           </Text>
         </View>
 
@@ -272,7 +275,10 @@ const styles = StyleSheet.create({
   },
   brandName: {
     ...bcctTypography.h2,
-    marginBottom: 8,
+    marginBottom: 4,
+  },
+  brandSubtitle: {
+    ...bcctTypography.body,
   },
   header: {
     marginBottom: 32,
