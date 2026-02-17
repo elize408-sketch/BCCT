@@ -186,7 +186,7 @@ export default function AuthScreen() {
   const modeButtonText = mode === 'signup' ? 'Registreren' : 'Inloggen';
   
   const roleText = mode === 'signup' 
-    ? (selectedRole === 'client' ? 'Registreer als cliënt' : 'Registreer als coach')
+    ? (selectedRole === 'client' ? 'Registreer als Cliënt' : 'Registreer als Coach')
     : (selectedRole === 'client' ? 'Log in als cliënt' : 'Log in als coach');
 
   return (
