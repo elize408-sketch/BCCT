@@ -149,14 +149,14 @@ export default function AuthScreen() {
       >
         <View style={styles.content}>
           <View style={styles.brandingHeader}>
+            <Text style={[styles.welcomeText, { color: secondaryTextColor }]}>
+              Welkom bij
+            </Text>
             <Image
               source={require('@/assets/images/8197d584-e819-49fe-80a6-96a6acac58fb.png')}
               style={styles.logo}
               resizeMode="contain"
             />
-            <Text style={[styles.welcomeText, { color: secondaryTextColor }]}>
-              Welkom bij
-            </Text>
           </View>
 
           {mode === 'signin' && (
@@ -409,13 +409,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
   },
+  welcomeText: {
+    ...bcctTypography.small,
+    marginBottom: 8,
+  },
   logo: {
     width: 240,
     height: 72,
-    marginBottom: 8,
-  },
-  welcomeText: {
-    ...bcctTypography.small,
   },
   roleContainer: {
     marginBottom: 20,
