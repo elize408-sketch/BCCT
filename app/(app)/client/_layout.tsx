@@ -7,9 +7,9 @@ import type { TabBarItem } from "@/components/FloatingTabBar";
 export default function ClientLayout() {
   const tabs: TabBarItem[] = [
     {
-      name: "checkin",
-      route: "/(app)/client/checkin" as any,
-      icon: "favorite",
+      name: "index",
+      route: "/(app)/client/index" as any,
+      icon: "home",
       label: "",
     },
     {
@@ -27,7 +27,7 @@ export default function ClientLayout() {
     {
       name: "settings",
       route: "/(app)/client/settings" as any,
-      icon: "settings",
+      icon: "person",
       label: "",
     },
   ];
