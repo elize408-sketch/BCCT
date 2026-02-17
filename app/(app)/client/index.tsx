@@ -280,7 +280,7 @@ export default function ClientHomeScreen() {
       title: "Mijn Programma",
       description: "Ga verder met je coachingtraject",
       icon: "school" as const,
-      color: bcctColors.primaryBlue,
+      color: bcctColors.primaryOrange,
     },
     {
       id: "chat",
@@ -294,7 +294,7 @@ export default function ClientHomeScreen() {
       title: "Afspraken",
       description: "Bekijk aankomende sessies",
       icon: "calendar-today" as const,
-      color: bcctColors.accentOrange,
+      color: bcctColors.primaryOrangeLight,
     },
   ];
 
@@ -302,7 +302,7 @@ export default function ClientHomeScreen() {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={["top"]}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={bcctColors.primaryBlue} />
+          <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
         </View>
       </SafeAreaView>
     );
@@ -315,7 +315,6 @@ export default function ClientHomeScreen() {
     <>
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={["top"]}>
         <ScrollView contentContainerStyle={styles.scrollContent}>
-          {/* Logo and Branding Header */}
           <View style={styles.brandingHeader}>
             <Image
               source={require('@/assets/images/8197d584-e819-49fe-80a6-96a6acac58fb.png')}
@@ -352,7 +351,6 @@ export default function ClientHomeScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Check-in Card */}
           <View style={[styles.checkinCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             {todayCheckinSaved && !checkinExpanded ? (
               <TouchableOpacity
@@ -457,9 +455,10 @@ export default function ClientHomeScreen() {
                   style={[styles.saveButtonContainer]}
                   onPress={saveCheckin}
                   disabled={checkinSaving}
+                  activeOpacity={0.9}
                 >
                   <LinearGradient
-                    colors={[bcctColors.primaryBlue, bcctColors.gradientTeal]}
+                    colors={checkinSaving ? [bcctColors.primaryOrangeDisabled, bcctColors.primaryOrangeDisabled] : [bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                     style={[styles.saveButton, checkinSaving && styles.saveButtonDisabled]}
@@ -526,7 +525,7 @@ export default function ClientHomeScreen() {
                 ios_icon_name="calendar"
                 android_material_icon_name="event"
                 size={24}
-                color={bcctColors.primaryBlue}
+                color={bcctColors.primaryOrange}
               />
               <View style={styles.overviewText}>
                 <Text style={[styles.overviewLabel, { color: bcctColors.textSecondary }]}>
@@ -545,7 +544,7 @@ export default function ClientHomeScreen() {
                     ios_icon_name="message"
                     android_material_icon_name="chat"
                     size={24}
-                    color={bcctColors.accentOrange}
+                    color={bcctColors.primaryOrangeLight}
                   />
                   <View style={styles.overviewText}>
                     <Text style={[styles.overviewLabel, { color: bcctColors.textSecondary }]}>
@@ -579,10 +578,10 @@ export default function ClientHomeScreen() {
       backdropOpacity={0.5}
     >
       <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-        <Text style={[styles.modalTitle, { color: bcctColors.primaryBlue }]}>{modalTitle}</Text>
+        <Text style={[styles.modalTitle, { color: bcctColors.primaryOrange }]}>{modalTitle}</Text>
         <Text style={[styles.modalMessage, { color: bcctColors.textSecondary }]}>{modalMessage}</Text>
         <TouchableOpacity
-          style={[styles.modalButton, { backgroundColor: bcctColors.primaryBlue }]}
+          style={[styles.modalButton, { backgroundColor: bcctColors.primaryOrange }]}
           onPress={() => setModalVisible(false)}
         >
           <Text style={styles.modalButtonText}>OK</Text>
@@ -723,10 +722,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   saveButtonDisabled: {
-    opacity: 0.6,
+    opacity: 0.7,
   },
   saveButtonText: {
-    color: "#fff",
+    color: "#FFFFFF",
     ...bcctTypography.button,
   },
   checkinCollapsed: {

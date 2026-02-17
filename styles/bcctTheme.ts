@@ -3,7 +3,13 @@ import { Theme } from '@react-navigation/native';
 
 // Connected Coaching & Training Brand Colors
 export const bcctColors = {
-  // Primary brand colors
+  // Primary brand colors - UPDATED TO MATCH BRAND
+  primaryOrange: '#F28C28', // Primary brand color
+  primaryOrangeDark: '#E67E1F', // Darker orange for gradients
+  primaryOrangeLight: '#F4A259', // Lighter orange for links
+  primaryOrangeDisabled: '#F4C7A1', // Disabled state
+  
+  // Legacy colors (keeping for backwards compatibility)
   primaryBlue: '#243B5A',
   gradientTeal: '#2F8F8B',
   gradientGreen: '#4BAF7A',
@@ -86,7 +92,7 @@ export const bcctTypography = {
 export const BCCTLightTheme: Theme = {
   dark: false,
   colors: {
-    primary: bcctColors.primaryBlue,
+    primary: bcctColors.primaryOrange,
     background: bcctColors.lightBackground,
     card: bcctColors.cardBackground,
     text: bcctColors.textPrimary,
@@ -99,7 +105,7 @@ export const BCCTLightTheme: Theme = {
 export const BCCTDarkTheme: Theme = {
   dark: true,
   colors: {
-    primary: bcctColors.gradientTeal,
+    primary: bcctColors.primaryOrange,
     background: '#1F2937',
     card: '#374151',
     text: '#F9FAFB',

@@ -48,7 +48,7 @@ export default function AuthScreen() {
   if (authLoading) {
     return (
       <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={bcctColors.primaryBlue} />
+        <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
       </View>
     );
   }
@@ -138,9 +138,8 @@ export default function AuthScreen() {
 
   const modeTitle = mode === 'signup' ? 'Account Aanmaken' : 'Inloggen';
   const modeButtonText = mode === 'signup' ? 'Registreren' : 'Inloggen';
-  const switchModeText = mode === 'signup' 
-    ? 'Heb je al een account? Inloggen' 
-    : 'Nog geen account? Registreren';
+  
+  const loginText = selectedRole === 'client' ? 'Log in als cliënt' : 'Log in als coach';
 
   return (
     <>
@@ -149,7 +148,6 @@ export default function AuthScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <View style={styles.content}>
-          {/* Logo and Branding Header */}
           <View style={styles.brandingHeader}>
             <Image
               source={require('@/assets/images/8197d584-e819-49fe-80a6-96a6acac58fb.png')}
@@ -161,54 +159,63 @@ export default function AuthScreen() {
             </Text>
           </View>
 
-          {/* Role Selector - Only show on signin mode */}
           {mode === 'signin' && (
             <View style={styles.roleContainer}>
-              <View style={[styles.roleSelector, { backgroundColor: bcctColors.borderGray }]}>
+              <View style={styles.roleSelector}>
                 <TouchableOpacity
                   style={[
-                    styles.roleButton,
-                    selectedRole === 'client' && styles.roleButtonActive,
+                    styles.roleCard,
+                    { backgroundColor: colors.card, borderColor: selectedRole === 'client' ? 'transparent' : `${bcctColors.primaryOrange}33` },
+                    selectedRole === 'client' && styles.roleCardActive,
                   ]}
                   onPress={() => setSelectedRole('client')}
                 >
                   {selectedRole === 'client' ? (
                     <LinearGradient
-                      colors={[bcctColors.primaryBlue, bcctColors.gradientTeal]}
+                      colors={[bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 0 }}
-                      style={styles.roleButtonGradient}
+                      style={styles.roleCardGradient}
                     >
-                      <Text style={styles.roleButtonTextActive}>Cliënt</Text>
+                      <MaterialIcons name="person" size={32} color="#FFFFFF" />
+                      <Text style={styles.roleCardTextActive}>Cliënt</Text>
                     </LinearGradient>
                   ) : (
-                    <Text style={[styles.roleButtonText, { color: bcctColors.primaryBlue }]}>Cliënt</Text>
+                    <>
+                      <MaterialIcons name="person" size={32} color={bcctColors.primaryOrange} />
+                      <Text style={[styles.roleCardText, { color: colors.text }]}>Cliënt</Text>
+                    </>
                   )}
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   style={[
-                    styles.roleButton,
-                    selectedRole === 'coach' && styles.roleButtonActive,
+                    styles.roleCard,
+                    { backgroundColor: colors.card, borderColor: selectedRole === 'coach' ? 'transparent' : `${bcctColors.primaryOrange}33` },
+                    selectedRole === 'coach' && styles.roleCardActive,
                   ]}
                   onPress={() => setSelectedRole('coach')}
                 >
                   {selectedRole === 'coach' ? (
                     <LinearGradient
-                      colors={[bcctColors.primaryBlue, bcctColors.gradientTeal]}
+                      colors={[bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 0 }}
-                      style={styles.roleButtonGradient}
+                      style={styles.roleCardGradient}
                     >
-                      <Text style={styles.roleButtonTextActive}>Coach</Text>
+                      <MaterialIcons name="school" size={32} color="#FFFFFF" />
+                      <Text style={styles.roleCardTextActive}>Coach</Text>
                     </LinearGradient>
                   ) : (
-                    <Text style={[styles.roleButtonText, { color: bcctColors.primaryBlue }]}>Coach</Text>
+                    <>
+                      <MaterialIcons name="school" size={32} color={bcctColors.primaryOrange} />
+                      <Text style={[styles.roleCardText, { color: colors.text }]}>Coach</Text>
+                    </>
                   )}
                 </TouchableOpacity>
               </View>
               <Text style={[styles.roleHelperText, { color: secondaryTextColor }]}>
-                Log in als cliënt of coach
+                {loginText}
               </Text>
             </View>
           )}
@@ -291,9 +298,10 @@ export default function AuthScreen() {
             style={[styles.primaryButtonContainer, loading && styles.buttonDisabled]}
             onPress={handleEmailAuth}
             disabled={loading}
+            activeOpacity={0.9}
           >
             <LinearGradient
-              colors={[bcctColors.primaryBlue, bcctColors.gradientTeal]}
+              colors={loading ? [bcctColors.primaryOrangeDisabled, bcctColors.primaryOrangeDisabled] : [bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={styles.primaryButton}
@@ -317,7 +325,7 @@ export default function AuthScreen() {
             <Text style={[styles.switchModeText, { color: secondaryTextColor }]}>
               {mode === 'signup' ? 'Heb je al een account? ' : 'Nog geen account? '}
             </Text>
-            <Text style={[styles.switchModeTextAccent, { color: bcctColors.gradientTeal }]}>
+            <Text style={[styles.switchModeTextAccent, { color: bcctColors.primaryOrangeLight }]}>
               {mode === 'signup' ? 'Inloggen' : 'Registreren'}
             </Text>
           </TouchableOpacity>
@@ -328,7 +336,6 @@ export default function AuthScreen() {
             <View style={[styles.dividerLine, { backgroundColor: inputBorderColor }]} />
           </View>
 
-          {/* Social Login Icons */}
           <View style={styles.socialIconsContainer}>
             <TouchableOpacity
               style={[
@@ -415,38 +422,40 @@ const styles = StyleSheet.create({
   },
   roleSelector: {
     flexDirection: 'row',
-    borderRadius: 22,
-    padding: 4,
+    gap: 12,
     marginBottom: 8,
   },
-  roleButton: {
+  roleCard: {
     flex: 1,
-    height: 44,
+    height: 100,
+    borderRadius: 16,
+    borderWidth: 2,
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 20,
+    gap: 8,
   },
-  roleButtonActive: {
+  roleCardActive: {
     overflow: 'hidden',
+    borderWidth: 0,
   },
-  roleButtonGradient: {
+  roleCardGradient: {
     width: '100%',
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 20,
+    gap: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
-  roleButtonText: {
+  roleCardText: {
     ...bcctTypography.bodyMedium,
   },
-  roleButtonTextActive: {
+  roleCardTextActive: {
     ...bcctTypography.bodyMedium,
-    color: '#fff',
+    color: '#FFFFFF',
   },
   roleHelperText: {
     ...bcctTypography.small,
@@ -476,11 +485,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   primaryButtonText: {
-    color: '#fff',
+    color: '#FFFFFF',
     ...bcctTypography.button,
   },
   buttonDisabled: {
-    opacity: 0.6,
+    opacity: 0.7,
   },
   switchModeButton: {
     marginTop: 12,

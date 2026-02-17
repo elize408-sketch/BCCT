@@ -104,7 +104,6 @@ export default function OnboardingScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Logo and Branding Header */}
         <View style={styles.brandingHeader}>
           <Image
             source={require('@/assets/images/8197d584-e819-49fe-80a6-96a6acac58fb.png')}
@@ -161,7 +160,7 @@ export default function OnboardingScreen() {
                 style={[
                   styles.roleButton,
                   { borderColor: colors.border },
-                  role === 'client' && { backgroundColor: bcctColors.primaryBlue, borderColor: bcctColors.primaryBlue },
+                  role === 'client' && { backgroundColor: bcctColors.primaryOrange, borderColor: bcctColors.primaryOrange },
                 ]}
                 onPress={() => setRole('client')}
               >
@@ -174,7 +173,7 @@ export default function OnboardingScreen() {
                 style={[
                   styles.roleButton,
                   { borderColor: colors.border },
-                  role === 'coach' && { backgroundColor: bcctColors.primaryBlue, borderColor: bcctColors.primaryBlue },
+                  role === 'coach' && { backgroundColor: bcctColors.primaryOrange, borderColor: bcctColors.primaryOrange },
                 ]}
                 onPress={() => setRole('coach')}
               >
@@ -187,7 +186,7 @@ export default function OnboardingScreen() {
                 style={[
                   styles.roleButton,
                   { borderColor: colors.border },
-                  role === 'org_admin' && { backgroundColor: bcctColors.primaryBlue, borderColor: bcctColors.primaryBlue },
+                  role === 'org_admin' && { backgroundColor: bcctColors.primaryOrange, borderColor: bcctColors.primaryOrange },
                 ]}
                 onPress={() => setRole('org_admin')}
               >
@@ -220,9 +219,10 @@ export default function OnboardingScreen() {
             style={[styles.buttonContainer]}
             onPress={handleComplete}
             disabled={loading}
+            activeOpacity={0.9}
           >
             <LinearGradient
-              colors={[bcctColors.primaryBlue, bcctColors.gradientTeal]}
+              colors={loading ? [bcctColors.primaryOrangeDisabled, bcctColors.primaryOrangeDisabled] : [bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={styles.button}
@@ -242,7 +242,7 @@ export default function OnboardingScreen() {
           <Text style={[styles.modalTitle, { color: colors.text }]}>{modalTitle}</Text>
           <Text style={[styles.modalMessage, { color: bcctColors.textSecondary }]}>{modalMessage}</Text>
           <TouchableOpacity
-            style={[styles.modalButton, { backgroundColor: bcctColors.primaryBlue }]}
+            style={[styles.modalButton, { backgroundColor: bcctColors.primaryOrange }]}
             onPress={() => setModalVisible(false)}
           >
             <Text style={styles.modalButtonText}>OK</Text>
