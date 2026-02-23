@@ -9,8 +9,8 @@ import {
   ActivityIndicator,
 } from "react-native";
 import Modal from "react-native-modal";
-import { useTheme } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useTheme } from "@react-navigation/native";
 import { IconSymbol } from "@/components/IconSymbol";
 import { useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
@@ -45,65 +45,62 @@ export default function CoachClientsScreen() {
   const fetchClients = async () => {
     console.log("[Coach Clients] Fetching clients");
     try {
-      const { data: session } = await supabase.auth.getSession();
-      if (!session?.session?.user) {
-        console.error("[Coach Clients] No user session");
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.error("[Coach Clients] No user found");
         return;
       }
 
       const { data: coachClients, error: coachClientsError } = await supabase
-        .from("coach_clients")
-        .select("client_id")
-        .eq("coach_id", session.session.user.id);
+        .from('coach_clients')
+        .select('client_id')
+        .eq('coach_id', user.id);
 
       if (coachClientsError) {
-        console.error("[Coach Clients] Error fetching coach_clients", coachClientsError);
+        console.error("[Coach Clients] Error fetching coach_clients:", coachClientsError);
         showModal("Fout", "Kon cliënten niet laden");
         return;
       }
 
       if (!coachClients || coachClients.length === 0) {
         console.log("[Coach Clients] No clients found");
-        setLoading(false);
+        setClients([]);
         return;
       }
 
       const clientIds = coachClients.map(cc => cc.client_id);
 
       const { data: profiles, error: profilesError } = await supabase
-        .from("profiles")
-        .select("id, full_name, email")
-        .in("id", clientIds);
+        .from('profiles')
+        .select('id, full_name, email')
+        .in('id', clientIds);
 
       if (profilesError) {
-        console.error("[Coach Clients] Error fetching profiles", profilesError);
-        showModal("Fout", "Kon cliënten niet laden");
+        console.error("[Coach Clients] Error fetching profiles:", profilesError);
+        showModal("Fout", "Kon cliëntgegevens niet laden");
         return;
       }
 
       const { data: assignments, error: assignmentsError } = await supabase
-        .from("client_theme_assignments")
-        .select("client_id, themes(name)")
-        .in("client_id", clientIds)
-        .eq("active", true);
+        .from('client_theme_assignments')
+        .select('client_id, theme_id, themes(name)')
+        .in('client_id', clientIds)
+        .eq('active', true);
 
       if (assignmentsError) {
-        console.error("[Coach Clients] Error fetching assignments", assignmentsError);
+        console.error("[Coach Clients] Error fetching assignments:", assignmentsError);
       }
 
-      const clientsWithThemes = (profiles || []).map(profile => {
-        const assignment = assignments?.find(a => a.client_id === profile.id);
-        return {
-          ...profile,
-          active_theme: assignment?.themes?.name,
-        };
-      });
+      const clientsWithThemes = profiles?.map(profile => ({
+        ...profile,
+        active_theme: assignments?.find(a => a.client_id === profile.id)?.themes?.name || undefined,
+      })) || [];
 
-      console.log("[Coach Clients] Clients loaded", clientsWithThemes);
+      console.log("[Coach Clients] Clients loaded:", clientsWithThemes.length);
       setClients(clientsWithThemes);
     } catch (error: any) {
-      console.error("[Coach Clients] Error fetching clients", error);
-      showModal("Fout", "Kon cliënten niet laden");
+      console.error("[Coach Clients] Error:", error);
+      showModal("Fout", "Er is een fout opgetreden");
     } finally {
       setLoading(false);
     }
@@ -122,77 +119,68 @@ export default function CoachClientsScreen() {
   return (
     <>
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={["top"]}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-          >
-            <IconSymbol
-              ios_icon_name="chevron.left"
-              android_material_icon_name="arrow-back"
-              size={24}
-              color={colors.text}
-            />
-          </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>Cliënten</Text>
-          <View style={styles.placeholder} />
-        </View>
-
         <ScrollView contentContainerStyle={styles.scrollContent}>
+          <View style={styles.header}>
+            <Text style={[styles.headerTitle, { color: colors.text }]}>Cliënten</Text>
+          </View>
+
           {clients.length === 0 ? (
             <View style={styles.emptyState}>
-              <IconSymbol
-                ios_icon_name="person"
-                android_material_icon_name="person"
-                size={64}
-                color={bcctColors.textSecondary}
-              />
-              <Text style={[styles.emptyTitle, { color: colors.text }]}>
-                Geen cliënten gevonden
-              </Text>
-              <Text style={[styles.emptyDescription, { color: bcctColors.textSecondary }]}>
-                Je hebt nog geen cliënten toegewezen
+              <View style={[styles.emptyIconContainer, { backgroundColor: bcctColors.primaryOrange + "20" }]}>
+                <IconSymbol
+                  ios_icon_name="person.2"
+                  android_material_icon_name="group"
+                  size={48}
+                  color={bcctColors.primaryOrange}
+                />
+              </View>
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>Nog geen cliënten</Text>
+              <Text style={[styles.emptyText, { color: bcctColors.textSecondary }]}>
+                Deel je coachcode om cliënten uit te nodigen.
               </Text>
             </View>
           ) : (
             <View style={styles.clientsList}>
-              {clients.map((client) => {
-                const themeText = client.active_theme || "Geen thema";
-                return (
-                  <TouchableOpacity
-                    key={client.id}
-                    style={[styles.clientCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-                    onPress={() => router.push(`/(app)/coach/client-detail?id=${client.id}`)}
-                  >
-                    <View style={[styles.clientAvatar, { backgroundColor: bcctColors.primaryOrange + "20" }]}>
-                      <IconSymbol
-                        ios_icon_name="person"
-                        android_material_icon_name="person"
-                        size={28}
-                        color={bcctColors.primaryOrange}
-                      />
-                    </View>
-                    <View style={styles.clientContent}>
-                      <Text style={[styles.clientName, { color: colors.text }]}>{client.full_name}</Text>
-                      <Text style={[styles.clientEmail, { color: bcctColors.textSecondary }]}>
-                        {client.email}
-                      </Text>
-                      <Text style={[styles.clientTheme, { color: bcctColors.textSecondary }]}>
-                        {themeText}
-                      </Text>
-                    </View>
+              {clients.map((client) => (
+                <React.Fragment key={client.id}>
+                <TouchableOpacity
+                  style={[styles.clientCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  onPress={() => router.push(`/(app)/coach/client-detail?id=${client.id}` as any)}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.clientAvatar, { backgroundColor: bcctColors.primaryOrange + "20" }]}>
                     <IconSymbol
-                      ios_icon_name="chevron.right"
-                      android_material_icon_name="chevron-right"
-                      size={20}
-                      color={colors.text}
-                      style={{ opacity: 0.4 }}
+                      ios_icon_name="person.fill"
+                      android_material_icon_name="person"
+                      size={24}
+                      color={bcctColors.primaryOrange}
                     />
-                  </TouchableOpacity>
-                );
-              })}
+                  </View>
+                  <View style={styles.clientInfo}>
+                    <Text style={[styles.clientName, { color: colors.text }]}>{client.full_name}</Text>
+                    <Text style={[styles.clientEmail, { color: bcctColors.textSecondary }]}>
+                      {client.email}
+                    </Text>
+                    {client.active_theme && (
+                      <View style={styles.themeBadge}>
+                        <Text style={styles.themeBadgeText}>{client.active_theme}</Text>
+                      </View>
+                    )}
+                  </View>
+                  <IconSymbol
+                    ios_icon_name="chevron.right"
+                    android_material_icon_name="chevron-right"
+                    size={20}
+                    color={bcctColors.textSecondary}
+                  />
+                </TouchableOpacity>
+                </React.Fragment>
+              ))}
             </View>
           )}
+
+          {/* Bottom padding for tab bar */}
+          <View style={{ height: 100 }} />
         </ScrollView>
       </SafeAreaView>
 
@@ -228,42 +216,38 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  headerTitle: {
-    ...bcctTypography.h2,
-    flex: 1,
-    textAlign: "center",
-  },
-  placeholder: {
-    width: 40,
-  },
   scrollContent: {
     padding: 20,
   },
+  header: {
+    marginBottom: 24,
+    marginTop: 8,
+  },
+  headerTitle: {
+    ...bcctTypography.h1,
+  },
   emptyState: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 60,
+    paddingVertical: 80,
     gap: 16,
   },
-  emptyTitle: {
-    ...bcctTypography.h3,
+  emptyIconContainer: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 8,
   },
-  emptyDescription: {
+  emptyTitle: {
+    ...bcctTypography.h2,
+  },
+  emptyText: {
     ...bcctTypography.body,
     textAlign: "center",
+    maxWidth: 280,
   },
   clientsList: {
     gap: 12,
@@ -288,18 +272,28 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  clientContent: {
+  clientInfo: {
     flex: 1,
     gap: 4,
   },
   clientName: {
-    ...bcctTypography.h3,
+    ...bcctTypography.bodyMedium,
   },
   clientEmail: {
-    ...bcctTypography.body,
-  },
-  clientTheme: {
     ...bcctTypography.small,
+  },
+  themeBadge: {
+    alignSelf: "flex-start",
+    backgroundColor: bcctColors.primaryOrange + "30",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  themeBadgeText: {
+    color: bcctColors.primaryOrange,
+    fontSize: 11,
+    fontWeight: "600",
   },
   modalContent: {
     borderRadius: 20,

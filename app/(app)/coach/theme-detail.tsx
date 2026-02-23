@@ -305,6 +305,9 @@ export default function ThemeDetailScreen() {
               })}
             </View>
           )}
+
+          {/* Bottom padding for tab bar */}
+          <View style={{ height: 100 }} />
         </ScrollView>
       </SafeAreaView>
 

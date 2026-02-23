@@ -322,6 +322,9 @@ export default function CoachModulesScreen() {
               })}
             </View>
           )}
+
+          {/* Bottom padding for tab bar */}
+          <View style={{ height: 100 }} />
         </ScrollView>
       </SafeAreaView>
 

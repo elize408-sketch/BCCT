@@ -243,6 +243,9 @@ export default function ClientDetailScreen() {
               </Text>
             ) : null}
           </View>
+
+          {/* Bottom padding for tab bar */}
+          <View style={{ height: 100 }} />
         </ScrollView>
       </SafeAreaView>
 
