@@ -45,7 +45,7 @@ export default function CoachClientsScreen() {
   const [modalTitle, setModalTitle] = useState("");
   const [modalMessage, setModalMessage] = useState("");
   const [inviteCodeModalVisible, setInviteCodeModalVisible] = useState(false);
-  const [newInvite, setNewInvite] = useState<ClientInvite | null>(null);
+  const [generatedInviteCode, setGeneratedInviteCode] = useState<string>('');
   const [generatingCode, setGeneratingCode] = useState(false);
   const [invites, setInvites] = useState<ClientInvite[]>([]);
   const [showInvitesList, setShowInvitesList] = useState(false);
@@ -168,23 +168,12 @@ export default function CoachClientsScreen() {
 
       console.log("[Coach Clients] Invite code created:", data);
       
-      // The RPC returns just the code string, so we need to fetch the full invite object
-      // or construct it from the returned code
+      // The RPC returns just the code string
       if (typeof data === 'string') {
-        // If data is just the code string, create a minimal invite object
-        const inviteObject: ClientInvite = {
-          id: '', // We don't have the ID from the RPC
-          code: data,
-          created_at: new Date().toISOString(),
-          used_at: null,
-          used_by: null,
-          expires_at: null,
-          is_active: true,
-        };
-        setNewInvite(inviteObject);
+        setGeneratedInviteCode(data);
       } else {
-        // If data is already an object, use it directly
-        setNewInvite(data as ClientInvite);
+        console.error("[Coach Clients] Unexpected data type from RPC:", typeof data);
+        setGeneratedInviteCode(String(data));
       }
       
       setInviteCodeModalVisible(true);
@@ -200,15 +189,14 @@ export default function CoachClientsScreen() {
   };
 
   const handleCopyCode = async () => {
-    if (!newInvite) {
+    if (!generatedInviteCode) {
       console.error("[Coach Clients] No invite code to copy");
       return;
     }
     
-    const codeText = newInvite.code;
-    console.log("[Coach Clients] Copying code to clipboard:", codeText);
+    console.log("[Coach Clients] Copying code to clipboard:", generatedInviteCode);
     try {
-      await Clipboard.setStringAsync(codeText);
+      await Clipboard.setStringAsync(generatedInviteCode);
       showModal("Gekopieerd", "Code is gekopieerd naar klembord");
     } catch (error: any) {
       console.error("[Coach Clients] Error copying code:", error);
@@ -217,16 +205,15 @@ export default function CoachClientsScreen() {
   };
 
   const handleShareCode = async () => {
-    if (!newInvite) {
+    if (!generatedInviteCode) {
       console.error("[Coach Clients] No invite code to share");
       return;
     }
     
-    const codeText = newInvite.code;
-    console.log("[Coach Clients] Sharing code:", codeText);
+    console.log("[Coach Clients] Sharing code:", generatedInviteCode);
     try {
       const result = await Share.share({
-        message: `Gebruik deze code om je aan te melden als mijn cliënt: ${codeText}`,
+        message: `Gebruik deze code om je aan te melden als mijn cliënt: ${generatedInviteCode}`,
         title: 'Coach uitnodigingscode',
       });
 
@@ -442,7 +429,7 @@ export default function CoachClientsScreen() {
 
           <View style={[styles.codeContainer, { backgroundColor: colors.background, borderColor: colors.border }]}>
             <Text style={[styles.codeText, { color: bcctColors.primaryOrange }]}>
-              {newInvite?.code || ''}
+              {generatedInviteCode}
             </Text>
           </View>
 
@@ -680,13 +667,13 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     marginTop: 24,
     marginBottom: 16,
-    borderRadius: 16,
+    borderRadius: 18,
     overflow: 'hidden',
   },
   createInviteButton: {
     width: '100%',
-    paddingVertical: 16,
-    paddingHorizontal: 16,
+    height: 52,
+    paddingHorizontal: 20,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',

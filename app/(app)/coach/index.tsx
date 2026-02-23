@@ -73,15 +73,14 @@ export default function CoachDashboardScreen() {
         setProfile(profileData);
       }
 
-      // TODO: Fetch clients count from coach_clients table
-      // Count rows where coach_id = auth.uid()
+      // Fetch clients count from coach_clients table
       const { count: clientsCount, error: clientsError } = await supabase
         .from('coach_clients')
         .select('*', { count: 'exact', head: true })
         .eq('coach_id', session.user.id);
 
       if (clientsError) {
-        console.error("[Coach Dashboard] Clients count error:", clientsError);
+        console.error("[Coach Dashboard] Clients count error:", clientsError, JSON.stringify(clientsError));
       } else {
         console.log("[Coach Dashboard] Clients count:", clientsCount);
       }
@@ -91,29 +90,37 @@ export default function CoachDashboardScreen() {
       // For now, we'll set to 0 and add a TODO comment
       const activeProgramsCount = 0;
 
-      // TODO: Fetch today's appointments count
-      // Count appointments where coach_id = auth.uid() and date = today
+      // Fetch today's appointments count
       const today = new Date().toISOString().split('T')[0];
-      const { count: appointmentsCount, error: appointmentsError } = await supabase
-        .from('appointments')
-        .select('*', { count: 'exact', head: true })
-        .eq('coach_id', session.user.id)
-        .gte('scheduled_at', `${today}T00:00:00`)
-        .lt('scheduled_at', `${today}T23:59:59`);
+      let appointmentsCount = 0;
+      
+      try {
+        const { count, error: appointmentsError } = await supabase
+          .from('appointments')
+          .select('*', { count: 'exact', head: true })
+          .eq('coach_id', session.user.id)
+          .gte('scheduled_at', `${today}T00:00:00`)
+          .lt('scheduled_at', `${today}T23:59:59`);
 
-      if (appointmentsError) {
-        console.error("[Coach Dashboard] Appointments count error:", appointmentsError);
-      } else {
-        console.log("[Coach Dashboard] Today's appointments count:", appointmentsCount);
+        if (appointmentsError) {
+          console.error("[Coach Dashboard] Appointments count error:", appointmentsError, JSON.stringify(appointmentsError));
+          appointmentsCount = 0;
+        } else {
+          console.log("[Coach Dashboard] Today's appointments count:", count);
+          appointmentsCount = count || 0;
+        }
+      } catch (appointmentsException: any) {
+        console.error("[Coach Dashboard] Appointments count error (catch):", appointmentsException, JSON.stringify(appointmentsException));
+        appointmentsCount = 0;
       }
 
       setStats({
         clientsCount: clientsCount || 0,
         activeProgramsCount: activeProgramsCount,
-        todayAppointmentsCount: appointmentsCount || 0,
+        todayAppointmentsCount: appointmentsCount,
       });
     } catch (error: any) {
-      console.error("[Coach Dashboard] Error fetching dashboard data", error);
+      console.error("[Coach Dashboard] Error fetching dashboard data", error, JSON.stringify(error));
       showModal("Fout", "Kon dashboardgegevens niet laden");
     } finally {
       setLoading(false);

@@ -59,7 +59,7 @@ export default function AuthScreen() {
   }
 
   const handleEmailAuth = async () => {
-    console.log('[Auth] handleEmailAuth called, mode:', mode, 'role:', selectedRole, 'inviteCode:', inviteCode ? 'provided' : 'empty');
+    console.log('[Auth] handleEmailAuth called, mode:', mode, 'role:', selectedRole, 'signupInviteCode:', signupInviteCode ? 'provided' : 'empty');
     
     if (!email) {
       showModal('Fout', 'Voer je e-mailadres in');
@@ -86,7 +86,7 @@ export default function AuthScreen() {
     setLoading(true);
     try {
       if (mode === 'signup') {
-        console.log('[Auth] Signing up user with role:', selectedRole, 'inviteCode:', signupInviteCode ? 'provided' : 'empty');
+        console.log('[Auth] Signing up user with role:', selectedRole, 'signupInviteCode:', signupInviteCode ? 'provided' : 'empty');
         
         // Validate invite code for clients
         if (selectedRole === 'client' && !signupInviteCode.trim()) {
@@ -153,6 +153,7 @@ export default function AuthScreen() {
             }
 
             console.log('[Auth] Invite claimed successfully during signup:', claimData);
+            setSignupInviteCode(''); // Clear after successful claim
           } catch (claimErr: any) {
             console.error('[Auth] Invite claim failed:', claimErr);
             setLoading(false);
