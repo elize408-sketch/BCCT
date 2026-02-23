@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Share,
-  TextInput,
 } from "react-native";
 import Modal from "react-native-modal";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -33,6 +32,8 @@ interface ClientInvite {
   created_at: string;
   used_at: string | null;
   used_by: string | null;
+  expires_at: string | null;
+  is_active: boolean;
 }
 
 export default function CoachClientsScreen() {
@@ -44,7 +45,7 @@ export default function CoachClientsScreen() {
   const [modalTitle, setModalTitle] = useState("");
   const [modalMessage, setModalMessage] = useState("");
   const [inviteCodeModalVisible, setInviteCodeModalVisible] = useState(false);
-  const [generatedCode, setGeneratedCode] = useState("");
+  const [newInvite, setNewInvite] = useState<ClientInvite | null>(null);
   const [generatingCode, setGeneratingCode] = useState(false);
   const [invites, setInvites] = useState<ClientInvite[]>([]);
   const [showInvitesList, setShowInvitesList] = useState(false);
@@ -135,7 +136,7 @@ export default function CoachClientsScreen() {
 
       const { data: invitesData, error: invitesError } = await supabase
         .from('client_invites')
-        .select('id, code, created_at, used_at, used_by')
+        .select('id, code, created_at, used_at, used_by, expires_at, is_active')
         .eq('coach_id', user.id)
         .order('created_at', { ascending: false });
 
@@ -166,7 +167,26 @@ export default function CoachClientsScreen() {
       }
 
       console.log("[Coach Clients] Invite code created:", data);
-      setGeneratedCode(data);
+      
+      // The RPC returns just the code string, so we need to fetch the full invite object
+      // or construct it from the returned code
+      if (typeof data === 'string') {
+        // If data is just the code string, create a minimal invite object
+        const inviteObject: ClientInvite = {
+          id: '', // We don't have the ID from the RPC
+          code: data,
+          created_at: new Date().toISOString(),
+          used_at: null,
+          used_by: null,
+          expires_at: null,
+          is_active: true,
+        };
+        setNewInvite(inviteObject);
+      } else {
+        // If data is already an object, use it directly
+        setNewInvite(data as ClientInvite);
+      }
+      
       setInviteCodeModalVisible(true);
       
       // Refresh invites list
@@ -180,9 +200,15 @@ export default function CoachClientsScreen() {
   };
 
   const handleCopyCode = async () => {
-    console.log("[Coach Clients] Copying code to clipboard:", generatedCode);
+    if (!newInvite) {
+      console.error("[Coach Clients] No invite code to copy");
+      return;
+    }
+    
+    const codeText = newInvite.code;
+    console.log("[Coach Clients] Copying code to clipboard:", codeText);
     try {
-      await Clipboard.setStringAsync(generatedCode);
+      await Clipboard.setStringAsync(codeText);
       showModal("Gekopieerd", "Code is gekopieerd naar klembord");
     } catch (error: any) {
       console.error("[Coach Clients] Error copying code:", error);
@@ -191,10 +217,16 @@ export default function CoachClientsScreen() {
   };
 
   const handleShareCode = async () => {
-    console.log("[Coach Clients] Sharing code:", generatedCode);
+    if (!newInvite) {
+      console.error("[Coach Clients] No invite code to share");
+      return;
+    }
+    
+    const codeText = newInvite.code;
+    console.log("[Coach Clients] Sharing code:", codeText);
     try {
       const result = await Share.share({
-        message: `Gebruik deze code om je aan te melden als mijn cliënt: ${generatedCode}`,
+        message: `Gebruik deze code om je aan te melden als mijn cliënt: ${codeText}`,
         title: 'Coach uitnodigingscode',
       });
 
@@ -259,7 +291,7 @@ export default function CoachClientsScreen() {
                       <IconSymbol
                         ios_icon_name="plus.circle.fill"
                         android_material_icon_name="add-circle"
-                        size={20}
+                        size={22}
                         color="#fff"
                       />
                       <Text style={styles.createInviteButtonText}>Maak uitnodigingscode</Text>
@@ -300,7 +332,7 @@ export default function CoachClientsScreen() {
                       <IconSymbol
                         ios_icon_name="plus.circle.fill"
                         android_material_icon_name="add-circle"
-                        size={20}
+                        size={22}
                         color="#fff"
                       />
                       <Text style={styles.createInviteButtonText}>Maak nieuwe uitnodigingscode</Text>
@@ -409,7 +441,9 @@ export default function CoachClientsScreen() {
           </Text>
 
           <View style={[styles.codeContainer, { backgroundColor: colors.background, borderColor: colors.border }]}>
-            <Text style={[styles.codeText, { color: bcctColors.primaryOrange }]}>{generatedCode}</Text>
+            <Text style={[styles.codeText, { color: bcctColors.primaryOrange }]}>
+              {newInvite?.code || ''}
+            </Text>
           </View>
 
           <View style={styles.inviteActionsRow}>
@@ -500,7 +534,9 @@ export default function CoachClientsScreen() {
                 <React.Fragment key={invite.id}>
                 <View style={[styles.inviteListItem, { backgroundColor: colors.background, borderColor: colors.border }]}>
                   <View style={styles.inviteListItemHeader}>
-                    <Text style={[styles.inviteListItemCode, { color: colors.text }]}>{invite.code}</Text>
+                    <Text style={[styles.inviteListItemCode, { color: colors.text }]}>
+                      {invite.code}
+                    </Text>
                     <View style={[styles.inviteStatusBadge, { backgroundColor: isUsed ? bcctColors.success + "20" : bcctColors.primaryOrange + "20" }]}>
                       <Text style={[styles.inviteStatusText, { color: isUsed ? bcctColors.success : bcctColors.primaryOrange }]}>
                         {isUsed ? 'Gebruikt' : 'Ongebruikt'}
@@ -640,21 +676,26 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   createInviteButtonContainer: {
+    width: '100%',
+    alignSelf: 'stretch',
     marginTop: 24,
     marginBottom: 16,
-    borderRadius: 12,
+    borderRadius: 16,
     overflow: 'hidden',
   },
   createInviteButton: {
-    height: 48,
+    width: '100%',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
   },
   createInviteButtonText: {
     color: '#fff',
     ...bcctTypography.button,
+    fontSize: 16,
   },
   viewInvitesButton: {
     alignItems: 'center',
