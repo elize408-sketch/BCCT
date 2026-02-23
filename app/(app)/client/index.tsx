@@ -269,10 +269,11 @@ export default function ClientHomeScreen() {
   const quickActions = [
     {
       id: "checkin",
-      title: "Dagelijkse Check-in",
-      description: "Log je stress, energie, slaap & stemming",
+      title: "Thema Check-in",
+      description: "Vul je dagelijkse thema check-in in",
       icon: "favorite" as const,
       color: bcctColors.error,
+      route: "/(app)/client/checkin" as const,
     },
     {
       id: "program",
@@ -280,6 +281,7 @@ export default function ClientHomeScreen() {
       description: "Ga verder met je coachingtraject",
       icon: "school" as const,
       color: bcctColors.primaryOrange,
+      route: null,
     },
     {
       id: "chat",
@@ -287,6 +289,7 @@ export default function ClientHomeScreen() {
       description: "Stuur een bericht naar je coach",
       icon: "chat" as const,
       color: bcctColors.gradientTeal,
+      route: null,
     },
     {
       id: "appointments",
@@ -294,6 +297,7 @@ export default function ClientHomeScreen() {
       description: "Bekijk aankomende sessies",
       icon: "calendar-today" as const,
       color: bcctColors.primaryOrangeLight,
+      route: null,
     },
   ];
 
@@ -463,7 +467,13 @@ export default function ClientHomeScreen() {
               <TouchableOpacity
                 key={action.id}
                 style={[styles.actionCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-                onPress={() => console.log("Action pressed:", action.id)}
+                onPress={() => {
+                  if (action.route) {
+                    router.push(action.route);
+                  } else {
+                    console.log("Action pressed:", action.id);
+                  }
+                }}
               >
                 <View style={[styles.actionIcon, { backgroundColor: action.color + "20" }]}>
                   <IconSymbol

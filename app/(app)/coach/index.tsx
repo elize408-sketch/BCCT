@@ -15,6 +15,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { IconSymbol } from "@/components/IconSymbol";
 import { useRouter } from "expo-router";
 import { authenticatedGet } from "@/utils/api";
+import { bcctColors, bcctTypography } from "@/styles/bcctTheme";
 
 interface CoachClient {
   id: string;
@@ -49,17 +50,14 @@ export default function CoachDashboardScreen() {
   const fetchDashboardData = async () => {
     console.log("[Coach] Fetching dashboard data");
     try {
-      // Fetch clients
       const clientsData = await authenticatedGet<CoachClient[]>("/api/coach/clients");
       console.log("[Coach] Clients loaded", clientsData);
       setClients(clientsData);
 
-      // Fetch programs
       const programsData = await authenticatedGet<any[]>("/api/coach/programs");
       console.log("[Coach] Programs loaded", programsData);
       setPrograms(programsData);
 
-      // Fetch appointments
       const appointmentsData = await authenticatedGet<any[]>("/api/coach/appointments");
       console.log("[Coach] Appointments loaded", appointmentsData);
       setAppointments(appointmentsData);
@@ -89,11 +87,16 @@ export default function CoachDashboardScreen() {
   const activeClients = clients.filter(c => c.status === "active").length;
   const clientsWithAlerts = clients.filter(c => c.alerts && c.alerts.length > 0).length;
 
+  const activeClientsText = activeClients.toString();
+  const clientsWithAlertsText = clientsWithAlerts.toString();
+  const programsCountText = programs.length.toString();
+  const appointmentsCountText = appointments.length.toString();
+
   const stats = [
-    { label: "Actieve Cliënten", value: activeClients.toString(), icon: "person" as const, color: "#6366f1" },
-    { label: "Waarschuwingen", value: clientsWithAlerts.toString(), icon: "warning" as const, color: "#ef4444" },
-    { label: "Programma's", value: programs.length.toString(), icon: "school" as const, color: "#10b981" },
-    { label: "Afspraken", value: appointments.length.toString(), icon: "calendar-today" as const, color: "#f59e0b" },
+    { label: "Actieve Cliënten", value: activeClientsText, icon: "person" as const, color: "#6366f1" },
+    { label: "Waarschuwingen", value: clientsWithAlertsText, icon: "warning" as const, color: "#ef4444" },
+    { label: "Programma's", value: programsCountText, icon: "school" as const, color: "#10b981" },
+    { label: "Afspraken", value: appointmentsCountText, icon: "calendar-today" as const, color: "#f59e0b" },
   ];
 
   const quickActions = [
@@ -102,24 +105,28 @@ export default function CoachDashboardScreen() {
       title: "Bekijk Cliënten",
       description: "Beheer je cliëntenlijst",
       icon: "group" as const,
+      route: "/(app)/coach/clients" as const,
+    },
+    {
+      id: "modules",
+      title: "Modules",
+      description: "Beheer thema's en vragen",
+      icon: "folder" as const,
+      route: "/(app)/coach/modules" as const,
     },
     {
       id: "programs",
       title: "Programma's",
       description: "Maak en beheer programma's",
       icon: "school" as const,
+      route: null,
     },
     {
       id: "appointments",
       title: "Afspraken",
       description: "Plan en beheer sessies",
       icon: "event" as const,
-    },
-    {
-      id: "messages",
-      title: "Berichten",
-      description: "Chat met cliënten",
-      icon: "chat" as const,
+      route: null,
     },
   ];
 
@@ -127,11 +134,14 @@ export default function CoachDashboardScreen() {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={["top"]}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
         </View>
       </SafeAreaView>
     );
   }
+
+  const greetingText = "Coach Dashboard";
+  const userName = user?.name || "Welkom";
 
   return (
     <>
@@ -139,11 +149,11 @@ export default function CoachDashboardScreen() {
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
             <View>
-              <Text style={[styles.greeting, { color: colors.text, opacity: 0.7 }]}>Coach Dashboard</Text>
-              <Text style={[styles.name, { color: colors.text }]}>{user?.name || "Welkom"}</Text>
+              <Text style={[styles.greeting, { color: bcctColors.textSecondary }]}>{greetingText}</Text>
+              <Text style={[styles.name, { color: colors.text }]}>{userName}</Text>
             </View>
             <TouchableOpacity
-              style={[styles.signOutButton, { backgroundColor: colors.card }]}
+              style={[styles.signOutButton, { backgroundColor: colors.card, borderColor: colors.border }]}
               onPress={handleSignOut}
               disabled={signingOut}
             >
@@ -160,7 +170,7 @@ export default function CoachDashboardScreen() {
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Overzicht</Text>
           <View style={styles.statsGrid}>
             {stats.map((stat, index) => (
-              <View key={index} style={[styles.statCard, { backgroundColor: colors.card }]}>
+              <View key={index} style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <View style={[styles.statIcon, { backgroundColor: stat.color + "20" }]}>
                   <IconSymbol
                     ios_icon_name="star"
@@ -170,7 +180,7 @@ export default function CoachDashboardScreen() {
                   />
                 </View>
                 <Text style={[styles.statValue, { color: colors.text }]}>{stat.value}</Text>
-                <Text style={[styles.statLabel, { color: colors.text, opacity: 0.6 }]}>
+                <Text style={[styles.statLabel, { color: bcctColors.textSecondary }]}>
                   {stat.label}
                 </Text>
               </View>
@@ -184,18 +194,24 @@ export default function CoachDashboardScreen() {
             {quickActions.map((action) => (
               <TouchableOpacity
                 key={action.id}
-                style={[styles.actionCard, { backgroundColor: colors.card }]}
-                onPress={() => console.log("Action pressed:", action.id)}
+                style={[styles.actionCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                onPress={() => {
+                  if (action.route) {
+                    router.push(action.route);
+                  } else {
+                    console.log("Action pressed:", action.id);
+                  }
+                }}
               >
                 <IconSymbol
                   ios_icon_name="star"
                   android_material_icon_name={action.icon}
                   size={28}
-                  color={colors.primary}
+                  color={bcctColors.primaryOrange}
                 />
                 <View style={styles.actionContent}>
                   <Text style={[styles.actionTitle, { color: colors.text }]}>{action.title}</Text>
-                  <Text style={[styles.actionDescription, { color: colors.text, opacity: 0.6 }]}>
+                  <Text style={[styles.actionDescription, { color: bcctColors.textSecondary }]}>
                     {action.description}
                   </Text>
                 </View>
@@ -212,7 +228,7 @@ export default function CoachDashboardScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={[styles.infoText, { color: colors.text, opacity: 0.6 }]}>
+          <Text style={[styles.infoText, { color: bcctColors.textSecondary }]}>
             Dit is je coach dashboard. Beheer je cliënten, maak programma&apos;s, plan afspraken,
             en monitor de voortgang van cliënten.
           </Text>
@@ -228,11 +244,11 @@ export default function CoachDashboardScreen() {
       animationOut="fadeOut"
       backdropOpacity={0.5}
     >
-      <View style={styles.modalContent}>
-        <Text style={styles.modalTitle}>{modalTitle}</Text>
-        <Text style={styles.modalMessage}>{modalMessage}</Text>
+      <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+        <Text style={[styles.modalTitle, { color: bcctColors.primaryOrange }]}>{modalTitle}</Text>
+        <Text style={[styles.modalMessage, { color: bcctColors.textSecondary }]}>{modalMessage}</Text>
         <TouchableOpacity
-          style={styles.modalButton}
+          style={[styles.modalButton, { backgroundColor: bcctColors.primaryOrange }]}
           onPress={() => setModalVisible(false)}
         >
           <Text style={styles.modalButtonText}>OK</Text>
@@ -260,19 +276,20 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 32,
+    marginTop: 20,
   },
   greeting: {
-    fontSize: 14,
+    ...bcctTypography.small,
     marginBottom: 4,
   },
   name: {
-    fontSize: 28,
-    fontWeight: "bold",
+    ...bcctTypography.h1,
   },
   signOutButton: {
     width: 48,
     height: 48,
     borderRadius: 24,
+    borderWidth: 1,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -280,8 +297,7 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
+    ...bcctTypography.h3,
     marginBottom: 16,
   },
   statsGrid: {
@@ -293,8 +309,14 @@ const styles = StyleSheet.create({
     width: "48%",
     padding: 16,
     borderRadius: 16,
+    borderWidth: 1,
     alignItems: "center",
     gap: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   statIcon: {
     width: 48,
@@ -304,11 +326,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   statValue: {
-    fontSize: 28,
-    fontWeight: "bold",
+    ...bcctTypography.h1,
   },
   statLabel: {
-    fontSize: 12,
+    ...bcctTypography.small,
     textAlign: "center",
   },
   actionsGrid: {
@@ -319,52 +340,51 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 16,
     borderRadius: 16,
+    borderWidth: 1,
     gap: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   actionContent: {
     flex: 1,
     gap: 4,
   },
   actionTitle: {
-    fontSize: 16,
-    fontWeight: "600",
+    ...bcctTypography.bodyMedium,
   },
   actionDescription: {
-    fontSize: 14,
+    ...bcctTypography.small,
   },
   infoText: {
-    fontSize: 14,
-    lineHeight: 20,
+    ...bcctTypography.body,
+    lineHeight: 24,
   },
   modalContent: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
+    borderRadius: 20,
     padding: 24,
     alignItems: "center",
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
+    ...bcctTypography.h3,
     marginBottom: 12,
-    color: "#ef4444",
   },
   modalMessage: {
-    fontSize: 16,
+    ...bcctTypography.body,
     textAlign: "center",
     marginBottom: 24,
-    color: "#666",
   },
   modalButton: {
-    backgroundColor: "#ef4444",
+    borderRadius: 12,
     paddingHorizontal: 32,
     paddingVertical: 12,
-    borderRadius: 8,
     minWidth: 100,
   },
   modalButtonText: {
     color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
+    ...bcctTypography.button,
     textAlign: "center",
   },
 });
