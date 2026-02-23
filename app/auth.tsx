@@ -34,6 +34,7 @@ export default function AuthScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [modalTitle, setModalTitle] = useState('');
@@ -57,7 +58,7 @@ export default function AuthScreen() {
   }
 
   const handleEmailAuth = async () => {
-    console.log('[Auth] handleEmailAuth called, mode:', mode);
+    console.log('[Auth] handleEmailAuth called, mode:', mode, 'role:', selectedRole, 'inviteCode:', inviteCode ? 'provided' : 'empty');
     
     if (!email) {
       showModal('Fout', 'Voer je e-mailadres in');
@@ -134,8 +135,107 @@ export default function AuthScreen() {
         setPassword('');
         setConfirmPassword('');
       } else {
+        // Sign in mode
         console.log('[Auth] Signing in user with role:', selectedRole);
-        await signInWithPassword(email, password, selectedRole);
+        
+        // Step 1: Sign in with Supabase Auth
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        if (signInError) {
+          console.error('[Auth] Sign in error:', signInError);
+          throw signInError;
+        }
+
+        if (!signInData.user) {
+          throw new Error('Sign in failed - no user returned');
+        }
+
+        console.log('[Auth] User signed in successfully:', signInData.user.id);
+
+        // Step 2: Ensure profile exists (upsert without overwriting role if user chose Coach)
+        const existingProfileQuery = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', signInData.user.id)
+          .single();
+
+        const existingRole = existingProfileQuery.data?.role;
+        console.log('[Auth] Existing profile role:', existingRole);
+
+        // Only set role if profile doesn't exist OR if user chose client
+        const profileData: any = {
+          id: signInData.user.id,
+          created_at: new Date().toISOString(),
+        };
+
+        // Don't overwrite role if user chose Coach and profile already exists
+        if (!existingRole || selectedRole === 'client') {
+          profileData.role = selectedRole;
+        }
+
+        console.log('[Auth] Upserting profile:', profileData);
+
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .upsert(profileData, { onConflict: 'id' });
+
+        if (profileError) {
+          console.error('[Auth] Profile upsert error:', profileError);
+        }
+
+        // Step 3: Claim invite code if provided and role is client
+        if (selectedRole === 'client' && inviteCode.trim()) {
+          console.log('[Auth] Claiming invite code:', inviteCode.trim());
+          
+          try {
+            const { data: claimData, error: claimError } = await supabase.rpc('claim_invite', {
+              p_code: inviteCode.trim(),
+            });
+
+            if (claimError) {
+              console.error('[Auth] Claim invite error:', claimError);
+              
+              // Check for specific error messages
+              if (claimError.message.includes('Invalid invite code') || claimError.message.includes('not found')) {
+                throw new Error('Code ongeldig. Controleer de code van je coach.');
+              }
+              
+              throw claimError;
+            }
+
+            console.log('[Auth] Invite claimed successfully:', claimData);
+          } catch (claimErr: any) {
+            console.error('[Auth] Invite claim failed:', claimErr);
+            
+            // Show user-friendly error but don't block login
+            showModal('Fout', claimErr.message || 'Code kon niet worden gekoppeld. Neem contact op met je coach.');
+            setLoading(false);
+            return;
+          }
+        }
+
+        // Step 4: Fetch fresh profile and route to correct home
+        console.log('[Auth] Fetching fresh profile for routing...');
+        const { data: freshProfile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', signInData.user.id)
+          .single();
+
+        const finalRole = freshProfile?.role || selectedRole;
+        console.log('[Auth] Final role for routing:', finalRole);
+
+        // Route based on role
+        if (finalRole === 'coach') {
+          console.log('[Auth] Routing to coach home');
+          router.replace('/(app)/coach');
+        } else {
+          console.log('[Auth] Routing to client home');
+          router.replace('/(app)/client');
+        }
       }
     } catch (error: any) {
       console.error('[Auth] Error:', error);
@@ -157,10 +257,13 @@ export default function AuthScreen() {
   };
 
   const handleSocialAuth = async (provider: 'google' | 'apple') => {
-    console.log('[Auth] Social auth initiated:', provider, 'with role:', selectedRole);
+    console.log('[Auth] Social auth initiated:', provider, 'with role:', selectedRole, 'inviteCode:', inviteCode ? 'provided' : 'empty');
     
-    // Store selected role in AsyncStorage before OAuth redirect
+    // Store selected role and invite code in AsyncStorage before OAuth redirect
     await AsyncStorage.setItem('pendingRole', selectedRole);
+    if (inviteCode.trim()) {
+      await AsyncStorage.setItem('pendingInviteCode', inviteCode.trim());
+    }
     
     setLoading(true);
     try {
@@ -188,6 +291,8 @@ export default function AuthScreen() {
   const roleText = mode === 'signup' 
     ? (selectedRole === 'client' ? 'Registreer als Cliënt' : 'Registreer als Coach')
     : (selectedRole === 'client' ? 'Log in als cliënt' : 'Log in als coach');
+
+  const showInviteCodeInput = mode === 'signin' && selectedRole === 'client';
 
   return (
     <>
@@ -332,6 +437,35 @@ export default function AuthScreen() {
             />
           )}
 
+          {showInviteCodeInput && (
+            <View style={styles.inviteCodeContainer}>
+              <TextInput
+                style={[
+                  styles.input,
+                  styles.inviteCodeInput,
+                  {
+                    backgroundColor: inputBackgroundColor,
+                    borderColor: inputBorderColor,
+                    color: inputTextColor,
+                  },
+                ]}
+                placeholder="Bijv. COACH-PATRICIA"
+                placeholderTextColor={secondaryTextColor}
+                value={inviteCode}
+                onChangeText={setInviteCode}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                maxLength={40}
+              />
+              <Text style={[styles.inviteCodeLabel, { color: secondaryTextColor }]}>
+                Coach code (optioneel)
+              </Text>
+              <Text style={[styles.inviteCodeHelper, { color: secondaryTextColor }]}>
+                Met deze code word je gekoppeld aan je coach.
+              </Text>
+            </View>
+          )}
+
           <TouchableOpacity
             style={[styles.primaryButtonContainer, loading && styles.buttonDisabled]}
             onPress={handleEmailAuth}
@@ -445,7 +579,7 @@ const styles = StyleSheet.create({
   },
   brandingHeader: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   welcomeText: {
     ...bcctTypography.small,
@@ -456,7 +590,7 @@ const styles = StyleSheet.create({
     height: 72,
   },
   roleContainer: {
-    marginBottom: 20,
+    marginBottom: 16,
   },
   roleSelector: {
     flexDirection: 'row',
@@ -499,7 +633,7 @@ const styles = StyleSheet.create({
   },
   title: {
     ...bcctTypography.h2,
-    marginBottom: 20,
+    marginBottom: 16,
     textAlign: 'center',
   },
   input: {
@@ -507,11 +641,28 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 16,
-    marginBottom: 12,
+    marginBottom: 10,
     ...bcctTypography.body,
   },
+  inviteCodeContainer: {
+    marginBottom: 2,
+  },
+  inviteCodeInput: {
+    marginBottom: 4,
+  },
+  inviteCodeLabel: {
+    ...bcctTypography.small,
+    marginBottom: 2,
+    marginLeft: 4,
+  },
+  inviteCodeHelper: {
+    ...bcctTypography.small,
+    fontSize: 11,
+    marginBottom: 8,
+    marginLeft: 4,
+  },
   primaryButtonContainer: {
-    marginTop: 8,
+    marginTop: 6,
     borderRadius: 12,
     overflow: 'hidden',
   },
@@ -528,7 +679,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   switchModeButton: {
-    marginTop: 12,
+    marginTop: 10,
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'center',
@@ -543,7 +694,7 @@ const styles = StyleSheet.create({
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 16,
+    marginVertical: 14,
   },
   dividerLine: {
     flex: 1,

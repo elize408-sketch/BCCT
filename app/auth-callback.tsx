@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { useTheme } from '@react-navigation/native';
 import { supabase } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { bcctColors } from '@/styles/bcctTheme';
 
 export default function AuthCallbackScreen() {
   const router = useRouter();
@@ -23,6 +24,7 @@ export default function AuthCallbackScreen() {
           
           // Check if there's a pending role from social login
           const pendingRole = await AsyncStorage.getItem('pendingRole');
+          const pendingInviteCode = await AsyncStorage.getItem('pendingInviteCode');
           
           if (pendingRole) {
             console.log('[AuthCallback] Found pending role:', pendingRole);
@@ -59,6 +61,28 @@ export default function AuthCallbackScreen() {
               console.log('[AuthCallback] Profile already exists:', existingProfile);
             }
             
+            // Claim invite code if provided and role is client
+            if (pendingRole === 'client' && pendingInviteCode) {
+              console.log('[AuthCallback] Claiming invite code:', pendingInviteCode);
+              
+              try {
+                const { data: claimData, error: claimError } = await supabase.rpc('claim_invite', {
+                  p_code: pendingInviteCode,
+                });
+
+                if (claimError) {
+                  console.error('[AuthCallback] Claim invite error:', claimError);
+                } else {
+                  console.log('[AuthCallback] Invite claimed successfully:', claimData);
+                }
+              } catch (claimErr) {
+                console.error('[AuthCallback] Invite claim failed:', claimErr);
+              }
+              
+              // Clean up the pending invite code
+              await AsyncStorage.removeItem('pendingInviteCode');
+            }
+            
             // Clean up the pending role
             await AsyncStorage.removeItem('pendingRole');
           }
@@ -82,8 +106,8 @@ export default function AuthCallbackScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ActivityIndicator size="large" color={colors.primary} />
-      <Text style={[styles.text, { color: colors.text }]}>Completing sign in...</Text>
+      <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
+      <Text style={[styles.text, { color: colors.text }]}>Inloggen voltooien...</Text>
     </View>
   );
 }
