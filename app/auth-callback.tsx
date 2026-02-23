@@ -24,10 +24,11 @@ export default function AuthCallbackScreen() {
           
           // Check if there's a pending role from social login
           const pendingRole = await AsyncStorage.getItem('pendingRole');
+          const pendingMode = await AsyncStorage.getItem('pendingMode');
           const pendingInviteCode = await AsyncStorage.getItem('pendingInviteCode');
           
           if (pendingRole) {
-            console.log('[AuthCallback] Found pending role:', pendingRole);
+            console.log('[AuthCallback] Found pending role:', pendingRole, 'mode:', pendingMode, 'inviteCode:', pendingInviteCode ? 'provided' : 'empty');
             
             // Check if profile already exists
             const { data: existingProfile } = await supabase
@@ -66,25 +67,48 @@ export default function AuthCallbackScreen() {
               console.log('[AuthCallback] Claiming invite code:', pendingInviteCode);
               
               try {
-                const { data: claimData, error: claimError } = await supabase.rpc('claim_invite', {
+                const { data: claimData, error: claimError } = await supabase.rpc('claim_client_invite', {
                   p_code: pendingInviteCode,
                 });
 
                 if (claimError) {
                   console.error('[AuthCallback] Claim invite error:', claimError);
+                  
+                  // If this was a signup and invite claim failed, sign out the user
+                  if (pendingMode === 'signup') {
+                    console.error('[AuthCallback] Signup with invalid invite code - signing out user');
+                    await supabase.auth.signOut();
+                    await AsyncStorage.removeItem('pendingRole');
+                    await AsyncStorage.removeItem('pendingMode');
+                    await AsyncStorage.removeItem('pendingInviteCode');
+                    router.replace('/auth');
+                    return;
+                  }
                 } else {
                   console.log('[AuthCallback] Invite claimed successfully:', claimData);
                 }
               } catch (claimErr) {
                 console.error('[AuthCallback] Invite claim failed:', claimErr);
+                
+                // If this was a signup and invite claim failed, sign out the user
+                if (pendingMode === 'signup') {
+                  console.error('[AuthCallback] Signup with invalid invite code - signing out user');
+                  await supabase.auth.signOut();
+                  await AsyncStorage.removeItem('pendingRole');
+                  await AsyncStorage.removeItem('pendingMode');
+                  await AsyncStorage.removeItem('pendingInviteCode');
+                  router.replace('/auth');
+                  return;
+                }
               }
               
               // Clean up the pending invite code
               await AsyncStorage.removeItem('pendingInviteCode');
             }
             
-            // Clean up the pending role
+            // Clean up the pending role and mode
             await AsyncStorage.removeItem('pendingRole');
+            await AsyncStorage.removeItem('pendingMode');
           }
         }
         

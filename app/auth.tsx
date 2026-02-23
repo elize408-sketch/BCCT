@@ -34,7 +34,8 @@ export default function AuthScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
-  const [inviteCode, setInviteCode] = useState('');
+  const [signupInviteCode, setSignupInviteCode] = useState('');
+  const [loginInviteCode, setLoginInviteCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [modalTitle, setModalTitle] = useState('');
@@ -85,7 +86,14 @@ export default function AuthScreen() {
     setLoading(true);
     try {
       if (mode === 'signup') {
-        console.log('[Auth] Signing up user with role:', selectedRole);
+        console.log('[Auth] Signing up user with role:', selectedRole, 'inviteCode:', signupInviteCode ? 'provided' : 'empty');
+        
+        // Validate invite code for clients
+        if (selectedRole === 'client' && !signupInviteCode.trim()) {
+          showModal('Fout', 'Coachcode is verplicht voor cliënten');
+          setLoading(false);
+          return;
+        }
         
         // Step 1: Sign up with Supabase Auth
         const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
@@ -126,6 +134,33 @@ export default function AuthScreen() {
           console.log('[Auth] Profile created successfully');
         }
 
+        // Step 3: Claim invite code if client
+        if (selectedRole === 'client' && signupInviteCode.trim()) {
+          console.log('[Auth] Claiming invite code during signup:', signupInviteCode.trim());
+          
+          try {
+            const { data: claimData, error: claimError } = await supabase.rpc('claim_client_invite', {
+              p_code: signupInviteCode.trim().toUpperCase(),
+            });
+
+            if (claimError) {
+              console.error('[Auth] Claim invite error:', claimError);
+              
+              // Delete the user account since invite claim failed
+              await supabase.auth.signOut();
+              
+              throw new Error('Coachcode ongeldig of verlopen. Controleer de code en probeer opnieuw.');
+            }
+
+            console.log('[Auth] Invite claimed successfully during signup:', claimData);
+          } catch (claimErr: any) {
+            console.error('[Auth] Invite claim failed:', claimErr);
+            setLoading(false);
+            showModal('Fout', claimErr.message || 'Coachcode ongeldig of verlopen');
+            return;
+          }
+        }
+
         showModal(
           'Gelukt',
           'Account succesvol aangemaakt! Je kunt nu inloggen.',
@@ -134,6 +169,7 @@ export default function AuthScreen() {
         setMode('signin');
         setPassword('');
         setConfirmPassword('');
+        setSignupInviteCode('');
       } else {
         // Sign in mode
         console.log('[Auth] Signing in user with role:', selectedRole);
@@ -186,13 +222,13 @@ export default function AuthScreen() {
           console.error('[Auth] Profile upsert error:', profileError);
         }
 
-        // Step 3: Claim invite code if provided and role is client
-        if (selectedRole === 'client' && inviteCode.trim()) {
-          console.log('[Auth] Claiming invite code:', inviteCode.trim());
+        // Step 3: Claim invite code if provided and role is client (optional on login)
+        if (selectedRole === 'client' && loginInviteCode.trim()) {
+          console.log('[Auth] Claiming invite code on login:', loginInviteCode.trim());
           
           try {
-            const { data: claimData, error: claimError } = await supabase.rpc('claim_invite', {
-              p_code: inviteCode.trim(),
+            const { data: claimData, error: claimError } = await supabase.rpc('claim_client_invite', {
+              p_code: loginInviteCode.trim().toUpperCase(),
             });
 
             if (claimError) {
@@ -206,7 +242,7 @@ export default function AuthScreen() {
               throw claimError;
             }
 
-            console.log('[Auth] Invite claimed successfully:', claimData);
+            console.log('[Auth] Invite claimed successfully on login:', claimData);
           } catch (claimErr: any) {
             console.error('[Auth] Invite claim failed:', claimErr);
             
@@ -257,12 +293,20 @@ export default function AuthScreen() {
   };
 
   const handleSocialAuth = async (provider: 'google' | 'apple') => {
-    console.log('[Auth] Social auth initiated:', provider, 'with role:', selectedRole, 'inviteCode:', inviteCode ? 'provided' : 'empty');
+    const inviteCodeToUse = mode === 'signup' ? signupInviteCode : loginInviteCode;
+    console.log('[Auth] Social auth initiated:', provider, 'with role:', selectedRole, 'mode:', mode, 'inviteCode:', inviteCodeToUse ? 'provided' : 'empty');
+    
+    // Validate invite code for client signup
+    if (mode === 'signup' && selectedRole === 'client' && !inviteCodeToUse.trim()) {
+      showModal('Fout', 'Coachcode is verplicht voor cliënten');
+      return;
+    }
     
     // Store selected role and invite code in AsyncStorage before OAuth redirect
     await AsyncStorage.setItem('pendingRole', selectedRole);
-    if (inviteCode.trim()) {
-      await AsyncStorage.setItem('pendingInviteCode', inviteCode.trim());
+    await AsyncStorage.setItem('pendingMode', mode);
+    if (inviteCodeToUse.trim()) {
+      await AsyncStorage.setItem('pendingInviteCode', inviteCodeToUse.trim().toUpperCase());
     }
     
     setLoading(true);
@@ -292,7 +336,8 @@ export default function AuthScreen() {
     ? (selectedRole === 'client' ? 'Registreer als Cliënt' : 'Registreer als Coach')
     : (selectedRole === 'client' ? 'Log in als cliënt' : 'Log in als coach');
 
-  const showInviteCodeInput = mode === 'signin' && selectedRole === 'client';
+  const showSignupInviteCodeInput = mode === 'signup' && selectedRole === 'client';
+  const showLoginInviteCodeInput = mode === 'signin' && selectedRole === 'client';
 
   return (
     <>
@@ -437,8 +482,11 @@ export default function AuthScreen() {
             />
           )}
 
-          {showInviteCodeInput && (
+          {showSignupInviteCodeInput && (
             <View style={styles.inviteCodeContainer}>
+              <Text style={[styles.inviteCodeLabel, { color: secondaryTextColor }]}>
+                Coachcode *
+              </Text>
               <TextInput
                 style={[
                   styles.input,
@@ -451,17 +499,43 @@ export default function AuthScreen() {
                 ]}
                 placeholder="Bijv. COACH-PATRICIA"
                 placeholderTextColor={secondaryTextColor}
-                value={inviteCode}
-                onChangeText={setInviteCode}
+                value={signupInviteCode}
+                onChangeText={setSignupInviteCode}
                 autoCapitalize="characters"
                 autoCorrect={false}
                 maxLength={40}
               />
-              <Text style={[styles.inviteCodeLabel, { color: secondaryTextColor }]}>
-                Coach code (optioneel)
-              </Text>
               <Text style={[styles.inviteCodeHelper, { color: secondaryTextColor }]}>
-                Met deze code word je gekoppeld aan je coach.
+                Vraag je coach om een uitnodigingscode
+              </Text>
+            </View>
+          )}
+
+          {showLoginInviteCodeInput && (
+            <View style={styles.inviteCodeContainer}>
+              <Text style={[styles.inviteCodeLabel, { color: secondaryTextColor }]}>
+                Coachcode (optioneel)
+              </Text>
+              <TextInput
+                style={[
+                  styles.input,
+                  styles.inviteCodeInput,
+                  {
+                    backgroundColor: inputBackgroundColor,
+                    borderColor: inputBorderColor,
+                    color: inputTextColor,
+                  },
+                ]}
+                placeholder="Bijv. COACH-PATRICIA"
+                placeholderTextColor={secondaryTextColor}
+                value={loginInviteCode}
+                onChangeText={setLoginInviteCode}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                maxLength={40}
+              />
+              <Text style={[styles.inviteCodeHelper, { color: secondaryTextColor }]}>
+                Met deze code word je gekoppeld aan je coach
               </Text>
             </View>
           )}
@@ -492,6 +566,8 @@ export default function AuthScreen() {
               setMode(mode === 'signup' ? 'signin' : 'signup');
               setPassword('');
               setConfirmPassword('');
+              setSignupInviteCode('');
+              setLoginInviteCode('');
             }}
           >
             <Text style={[styles.switchModeText, { color: secondaryTextColor }]}>
@@ -645,15 +721,16 @@ const styles = StyleSheet.create({
     ...bcctTypography.body,
   },
   inviteCodeContainer: {
-    marginBottom: 2,
+    marginBottom: 4,
   },
   inviteCodeInput: {
     marginBottom: 4,
   },
   inviteCodeLabel: {
     ...bcctTypography.small,
-    marginBottom: 2,
+    marginBottom: 6,
     marginLeft: 4,
+    fontWeight: '600',
   },
   inviteCodeHelper: {
     ...bcctTypography.small,
