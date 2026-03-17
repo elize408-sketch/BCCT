@@ -631,12 +631,7 @@ export default function ClientHomeScreen() {
           router.push("/(app)/client/settings");
         }} />
 
-        <View style={styles.section}>
-          <Text style={[styles.infoText, { color: bcctColors.textSecondary }]}>
-            Dit is je cliënt dashboard. Voltooi je dagelijkse check-in, werk aan je programmataken,
-            en blijf in contact met je coach.
-          </Text>
-        </View>
+
       </ScrollView>
     </SafeAreaView>
 
