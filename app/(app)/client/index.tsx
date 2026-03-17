@@ -1,11 +1,13 @@
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
+  Animated,
+  ScrollView,
 } from "react-native";
 import Modal from "react-native-modal";
 import { useTheme } from "@react-navigation/native";
@@ -14,6 +16,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { IconSymbol } from "@/components/IconSymbol";
 import { useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
+import Slider from "@react-native-community/slider";
+import { Send } from "lucide-react-native";
 import { bcctColors, bcctTypography, getSliderColor, getEnergyLabel, getStressLabel, getSleepLabel } from "@/styles/bcctTheme";
 
 interface CheckinData {
@@ -87,6 +91,16 @@ export default function ClientHomeScreen() {
   const [modalTitle, setModalTitle] = useState("");
   const [modalMessage, setModalMessage] = useState("");
 
+  // Inline edit state
+  const [editExpanded, setEditExpanded] = useState(false);
+  const [editEnergy, setEditEnergy] = useState(50);
+  const [editStress, setEditStress] = useState(50);
+  const [editSleep, setEditSleep] = useState(50);
+  const [saving, setSaving] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  const expandAnim = useRef(new Animated.Value(0)).current;
+
   const showModal = (title: string, message: string) => {
     setModalTitle(title);
     setModalMessage(message);
@@ -139,8 +153,12 @@ export default function ClientHomeScreen() {
 
       if (data) {
         console.log("[Client] Today's check-in found", data);
-        setCheckinData({ energy: data.energy, stress: data.stress, sleep: data.sleep });
+        const loaded: CheckinData = { energy: data.energy, stress: data.stress, sleep: data.sleep };
+        setCheckinData(loaded);
         setTodayCheckinSaved(true);
+        setEditEnergy(data.energy);
+        setEditStress(data.stress);
+        setEditSleep(data.sleep);
       }
     } catch (error: any) {
       console.error("[Client] Error fetching today's check-in", error);
@@ -155,6 +173,162 @@ export default function ClientHomeScreen() {
       router.push(tile.route as any);
     } else {
       showModal("Binnenkort beschikbaar", `${tile.title} is binnenkort beschikbaar.`);
+    }
+  };
+
+  const toggleEdit = () => {
+    const toExpand = !editExpanded;
+    console.log("[Client] Check-in card edit toggled:", toExpand ? "expanded" : "collapsed");
+    setEditExpanded(toExpand);
+    Animated.spring(expandAnim, {
+      toValue: toExpand ? 1 : 0,
+      useNativeDriver: false,
+      tension: 60,
+      friction: 10,
+    }).start();
+  };
+
+  const saveInlineCheckin = async () => {
+    console.log("[Client] Saving inline check-in — energy:", editEnergy, "stress:", editStress, "sleep:", editSleep);
+    setSaving(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData?.session?.user) {
+        showModal("Fout", "Je bent niet ingelogd");
+        return;
+      }
+      const today = new Date().toISOString().split("T")[0];
+
+      const { error } = await supabase
+        .from("checkins")
+        .upsert(
+          {
+            user_id: sessionData.session.user.id,
+            date: today,
+            energy: editEnergy,
+            stress: editStress,
+            sleep: editSleep,
+            mood: 5,
+          },
+          { onConflict: "user_id,date" }
+        );
+
+      if (error) {
+        console.error("[Client] Error saving inline check-in", error);
+        showModal("Fout", "Kon check-in niet opslaan");
+        return;
+      }
+
+      console.log("[Client] Inline check-in saved successfully");
+      setCheckinData({ energy: editEnergy, stress: editStress, sleep: editSleep });
+      setTodayCheckinSaved(true);
+      toggleEdit();
+    } catch (err: any) {
+      console.error("[Client] Unexpected error saving inline check-in", err);
+      showModal("Fout", "Kon check-in niet opslaan");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const sendToCoach = async () => {
+    const energy = checkinData?.energy ?? editEnergy;
+    const stress = checkinData?.stress ?? editStress;
+    const sleep = checkinData?.sleep ?? editSleep;
+
+    const energyScaled = Math.round(energy / 10);
+    const stressScaled = Math.round(stress / 10);
+    const sleepScaled = Math.round(sleep / 10);
+
+    const messageBody = `📊 Check-in van vandaag:\n• Energie: ${energyScaled}/10\n• Stress: ${stressScaled}/10\n• Slaap: ${sleepScaled}/10`;
+
+    console.log("[Client] Stuur naar coach pressed — message:", messageBody);
+    setSending(true);
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData?.session?.user) {
+        showModal("Fout", "Je bent niet ingelogd");
+        return;
+      }
+      const userId = sessionData.session.user.id;
+
+      // Find or create conversation with coach
+      const { data: existingConvs, error: convError } = await supabase
+        .from("conversations")
+        .select("id")
+        .eq("client_id", userId)
+        .limit(1);
+
+      if (convError) {
+        console.error("[Client] Error fetching conversations for send-to-coach", convError);
+        showModal("Fout", "Kon gesprek niet vinden");
+        return;
+      }
+
+      let conversationId: string | null = null;
+
+      if (existingConvs && existingConvs.length > 0) {
+        conversationId = existingConvs[0].id;
+        console.log("[Client] Using existing conversation:", conversationId);
+      } else {
+        // No conversation yet — find linked coach and create one
+        const { data: coachLinks, error: coachError } = await supabase
+          .from("coach_clients")
+          .select("coach_id")
+          .eq("client_id", userId)
+          .eq("status", "active")
+          .limit(1);
+
+        if (coachError || !coachLinks || coachLinks.length === 0) {
+          console.warn("[Client] No linked coach found for send-to-coach");
+          showModal("Geen coach", "Je hebt nog geen gekoppelde coach. Ga naar Chat om een gesprek te starten.");
+          return;
+        }
+
+        const coachId = coachLinks[0].coach_id;
+        console.log("[Client] Creating new conversation with coach:", coachId);
+
+        const { data: newConv, error: insertError } = await supabase
+          .from("conversations")
+          .insert({ coach_id: coachId, client_id: userId })
+          .select("id")
+          .single();
+
+        if (insertError || !newConv) {
+          console.error("[Client] Error creating conversation", insertError);
+          showModal("Fout", "Kon gesprek niet aanmaken");
+          return;
+        }
+
+        conversationId = newConv.id;
+        console.log("[Client] New conversation created:", conversationId);
+      }
+
+      // Send the message
+      console.log("[Client] Sending check-in message to conversation:", conversationId);
+      const { error: msgError } = await supabase
+        .from("messages")
+        .insert({
+          conversation_id: conversationId,
+          sender_id: userId,
+          body: messageBody,
+          created_at: new Date().toISOString(),
+        });
+
+      if (msgError) {
+        console.error("[Client] Error sending check-in message", msgError);
+        showModal("Fout", "Kon bericht niet versturen");
+        return;
+      }
+
+      console.log("[Client] Check-in message sent successfully");
+      showModal("Verstuurd ✓", "Je check-in is naar je coach gestuurd.");
+    } catch (err: any) {
+      console.error("[Client] Unexpected error in sendToCoach", err);
+      showModal("Fout", "Kon bericht niet versturen");
+    } finally {
+      setSending(false);
     }
   };
 
@@ -175,8 +349,15 @@ export default function ClientHomeScreen() {
   const stressValue = checkinData?.stress ?? 0;
   const sleepValue = checkinData?.sleep ?? 0;
 
-  const checkinStatusText = todayCheckinSaved ? "Vandaag opgeslagen" : "Nog niet ingevuld";
-  const checkinStatusColor = todayCheckinSaved ? bcctColors.success : bcctColors.textSecondary;
+  const energyLabel = getEnergyLabel(editEnergy);
+  const stressLabel = getStressLabel(editStress);
+  const sleepLabel = getSleepLabel(editSleep);
+
+  const energyColor = getSliderColor(editEnergy, "energy");
+  const stressColor = getSliderColor(editStress, "stress");
+  const sleepColor = getSliderColor(editSleep, "sleep");
+
+  const editButtonLabel = editExpanded ? "Sluiten" : "Aanpassen";
 
   return (
     <>
@@ -190,100 +371,242 @@ export default function ClientHomeScreen() {
         </View>
 
         {/* Check-in summary card */}
-        <TouchableOpacity
-          style={[styles.checkinCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-          onPress={() => {
-            console.log("[Client] Check-in card pressed, navigating to checkin");
-            router.push("/(app)/client/checkin");
-          }}
-          activeOpacity={0.75}
-        >
+        <View style={[styles.checkinCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           {/* Card header */}
           <View style={styles.checkinCardHeader}>
-            <Text style={styles.checkinCardLabel}>Vandaag opgeslagen</Text>
-            {todayCheckinSaved && (
-              <IconSymbol
-                ios_icon_name="checkmark.circle.fill"
-                android_material_icon_name="check-circle"
-                size={18}
-                color={bcctColors.success}
-              />
+            <View style={styles.checkinCardHeaderLeft}>
+              <Text style={styles.checkinCardLabel}>Vandaag opgeslagen</Text>
+              {todayCheckinSaved && (
+                <IconSymbol
+                  ios_icon_name="checkmark.circle.fill"
+                  android_material_icon_name="check-circle"
+                  size={18}
+                  color={bcctColors.success}
+                />
+              )}
+            </View>
+            {todayCheckinSaved && !checkinLoading && (
+              <TouchableOpacity
+                style={styles.editButton}
+                onPress={toggleEdit}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.editButtonText}>{editButtonLabel}</Text>
+              </TouchableOpacity>
             )}
           </View>
 
           {checkinLoading ? (
             <ActivityIndicator size="small" color={bcctColors.primaryOrange} style={{ marginTop: 12 }} />
           ) : todayCheckinSaved && checkinData ? (
-            <View style={styles.checkinMetrics}>
-              {/* Energie */}
-              <View style={styles.checkinMetricRow}>
-                <Text style={[styles.checkinMetricName, { color: bcctColors.textSecondary }]}>Energie</Text>
-                <View style={styles.checkinMetricRight}>
-                  <View style={[styles.checkinMetricBar, { backgroundColor: bcctColors.borderGray }]}>
-                    <View
-                      style={[
-                        styles.checkinMetricFill,
-                        {
-                          width: `${energyValue}%` as any,
-                          backgroundColor: getSliderColor(energyValue, "energy"),
-                        },
-                      ]}
-                    />
+            <>
+              {/* Static metric bars (collapsed view) */}
+              {!editExpanded && (
+                <View style={styles.checkinMetrics}>
+                  {/* Energie */}
+                  <View style={styles.checkinMetricRow}>
+                    <Text style={[styles.checkinMetricName, { color: bcctColors.textSecondary }]}>Energie</Text>
+                    <View style={styles.checkinMetricRight}>
+                      <View style={[styles.checkinMetricBar, { backgroundColor: bcctColors.borderGray }]}>
+                        <View
+                          style={[
+                            styles.checkinMetricFill,
+                            {
+                              width: `${energyValue}%` as any,
+                              backgroundColor: getSliderColor(energyValue, "energy"),
+                            },
+                          ]}
+                        />
+                      </View>
+                      <Text style={[styles.checkinMetricLabel, { color: getSliderColor(energyValue, "energy") }]}>
+                        {getEnergyLabel(energyValue)}
+                      </Text>
+                    </View>
                   </View>
-                  <Text style={[styles.checkinMetricLabel, { color: getSliderColor(energyValue, "energy") }]}>
-                    {getEnergyLabel(energyValue)}
-                  </Text>
-                </View>
-              </View>
 
-              {/* Stress */}
-              <View style={styles.checkinMetricRow}>
-                <Text style={[styles.checkinMetricName, { color: bcctColors.textSecondary }]}>Stress</Text>
-                <View style={styles.checkinMetricRight}>
-                  <View style={[styles.checkinMetricBar, { backgroundColor: bcctColors.borderGray }]}>
-                    <View
-                      style={[
-                        styles.checkinMetricFill,
-                        {
-                          width: `${stressValue}%` as any,
-                          backgroundColor: getSliderColor(stressValue, "stress"),
-                        },
-                      ]}
-                    />
+                  {/* Stress */}
+                  <View style={styles.checkinMetricRow}>
+                    <Text style={[styles.checkinMetricName, { color: bcctColors.textSecondary }]}>Stress</Text>
+                    <View style={styles.checkinMetricRight}>
+                      <View style={[styles.checkinMetricBar, { backgroundColor: bcctColors.borderGray }]}>
+                        <View
+                          style={[
+                            styles.checkinMetricFill,
+                            {
+                              width: `${stressValue}%` as any,
+                              backgroundColor: getSliderColor(stressValue, "stress"),
+                            },
+                          ]}
+                        />
+                      </View>
+                      <Text style={[styles.checkinMetricLabel, { color: getSliderColor(stressValue, "stress") }]}>
+                        {getStressLabel(stressValue)}
+                      </Text>
+                    </View>
                   </View>
-                  <Text style={[styles.checkinMetricLabel, { color: getSliderColor(stressValue, "stress") }]}>
-                    {getStressLabel(stressValue)}
-                  </Text>
-                </View>
-              </View>
 
-              {/* Slaap */}
-              <View style={styles.checkinMetricRow}>
-                <Text style={[styles.checkinMetricName, { color: bcctColors.textSecondary }]}>Slaap</Text>
-                <View style={styles.checkinMetricRight}>
-                  <View style={[styles.checkinMetricBar, { backgroundColor: bcctColors.borderGray }]}>
-                    <View
-                      style={[
-                        styles.checkinMetricFill,
-                        {
-                          width: `${sleepValue}%` as any,
-                          backgroundColor: getSliderColor(sleepValue, "sleep"),
-                        },
-                      ]}
+                  {/* Slaap */}
+                  <View style={styles.checkinMetricRow}>
+                    <Text style={[styles.checkinMetricName, { color: bcctColors.textSecondary }]}>Slaap</Text>
+                    <View style={styles.checkinMetricRight}>
+                      <View style={[styles.checkinMetricBar, { backgroundColor: bcctColors.borderGray }]}>
+                        <View
+                          style={[
+                            styles.checkinMetricFill,
+                            {
+                              width: `${sleepValue}%` as any,
+                              backgroundColor: getSliderColor(sleepValue, "sleep"),
+                            },
+                          ]}
+                        />
+                      </View>
+                      <Text style={[styles.checkinMetricLabel, { color: getSliderColor(sleepValue, "sleep") }]}>
+                        {getSleepLabel(sleepValue)}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              )}
+
+              {/* Expanded inline sliders */}
+              {editExpanded && (
+                <View style={styles.slidersContainer}>
+                  {/* Energie slider */}
+                  <View style={styles.sliderRow}>
+                    <View style={styles.sliderLabelRow}>
+                      <Text style={[styles.sliderName, { color: colors.text }]}>Energie</Text>
+                      <Text style={[styles.sliderValueText, { color: energyColor }]}>{energyLabel}</Text>
+                    </View>
+                    <View style={[styles.sliderTrack, { backgroundColor: colors.border }]}>
+                      <View
+                        style={[
+                          styles.sliderFill,
+                          { width: `${editEnergy}%` as any, backgroundColor: energyColor },
+                        ]}
+                      />
+                    </View>
+                    <Slider
+                      style={styles.slider}
+                      minimumValue={0}
+                      maximumValue={100}
+                      step={1}
+                      value={editEnergy}
+                      onValueChange={(v) => {
+                        setEditEnergy(Math.round(v));
+                      }}
+                      minimumTrackTintColor="transparent"
+                      maximumTrackTintColor="transparent"
+                      thumbTintColor={energyColor}
                     />
                   </View>
-                  <Text style={[styles.checkinMetricLabel, { color: getSliderColor(sleepValue, "sleep") }]}>
-                    {getSleepLabel(sleepValue)}
-                  </Text>
+
+                  {/* Stress slider */}
+                  <View style={styles.sliderRow}>
+                    <View style={styles.sliderLabelRow}>
+                      <Text style={[styles.sliderName, { color: colors.text }]}>Stress</Text>
+                      <Text style={[styles.sliderValueText, { color: stressColor }]}>{stressLabel}</Text>
+                    </View>
+                    <View style={[styles.sliderTrack, { backgroundColor: colors.border }]}>
+                      <View
+                        style={[
+                          styles.sliderFill,
+                          { width: `${editStress}%` as any, backgroundColor: stressColor },
+                        ]}
+                      />
+                    </View>
+                    <Slider
+                      style={styles.slider}
+                      minimumValue={0}
+                      maximumValue={100}
+                      step={1}
+                      value={editStress}
+                      onValueChange={(v) => {
+                        setEditStress(Math.round(v));
+                      }}
+                      minimumTrackTintColor="transparent"
+                      maximumTrackTintColor="transparent"
+                      thumbTintColor={stressColor}
+                    />
+                  </View>
+
+                  {/* Slaap slider */}
+                  <View style={styles.sliderRow}>
+                    <View style={styles.sliderLabelRow}>
+                      <Text style={[styles.sliderName, { color: colors.text }]}>Slaap</Text>
+                      <Text style={[styles.sliderValueText, { color: sleepColor }]}>{sleepLabel}</Text>
+                    </View>
+                    <View style={[styles.sliderTrack, { backgroundColor: colors.border }]}>
+                      <View
+                        style={[
+                          styles.sliderFill,
+                          { width: `${editSleep}%` as any, backgroundColor: sleepColor },
+                        ]}
+                      />
+                    </View>
+                    <Slider
+                      style={styles.slider}
+                      minimumValue={0}
+                      maximumValue={100}
+                      step={1}
+                      value={editSleep}
+                      onValueChange={(v) => {
+                        setEditSleep(Math.round(v));
+                      }}
+                      minimumTrackTintColor="transparent"
+                      maximumTrackTintColor="transparent"
+                      thumbTintColor={sleepColor}
+                    />
+                  </View>
+
+                  {/* Save button */}
+                  <TouchableOpacity
+                    style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+                    onPress={saveInlineCheckin}
+                    disabled={saving}
+                    activeOpacity={0.8}
+                  >
+                    {saving ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.saveButtonText}>Opslaan</Text>
+                    )}
+                  </TouchableOpacity>
                 </View>
-              </View>
-            </View>
+              )}
+
+              {/* Send to coach button — always visible when check-in exists */}
+              {!editExpanded && (
+                <TouchableOpacity
+                  style={[styles.sendButton, sending && styles.sendButtonDisabled]}
+                  onPress={sendToCoach}
+                  disabled={sending}
+                  activeOpacity={0.8}
+                >
+                  {sending ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <Send size={14} color="#fff" strokeWidth={2.5} />
+                      <Text style={styles.sendButtonText}>Stuur naar coach</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
+            </>
           ) : (
-            <Text style={[styles.checkinEmptyText, { color: bcctColors.textSecondary }]}>
-              Nog niet ingevuld vandaag — tik om in te vullen
-            </Text>
+            <TouchableOpacity
+              onPress={() => {
+                console.log("[Client] Check-in empty state tapped, navigating to checkin");
+                router.push("/(app)/client/checkin");
+              }}
+              activeOpacity={0.75}
+            >
+              <Text style={[styles.checkinEmptyText, { color: bcctColors.textSecondary }]}>
+                Nog niet ingevuld vandaag — tik om in te vullen
+              </Text>
+            </TouchableOpacity>
           )}
-        </TouchableOpacity>
+        </View>
 
         {/* Action grid — 2 columns × 3 rows */}
         <View style={styles.grid}>
@@ -376,12 +699,28 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 14,
   },
+  checkinCardHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
   checkinCardLabel: {
     fontSize: 12,
     fontWeight: "700",
     color: "#9AA5B4",
     textTransform: "uppercase",
     letterSpacing: 0.8,
+  },
+  editButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: bcctColors.primaryOrange + "18",
+  },
+  editButtonText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: bcctColors.primaryOrange,
   },
   checkinMetrics: {
     gap: 10,
@@ -423,6 +762,78 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 4,
   },
+  // Inline sliders
+  slidersContainer: {
+    gap: 4,
+  },
+  sliderRow: {
+    marginBottom: 4,
+  },
+  sliderLabelRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  sliderName: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  sliderValueText: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  sliderTrack: {
+    height: 6,
+    borderRadius: 3,
+    overflow: "hidden",
+    marginBottom: -34,
+    marginHorizontal: 2,
+  },
+  sliderFill: {
+    height: "100%",
+    borderRadius: 3,
+  },
+  slider: {
+    width: "100%",
+    height: 34,
+  },
+  saveButton: {
+    marginTop: 10,
+    backgroundColor: bcctColors.primaryOrange,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  saveButtonDisabled: {
+    backgroundColor: bcctColors.primaryOrangeDisabled,
+  },
+  saveButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  // Send to coach button
+  sendButton: {
+    marginTop: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: bcctColors.primaryOrange,
+    borderRadius: 10,
+    paddingVertical: 9,
+  },
+  sendButtonDisabled: {
+    backgroundColor: bcctColors.primaryOrangeDisabled,
+  },
+  sendButtonText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  // Grid
   grid: {
     flex: 1,
     flexDirection: "row",
