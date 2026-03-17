@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useState, useEffect } from "react";
 import { StyleSheet, View, Text, ScrollView, TouchableOpacity } from "react-native";
 import { useTheme } from "@react-navigation/native";
 import { useRouter } from "expo-router";
@@ -13,6 +13,27 @@ export default function HomeScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const [chatLoading, setChatLoading] = useState(false);
+  const [firstName, setFirstName] = useState('Cliënt');
+
+  useEffect(() => {
+    if (!user) return;
+    console.log('[HomeScreen] Fetching profile for first name, user:', user.id);
+    supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('id', user.id)
+      .single()
+      .then(({ data, error }) => {
+        if (error) {
+          console.warn('[HomeScreen] Could not fetch profile full_name:', error.message);
+          return;
+        }
+        const raw: string = data?.full_name ?? '';
+        const first = raw.trim().split(' ')[0] || 'Cliënt';
+        console.log('[HomeScreen] Resolved first name:', first);
+        setFirstName(first);
+      });
+  }, [user]);
 
   const handleViewAllCoaches = () => {
     console.log("[HomeScreen] View all coaches pressed");
@@ -127,6 +148,9 @@ export default function HomeScreen() {
         <Text style={[styles.greeting, { color: theme.colors.text }]}>
           Welkom terug
         </Text>
+        <Text style={[styles.name, { color: theme.colors.text }]}>
+          {firstName}
+        </Text>
         <Text style={[styles.subtitle, { color: bcctColors.textSecondary }]}>
           Hier is je overzicht van vandaag
         </Text>
@@ -191,7 +215,8 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: { paddingTop: 24, paddingBottom: 120 },
   header: { paddingHorizontal: 16, marginBottom: 16 },
-  greeting: { fontSize: 26, fontWeight: "700", marginBottom: 4 },
+  greeting: { fontSize: 26, fontWeight: "700", marginBottom: 2 },
+  name: { fontSize: 32, fontWeight: "800", marginBottom: 4 },
   subtitle: { fontSize: 15 },
   sectionCard: {
     backgroundColor: '#fff',
