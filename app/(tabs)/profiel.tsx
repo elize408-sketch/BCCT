@@ -8,25 +8,23 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stack, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useMyCoaches, CoachProfile } from '@/hooks/useMyCoaches';
 import { bcctColors } from '@/styles/bcctTheme';
 
 function CoachListItem({ coach }: { coach: CoachProfile }) {
-  const router = useRouter();
-
   const coachName = coach.full_name ?? 'Onbekende coach';
-  const coachOrg = coach.organization ?? coach.subtitle ?? null;
+  const coachSub = coach.organization ?? null;
 
   const handleBericht = () => {
-    console.log('[ProfielScreen] Tapped "Bericht" for coach:', coach.id, coachName);
-    router.push('/(tabs)/chat');
+    console.log('[ProfielScreen] Tapped "Bericht" for coach:', coach.coach_id, coachName);
+    Alert.alert('Bericht', 'Chat functie komt binnenkort');
   };
 
   const handleBekijkProfiel = () => {
-    console.log('[ProfielScreen] Tapped "Bekijk profiel" for coach:', coach.id, coachName);
-    Alert.alert('Coach profiel', 'Coach profielpagina komt binnenkort beschikbaar.');
+    console.log('[ProfielScreen] Tapped "Bekijk profiel" for coach:', coach.coach_id, coachName);
+    Alert.alert('Profiel', 'Coach profiel komt binnenkort');
   };
 
   return (
@@ -37,8 +35,8 @@ function CoachListItem({ coach }: { coach: CoachProfile }) {
         </View>
         <View style={styles.coachInfo}>
           <Text style={styles.coachName}>{coachName}</Text>
-          {coachOrg !== null && (
-            <Text style={styles.coachOrg}>{coachOrg}</Text>
+          {coachSub !== null && (
+            <Text style={styles.coachOrg}>{coachSub}</Text>
           )}
           <View style={styles.statusRow}>
             <View style={styles.statusDot} />
@@ -69,8 +67,10 @@ function CoachListItem({ coach }: { coach: CoachProfile }) {
 export default function ProfielScreen() {
   const { coaches, loading, error } = useMyCoaches();
 
+  console.log('[ProfielScreen] loading:', loading, 'error:', error?.message ?? null, 'coaches:', coaches.length);
+
   const hasCoaches = !loading && !error && coaches.length > 0;
-  const showEmpty = !loading && (error !== null || coaches.length === 0);
+  const showEmpty = !loading && coaches.length === 0;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -94,7 +94,7 @@ export default function ProfielScreen() {
 
             {showEmpty && (
               <View style={styles.emptyState}>
-                <Ionicons name="people-outline" size={32} color="#D1D5DB" />
+                <Ionicons name="person-outline" size={32} color="#D1D5DB" />
                 <Text style={styles.emptyText}>Nog geen coaches gekoppeld</Text>
               </View>
             )}

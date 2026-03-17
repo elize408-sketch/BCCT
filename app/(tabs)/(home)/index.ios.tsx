@@ -1,5 +1,5 @@
 import React from "react";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { StyleSheet, View, Text, ScrollView } from "react-native";
 import { useTheme } from "@react-navigation/native";
 import { HeaderRightButton, HeaderLeftButton } from "@/components/HeaderButtons";
@@ -8,6 +8,12 @@ import { bcctColors } from "@/styles/bcctTheme";
 
 export default function HomeScreen() {
   const theme = useTheme();
+  const router = useRouter();
+
+  const handleViewAllCoaches = () => {
+    console.log('[HomeScreen iOS] Navigating to profiel tab via CoachSummaryCard');
+    router.push('/(tabs)/profiel');
+  };
 
   return (
     <>
@@ -31,7 +37,7 @@ export default function HomeScreen() {
           </Text>
         </View>
 
-        <CoachSummaryCard />
+        <CoachSummaryCard onViewAll={handleViewAllCoaches} />
       </ScrollView>
     </>
   );

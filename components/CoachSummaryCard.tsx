@@ -1,15 +1,23 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { useMyCoaches } from '@/hooks/useMyCoaches';
 import { bcctColors } from '@/styles/bcctTheme';
 
-export default function CoachSummaryCard() {
-  const { coaches, loading, error } = useMyCoaches();
-  const router = useRouter();
+interface CoachSummaryCardProps {
+  onViewAll?: () => void;
+}
 
-  if (loading || error || coaches.length === 0) {
+export default function CoachSummaryCard({ onViewAll }: CoachSummaryCardProps) {
+  const { coaches, loading, error } = useMyCoaches();
+
+  console.log('[CoachSummaryCard] loading:', loading, 'error:', error?.message ?? null, 'coaches:', coaches.length);
+
+  if (loading || coaches.length === 0) {
+    return null;
+  }
+
+  if (error) {
     return null;
   }
 
@@ -19,19 +27,22 @@ export default function CoachSummaryCard() {
   const secondCoach = coaches[1] ?? null;
   const coachCountLabel = String(coaches.length) + ' actieve coaches';
   const firstCoachName = firstCoach.full_name ?? 'Onbekende coach';
-  const firstCoachOrg = firstCoach.organization ?? firstCoach.subtitle ?? null;
+  const firstCoachSub = firstCoach.organization ?? null;
   const secondCoachName = secondCoach ? (secondCoach.full_name ?? 'Onbekende coach') : null;
+  const iconName = isSingle ? 'person-circle-outline' : 'people-outline';
 
   const handleAllesbekijken = () => {
-    console.log('[CoachSummaryCard] Tapped "Alles bekijken" — navigating to profiel tab');
-    router.push('/(tabs)/profiel');
+    console.log('[CoachSummaryCard] Tapped "Alles bekijken"');
+    if (onViewAll) {
+      onViewAll();
+    }
   };
 
   return (
     <View style={styles.card}>
       <View style={styles.iconWrap}>
         <Ionicons
-          name={isSingle ? 'person-circle-outline' : 'people-outline'}
+          name={iconName}
           size={28}
           color={bcctColors.primaryOrange}
         />
@@ -43,8 +54,8 @@ export default function CoachSummaryCard() {
         {isSingle ? (
           <>
             <Text style={styles.coachName}>{firstCoachName}</Text>
-            {firstCoachOrg !== null && (
-              <Text style={styles.coachOrg}>{firstCoachOrg}</Text>
+            {firstCoachSub !== null && (
+              <Text style={styles.coachOrg}>{firstCoachSub}</Text>
             )}
           </>
         ) : (
@@ -77,7 +88,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     marginHorizontal: 16,
-    marginBottom: 16,
+    marginVertical: 8,
     flexDirection: 'row',
     alignItems: 'center',
     shadowColor: '#000',
