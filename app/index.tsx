@@ -32,7 +32,7 @@ export default function IndexScreen() {
   const checkAuthAndRedirect = async () => {
     if (!session) {
       console.log('[IndexScreen] No session, redirecting to auth');
-      setTimeout(() => router.replace('/auth'), 0);
+      setTimeout(() => router.replace('/auth'), 100);
       setChecking(false);
       return;
     }
@@ -48,7 +48,7 @@ export default function IndexScreen() {
 
       if (error || !profile) {
         console.log('[IndexScreen] No profile found, redirecting to onboarding');
-        router.replace('/onboarding');
+        setTimeout(() => router.replace('/onboarding'), 100);
         setChecking(false);
         return;
       }
@@ -56,7 +56,7 @@ export default function IndexScreen() {
       // Only redirect to coach-onboarding when role is explicitly 'coach' AND onboarding is incomplete
       if (profile.role === 'coach' && (!profile.onboarding_completed || !profile.full_name)) {
         console.log('[IndexScreen] Coach onboarding incomplete, redirecting to coach-onboarding');
-        router.replace('/coach-onboarding');
+        setTimeout(() => router.replace('/coach-onboarding'), 100);
         setChecking(false);
         return;
       }
@@ -64,7 +64,7 @@ export default function IndexScreen() {
       // For all other roles (or undefined role), redirect to generic onboarding if incomplete
       if (!profile.onboarding_completed || !profile.full_name) {
         console.log('[IndexScreen] Profile incomplete, redirecting to onboarding');
-        router.replace('/onboarding');
+        setTimeout(() => router.replace('/onboarding'), 100);
         setChecking(false);
         return;
       }
@@ -73,18 +73,18 @@ export default function IndexScreen() {
 
       // Role-based routing
       if (profile.role === 'client') {
-        router.replace('/(app)/client');
+        setTimeout(() => router.replace('/(app)/client'), 100);
       } else if (profile.role === 'coach') {
-        router.replace('/(app)/coach');
+        setTimeout(() => router.replace('/(app)/coach'), 100);
       } else if (profile.role === 'org_admin') {
-        router.replace('/(app)/org');
+        setTimeout(() => router.replace('/(app)/org'), 100);
       } else {
         console.log('[IndexScreen] Unknown role, redirecting to onboarding');
-        router.replace('/onboarding');
+        setTimeout(() => router.replace('/onboarding'), 100);
       }
     } catch (error) {
       console.error('[IndexScreen] Error checking profile:', error);
-      router.replace('/onboarding');
+      setTimeout(() => router.replace('/onboarding'), 100);
     } finally {
       setChecking(false);
     }

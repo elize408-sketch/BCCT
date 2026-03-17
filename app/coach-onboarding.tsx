@@ -41,7 +41,9 @@ export default function CoachOnboardingScreen() {
   React.useEffect(() => {
     if (!authLoading && !session) {
       console.log('[CoachOnboarding] No session after auth resolved, redirecting to auth');
-      setTimeout(() => router.replace('/auth'), 0);
+      setTimeout(() => {
+        router.replace('/auth');
+      }, 100);
     }
   }, [authLoading, session]);
 
@@ -173,7 +175,9 @@ export default function CoachOnboardingScreen() {
     const userId = session?.user?.id;
     if (!userId) {
       Alert.alert('Fout', 'Je bent niet ingelogd. Log opnieuw in.');
-      router.replace('/auth');
+      setTimeout(() => {
+        router.replace('/auth');
+      }, 100);
       return;
     }
 
@@ -200,7 +204,9 @@ export default function CoachOnboardingScreen() {
       }
 
       console.log('[CoachOnboarding] Profile saved, navigating to coach dashboard');
-      router.replace('/(app)/coach');
+      setTimeout(() => {
+        router.replace('/(app)/coach');
+      }, 100);
     } catch (err: any) {
       console.error('[CoachOnboarding] Unexpected error:', err.message);
       Alert.alert('Fout', 'Er is een onverwachte fout opgetreden. Probeer opnieuw.');
@@ -209,7 +215,7 @@ export default function CoachOnboardingScreen() {
     }
   };
 
-  // Guard: don't render until auth has resolved
+  // Guard: don't render until auth has resolved (or context not yet available)
   if (authLoading) {
     return (
       <SafeAreaView style={[styles.safeArea, { backgroundColor: colors?.background ?? '#F7F9FC' }]} edges={['top', 'bottom']}>

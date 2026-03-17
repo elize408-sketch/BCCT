@@ -144,10 +144,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
+const AUTH_DEFAULT: AuthContextType = {
+  user: null,
+  session: null,
+  loading: true,
+  signInWithPassword: async () => {},
+  signUpWithPassword: async () => {},
+  signInWithGoogle: async () => {},
+  signInWithApple: async () => {},
+  signOut: async () => {},
+};
+
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within AuthProvider');
+    // AuthProvider not yet mounted (Expo Router hydration race) — return safe defaults.
+    // loading: true ensures consumers wait before acting on session.
+    console.warn('[useAuth] Called outside AuthProvider — returning defaults');
+    return AUTH_DEFAULT;
   }
   return context;
 }
