@@ -75,11 +75,11 @@ export default function FloatingTabBar({ tabs }: FloatingTabBarProps) {
     router.push(route);
   };
 
-  const paddingBottom = insets.bottom > 0 ? insets.bottom : 12;
+  const safeBottom = insets.bottom;
 
   return (
-    <View style={[styles.container, { paddingBottom }]}>
-      <View style={styles.tabsRow}>
+    <View style={styles.container}>
+      <View style={[styles.tabsRow, { paddingBottom: safeBottom }]}>
         {tabs.map((tab, index) => {
           const isActive = activeTabIndex === index;
           if (!ICON_MAP[tab.icon] && !ICON_MAP[tab.name]) {
