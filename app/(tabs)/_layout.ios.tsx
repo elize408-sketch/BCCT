@@ -9,7 +9,7 @@ export default function TabLayout() {
         <Icon sf="house.fill" />
         <Label>Home</Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger key="chat" name="chat">
+      <NativeTabs.Trigger key="(chat)" name="(chat)">
         <Icon sf="message.circle.fill" />
         <Label>Chat</Label>
       </NativeTabs.Trigger>

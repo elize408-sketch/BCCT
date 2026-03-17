@@ -11,8 +11,8 @@ const tabs: TabBarItem[] = [
     label: 'Home',
   },
   {
-    name: 'chat',
-    route: '/(tabs)/chat',
+    name: '(chat)',
+    route: '/(tabs)/(chat)/',
     icon: 'chat',
     label: 'Chat',
   },
@@ -40,7 +40,7 @@ export default function TabLayout() {
         }}
       >
         <Stack.Screen name="(home)" />
-        <Stack.Screen name="chat" />
+        <Stack.Screen name="(chat)" />
         <Stack.Screen name="documenten" />
         <Stack.Screen name="profiel" />
       </Stack>

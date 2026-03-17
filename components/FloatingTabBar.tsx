@@ -54,10 +54,15 @@ export default function FloatingTabBar({ tabs }: FloatingTabBarProps) {
 
     tabs.forEach((tab, index) => {
       let score = 0;
-      if (pathname === tab.route) {
+      // Strip group parens for path matching (e.g. "(chat)" → "chat")
+      const strippedName = tab.name.replace(/^\((.+)\)$/, '$1');
+      const routeStr = tab.route as string;
+      if (pathname === routeStr) {
         score = 100;
-      } else if (pathname.startsWith(tab.route as string)) {
+      } else if (pathname.startsWith(routeStr)) {
         score = 80;
+      } else if (pathname.includes(strippedName)) {
+        score = 60;
       } else if (pathname.includes(tab.name)) {
         score = 60;
       }

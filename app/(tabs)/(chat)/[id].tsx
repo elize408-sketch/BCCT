@@ -10,13 +10,17 @@ import {
   Platform,
   ActivityIndicator,
   Image,
+  Pressable,
 } from 'react-native';
-import { Stack, useLocalSearchParams } from 'expo-router';
-import { Send } from 'lucide-react-native';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Send, ChevronLeft } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bcctColors } from '@/styles/bcctTheme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+// FloatingTabBar height constant (icon 40 + gap 4 + label ~14 + paddingTop 8 = ~66)
+const TAB_BAR_HEIGHT = 66;
 
 interface Message {
   id: string;
@@ -51,6 +55,7 @@ function getInitials(name: string): string {
 export default function ChatDetailScreen() {
   const { id, otherName } = useLocalSearchParams<{ id: string; otherName?: string }>();
   const { user } = useAuth();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
 
   const [messages, setMessages] = useState<Message[]>([]);
@@ -62,6 +67,9 @@ export default function ChatDetailScreen() {
   const flatListRef = useRef<FlatList>(null);
 
   const headerTitle = otherName ?? 'Chat';
+
+  // Bottom padding = tab bar height + safe area bottom
+  const inputBarBottomPadding = TAB_BAR_HEIGHT + (insets.bottom > 0 ? insets.bottom : 0) + 8;
 
   const loadMessages = useCallback(async () => {
     if (!id || !user) return;
@@ -183,7 +191,7 @@ export default function ChatDetailScreen() {
     const body = inputText.trim();
     if (!body || !user || !id || sending) return;
 
-    console.log('[ChatDetail] Sending message to conversation:', id, 'body length:', body.length);
+    console.log('[ChatDetail] Send button pressed, conversation:', id, 'body length:', body.length);
     setSending(true);
     setInputText('');
 
@@ -270,13 +278,26 @@ export default function ChatDetailScreen() {
     </View>
   );
 
-  const bottomPadding = insets.bottom > 0 ? insets.bottom : 16;
+  const backButton = (
+    <Pressable
+      onPress={() => {
+        console.log('[ChatDetail] Back button pressed');
+        router.back();
+      }}
+      style={styles.backButton}
+      hitSlop={8}
+    >
+      <ChevronLeft size={28} color={bcctColors.primaryOrange} strokeWidth={2} />
+    </Pressable>
+  );
 
   return (
     <>
       <Stack.Screen
         options={{
           title: headerTitle,
+          headerShown: true,
+          headerLeft: () => backButton,
           headerBackButtonDisplayMode: 'minimal',
         }}
       />
@@ -298,6 +319,7 @@ export default function ChatDetailScreen() {
             ListEmptyComponent={emptyComponent}
             contentContainerStyle={[
               styles.messageList,
+              { paddingBottom: inputBarBottomPadding + 72 },
               messages.length === 0 && styles.messageListEmpty,
             ]}
             onContentSizeChange={() => {
@@ -308,7 +330,7 @@ export default function ChatDetailScreen() {
           />
         )}
 
-        <View style={[styles.inputBar, { paddingBottom: bottomPadding }]}>
+        <View style={[styles.inputBar, { paddingBottom: inputBarBottomPadding }]}>
           <TextInput
             style={styles.textInput}
             value={inputText}
@@ -350,7 +372,6 @@ const styles = StyleSheet.create({
   messageList: {
     paddingHorizontal: 12,
     paddingTop: 12,
-    paddingBottom: 8,
   },
   messageListEmpty: {
     flex: 1,
@@ -459,6 +480,10 @@ const styles = StyleSheet.create({
     textAlign: 'left',
   },
   inputBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     alignItems: 'flex-end',
     paddingHorizontal: 12,
@@ -493,5 +518,10 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     backgroundColor: bcctColors.primaryOrangeDisabled,
+  },
+  backButton: {
+    paddingLeft: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
