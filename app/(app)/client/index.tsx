@@ -14,7 +14,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { IconSymbol } from "@/components/IconSymbol";
 import { useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
-import { bcctColors, bcctTypography } from "@/styles/bcctTheme";
+import { bcctColors, bcctTypography, getSliderColor, getEnergyLabel, getStressLabel, getSleepLabel } from "@/styles/bcctTheme";
 
 interface CheckinData {
   energy: number;
@@ -190,54 +190,100 @@ export default function ClientHomeScreen() {
         </View>
 
         {/* Check-in summary card */}
-        <View style={[styles.checkinCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          {checkinLoading ? (
-            <ActivityIndicator size="small" color={bcctColors.primaryOrange} />
-          ) : (
-            <TouchableOpacity
-              style={styles.checkinInner}
-              onPress={() => {
-                console.log("[Client] Check-in card pressed, navigating to checkin");
-                router.push("/(app)/client/checkin");
-              }}
-              activeOpacity={0.7}
-            >
-              <View style={styles.checkinLeft}>
-                <IconSymbol
-                  ios_icon_name={todayCheckinSaved ? "checkmark.circle.fill" : "circle"}
-                  android_material_icon_name={todayCheckinSaved ? "check-circle" : "radio-button-unchecked"}
-                  size={22}
-                  color={checkinStatusColor}
-                />
-                <Text style={[styles.checkinStatusText, { color: checkinStatusColor }]}>
-                  {checkinStatusText}
-                </Text>
-              </View>
-              {todayCheckinSaved && checkinData && (
-                <View style={styles.checkinValues}>
-                  <View style={styles.checkinValueItem}>
-                    <Text style={[styles.checkinValueLabel, { color: bcctColors.textSecondary }]}>E</Text>
-                    <Text style={[styles.checkinValueNum, { color: colors.text }]}>{energyValue}</Text>
-                  </View>
-                  <View style={styles.checkinValueItem}>
-                    <Text style={[styles.checkinValueLabel, { color: bcctColors.textSecondary }]}>S</Text>
-                    <Text style={[styles.checkinValueNum, { color: colors.text }]}>{stressValue}</Text>
-                  </View>
-                  <View style={styles.checkinValueItem}>
-                    <Text style={[styles.checkinValueLabel, { color: bcctColors.textSecondary }]}>Sl</Text>
-                    <Text style={[styles.checkinValueNum, { color: colors.text }]}>{sleepValue}</Text>
-                  </View>
-                </View>
-              )}
+        <TouchableOpacity
+          style={[styles.checkinCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+          onPress={() => {
+            console.log("[Client] Check-in card pressed, navigating to checkin");
+            router.push("/(app)/client/checkin");
+          }}
+          activeOpacity={0.75}
+        >
+          {/* Card header */}
+          <View style={styles.checkinCardHeader}>
+            <Text style={styles.checkinCardLabel}>Vandaag opgeslagen</Text>
+            {todayCheckinSaved && (
               <IconSymbol
-                ios_icon_name="chevron.right"
-                android_material_icon_name="chevron-right"
-                size={16}
-                color={bcctColors.textSecondary}
+                ios_icon_name="checkmark.circle.fill"
+                android_material_icon_name="check-circle"
+                size={18}
+                color={bcctColors.success}
               />
-            </TouchableOpacity>
+            )}
+          </View>
+
+          {checkinLoading ? (
+            <ActivityIndicator size="small" color={bcctColors.primaryOrange} style={{ marginTop: 12 }} />
+          ) : todayCheckinSaved && checkinData ? (
+            <View style={styles.checkinMetrics}>
+              {/* Energie */}
+              <View style={styles.checkinMetricRow}>
+                <Text style={[styles.checkinMetricName, { color: bcctColors.textSecondary }]}>Energie</Text>
+                <View style={styles.checkinMetricRight}>
+                  <View style={[styles.checkinMetricBar, { backgroundColor: bcctColors.borderGray }]}>
+                    <View
+                      style={[
+                        styles.checkinMetricFill,
+                        {
+                          width: `${energyValue}%` as any,
+                          backgroundColor: getSliderColor(energyValue, "energy"),
+                        },
+                      ]}
+                    />
+                  </View>
+                  <Text style={[styles.checkinMetricLabel, { color: getSliderColor(energyValue, "energy") }]}>
+                    {getEnergyLabel(energyValue)}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Stress */}
+              <View style={styles.checkinMetricRow}>
+                <Text style={[styles.checkinMetricName, { color: bcctColors.textSecondary }]}>Stress</Text>
+                <View style={styles.checkinMetricRight}>
+                  <View style={[styles.checkinMetricBar, { backgroundColor: bcctColors.borderGray }]}>
+                    <View
+                      style={[
+                        styles.checkinMetricFill,
+                        {
+                          width: `${stressValue}%` as any,
+                          backgroundColor: getSliderColor(stressValue, "stress"),
+                        },
+                      ]}
+                    />
+                  </View>
+                  <Text style={[styles.checkinMetricLabel, { color: getSliderColor(stressValue, "stress") }]}>
+                    {getStressLabel(stressValue)}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Slaap */}
+              <View style={styles.checkinMetricRow}>
+                <Text style={[styles.checkinMetricName, { color: bcctColors.textSecondary }]}>Slaap</Text>
+                <View style={styles.checkinMetricRight}>
+                  <View style={[styles.checkinMetricBar, { backgroundColor: bcctColors.borderGray }]}>
+                    <View
+                      style={[
+                        styles.checkinMetricFill,
+                        {
+                          width: `${sleepValue}%` as any,
+                          backgroundColor: getSliderColor(sleepValue, "sleep"),
+                        },
+                      ]}
+                    />
+                  </View>
+                  <Text style={[styles.checkinMetricLabel, { color: getSliderColor(sleepValue, "sleep") }]}>
+                    {getSleepLabel(sleepValue)}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          ) : (
+            <Text style={[styles.checkinEmptyText, { color: bcctColors.textSecondary }]}>
+              Nog niet ingevuld vandaag — tik om in te vullen
+            </Text>
           )}
-        </View>
+        </TouchableOpacity>
 
         {/* Action grid — 2 columns × 3 rows */}
         <View style={styles.grid}>
@@ -315,8 +361,8 @@ const styles = StyleSheet.create({
   checkinCard: {
     borderRadius: 16,
     borderWidth: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
     marginBottom: 20,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
@@ -324,37 +370,58 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 1,
   },
-  checkinInner: {
+  checkinCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 14,
+  },
+  checkinCardLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#9AA5B4",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  checkinMetrics: {
+    gap: 10,
+  },
+  checkinMetricRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  checkinMetricName: {
+    ...bcctTypography.body,
+    width: 60,
+  },
+  checkinMetricRight: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
+    marginLeft: 8,
   },
-  checkinLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+  checkinMetricBar: {
     flex: 1,
+    height: 6,
+    borderRadius: 3,
+    overflow: "hidden",
   },
-  checkinStatusText: {
-    ...bcctTypography.bodyMedium,
+  checkinMetricFill: {
+    height: "100%",
+    borderRadius: 3,
   },
-  checkinValues: {
-    flexDirection: "row",
-    gap: 14,
-    marginRight: 4,
+  checkinMetricLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    width: 60,
+    textAlign: "right",
   },
-  checkinValueItem: {
-    alignItems: "center",
-    gap: 1,
-  },
-  checkinValueLabel: {
-    fontSize: 10,
-    fontWeight: "500",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  checkinValueNum: {
-    ...bcctTypography.bodyMedium,
+  checkinEmptyText: {
+    ...bcctTypography.body,
+    marginTop: 4,
+    marginBottom: 4,
   },
   grid: {
     flex: 1,
