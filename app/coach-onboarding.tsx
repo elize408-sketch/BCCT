@@ -1,5 +1,5 @@
 
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -35,7 +35,15 @@ const TOTAL_STEPS = 3;
 export default function CoachOnboardingScreen() {
   const { session, loading: authLoading } = useAuth();
   const router = useRouter();
-  const { colors } = useTheme();
+  const theme = useTheme();
+  const colors = theme?.colors ?? {
+    background: '#F7F9FC',
+    card: '#FFFFFF',
+    text: '#1F2937',
+    border: '#E6EAF0',
+    primary: '#F28C28',
+    notification: '#EF4444',
+  };
 
   // Redirect away if auth resolves with no session
   React.useEffect(() => {
