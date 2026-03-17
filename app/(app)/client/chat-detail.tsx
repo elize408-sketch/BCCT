@@ -287,10 +287,12 @@ export default function ClientChatDetailScreen() {
 
   // ── Layout values ─────────────────────────────────────────────────────────────
 
-  // FloatingTabBar is ~60px tall; add safe area bottom so input sits above it
-  const tabBarHeight = 60;
-  const inputBarBottomPadding = insets.bottom > 0 ? insets.bottom : 8;
-  const keyboardOffset = tabBarHeight + insets.bottom;
+  // FloatingTabBar: 8 paddingTop + 40 icon + 14 label + safeBottom ≈ 70px
+  // We add that as bottom padding on the input bar so it sits above the tab bar.
+  const TAB_BAR_HEIGHT = 70;
+  const inputBarBottomPadding = TAB_BAR_HEIGHT + insets.bottom;
+  // keyboardVerticalOffset = header height only (tab bar is handled by padding)
+  const keyboardOffset = Platform.OS === 'ios' ? 90 : 0;
 
   // ── Empty state ───────────────────────────────────────────────────────────────
 
