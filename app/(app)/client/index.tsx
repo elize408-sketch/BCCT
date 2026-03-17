@@ -15,7 +15,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { IconSymbol } from "@/components/IconSymbol";
 import { useRouter } from "expo-router";
-import { authenticatedGet } from "@/utils/api";
 import { supabase } from "@/lib/supabase";
 import Slider from "@react-native-community/slider";
 import { LinearGradient } from "expo-linear-gradient";
@@ -113,6 +112,7 @@ export default function ClientHomeScreen() {
   const { user, signOut } = useAuth();
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
+  const [sessionLoading, setSessionLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [homeData, setHomeData] = useState<HomeData | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -138,20 +138,89 @@ export default function ClientHomeScreen() {
     setModalVisible(true);
   };
 
+  // Session guard — runs once on mount, redirects to auth if no session
   useEffect(() => {
-    fetchHomeData();
-    fetchTodayCheckin();
+    const checkSession = async () => {
+      console.log("[Client] Checking session before loading home data");
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn("[Client] No active session found, redirecting to /auth");
+        router.replace("/auth");
+        return;
+      }
+      console.log("[Client] Session confirmed for user:", session.user.id);
+      setSessionLoading(false);
+    };
+    checkSession();
   }, []);
 
+  // Only fetch data once the session is confirmed
+  useEffect(() => {
+    if (!sessionLoading) {
+      fetchHomeData();
+      fetchTodayCheckin();
+    }
+  }, [sessionLoading]);
+
   const fetchHomeData = async () => {
-    console.log("[Client] Fetching home data from GET /api/client/home");
+    console.log("[Client] Fetching home data via Supabase");
     try {
-      const data = await authenticatedGet<HomeData>("/api/client/home");
-      console.log("[Client] Home data loaded", data);
-      setHomeData(data);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn("[Client] Session lost before fetchHomeData, redirecting");
+        router.replace("/auth");
+        return;
+      }
+
+      const today = new Date().toISOString().split("T")[0];
+      const userId = session.user.id;
+
+      // Fetch checkin status, next appointment, and unread chat count in parallel
+      const [checkinResult, appointmentResult, chatResult] = await Promise.all([
+        supabase
+          .from("checkins")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("date", today)
+          .maybeSingle(),
+        supabase
+          .from("appointments")
+          .select("id, scheduled_at, title")
+          .eq("client_id", userId)
+          .gte("scheduled_at", new Date().toISOString())
+          .order("scheduled_at", { ascending: true })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from("messages")
+          .select("id", { count: "exact", head: true })
+          .eq("recipient_id", userId)
+          .eq("read", false),
+      ]);
+
+      if (checkinResult.error) {
+        console.error("[Client] Error fetching checkin status:", checkinResult.error.message);
+      }
+      if (appointmentResult.error) {
+        console.error("[Client] Error fetching next appointment:", appointmentResult.error.message);
+      }
+      if (chatResult.error) {
+        console.error("[Client] Error fetching unread chat count:", chatResult.error.message);
+      }
+
+      const assembled: HomeData = {
+        checkinStatus: checkinResult.data ? "Voltooid" : "Niet voltooid",
+        currentWeek: null,
+        nextTask: null,
+        nextAppointment: appointmentResult.data ?? null,
+        unreadChatCount: chatResult.count ?? 0,
+      };
+
+      console.log("[Client] Home data assembled", assembled);
+      setHomeData(assembled);
     } catch (error: any) {
-      console.error("[Client] Error fetching home data", error);
-      showModal("Fout", "Kon thuisgegevens niet laden");
+      console.error("[Client] Unexpected error in fetchHomeData:", error);
+      showModal("Fout", error?.message || "Kon thuisgegevens niet laden");
     } finally {
       setLoading(false);
     }
@@ -301,7 +370,7 @@ export default function ClientHomeScreen() {
     },
   ];
 
-  if (loading) {
+  if (sessionLoading || loading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={["top"]}>
         <View style={styles.loadingContainer}>
