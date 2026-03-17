@@ -167,14 +167,11 @@ export default function CoachClientsScreen() {
       }
 
       console.log("[Coach Clients] Invite code created:", data);
-      
-      // The RPC returns just the code string
-      if (typeof data === 'string') {
-        setGeneratedInviteCode(data);
-      } else {
-        console.error("[Coach Clients] Unexpected data type from RPC:", typeof data);
-        setGeneratedInviteCode(String(data));
-      }
+
+      // RPC may return an object (row) or array — extract the code string correctly
+      const invite = Array.isArray(data) ? data[0] : data;
+      const code = typeof invite === 'string' ? invite : invite?.code ?? invite?.invite_code ?? String(invite);
+      setGeneratedInviteCode(code);
       
       setInviteCodeModalVisible(true);
       
