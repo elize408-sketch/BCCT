@@ -110,7 +110,7 @@ export default function ProfielScreen() {
             )}
 
             {hasCoaches && coaches.map((coach, index) => (
-              <View key={coach.coach_client_id}>
+              <View key={coach.coach_client_key}>
                 <CoachListItem coach={coach} />
                 {index < coaches.length - 1 && <View style={styles.divider} />}
               </View>

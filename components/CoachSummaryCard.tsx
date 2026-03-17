@@ -53,7 +53,7 @@ export function CoachSummaryCard({ onViewAll }: Props) {
             const isNotLast = index < visible.length - 1;
             return (
               <View
-                key={coach.coach_client_id}
+                key={coach.coach_client_key}
                 style={[styles.coachRow, isNotLast && styles.coachRowBorder]}
               >
                 <View style={styles.avatar}>

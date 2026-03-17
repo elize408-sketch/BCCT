@@ -156,7 +156,7 @@ export default function SettingsScreen() {
                   ? new Date(coach.started_at).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })
                   : null;
                 return (
-                  <View key={coach.coach_client_id} style={{ backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 }}>
+                  <View key={coach.coach_client_key} style={{ backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
                       <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#EBF4FF', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
                         <Ionicons name="person-outline" size={20} color="#4A90D9" />
