@@ -182,20 +182,32 @@ export default function ClientHomeScreen() {
           .select("id")
           .eq("user_id", userId)
           .eq("date", today)
-          .maybeSingle(),
+          .maybeSingle()
+          .catch((err: any) => {
+            console.error("[Client] Error fetching checkin status:", err?.message);
+            return { data: null, error: err };
+          }),
         supabase
           .from("appointments")
-          .select("id, scheduled_at, title")
+          .select("id, coach_id, client_id, starts_at, ends_at, status")
           .eq("client_id", userId)
-          .gte("scheduled_at", new Date().toISOString())
-          .order("scheduled_at", { ascending: true })
+          .gt("starts_at", new Date().toISOString())
+          .order("starts_at", { ascending: true })
           .limit(1)
-          .maybeSingle(),
+          .maybeSingle()
+          .catch((err: any) => {
+            console.error("[Client] Error fetching next appointment:", err?.message);
+            return { data: null, error: err };
+          }),
         supabase
           .from("messages")
           .select("id", { count: "exact", head: true })
-          .eq("recipient_id", userId)
-          .eq("read", false),
+          .is("read_at", null)
+          .neq("sender_id", userId)
+          .catch((err: any) => {
+            console.error("[Client] Error fetching unread chat count:", err?.message);
+            return { data: null, count: 0, error: err };
+          }),
       ]);
 
       if (checkinResult.error) {
