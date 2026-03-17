@@ -6,16 +6,20 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useMyCoaches, CoachProfile } from '@/hooks/useMyCoaches';
+import { useMyCoaches, CoachProfile } from '../../hooks/useMyCoaches';
 import { bcctColors } from '@/styles/bcctTheme';
 
 function CoachListItem({ coach }: { coach: CoachProfile }) {
   const coachName = coach.full_name ?? 'Onbekende coach';
-  const coachSub = coach.organization ?? null;
+  const startedAt = coach.started_at;
+  const startedAtDate = startedAt
+    ? new Date(startedAt).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })
+    : null;
 
   const handleBericht = () => {
     console.log('[ProfielScreen] Tapped "Bericht" for coach:', coach.coach_id, coachName);
@@ -31,17 +35,22 @@ function CoachListItem({ coach }: { coach: CoachProfile }) {
     <View style={styles.coachItem}>
       <View style={styles.coachItemTop}>
         <View style={styles.coachAvatarWrap}>
-          <Ionicons name="person-circle-outline" size={36} color={bcctColors.primaryOrange} />
+          <Ionicons name="person-circle-outline" size={36} color="#4A90D9" />
         </View>
         <View style={styles.coachInfo}>
           <Text style={styles.coachName}>{coachName}</Text>
-          {coachSub !== null && (
-            <Text style={styles.coachOrg}>{coachSub}</Text>
+          {startedAtDate !== null && (
+            <Text style={styles.coachOrg}>
+              Gekoppeld sinds {startedAtDate}
+            </Text>
           )}
           <View style={styles.statusRow}>
             <View style={styles.statusDot} />
             <Text style={styles.statusText}>Actief</Text>
           </View>
+        </View>
+        <View style={styles.activeBadge}>
+          <Text style={styles.activeBadgeText}>Actief</Text>
         </View>
       </View>
       <View style={styles.coachActions}>
@@ -65,12 +74,12 @@ function CoachListItem({ coach }: { coach: CoachProfile }) {
 }
 
 export default function ProfielScreen() {
-  const { coaches, loading, error } = useMyCoaches();
+  const { coaches, loading: coachesLoading, error } = useMyCoaches();
 
-  console.log('[ProfielScreen] loading:', loading, 'error:', error?.message ?? null, 'coaches:', coaches.length);
+  console.log('[ProfielScreen] loading:', coachesLoading, 'error:', error?.message ?? null, 'coaches:', coaches.length);
 
-  const hasCoaches = !loading && !error && coaches.length > 0;
-  const showEmpty = !loading && coaches.length === 0;
+  const hasCoaches = !coachesLoading && !error && coaches.length > 0;
+  const showEmpty = !coachesLoading && coaches.length === 0;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -81,13 +90,14 @@ export default function ProfielScreen() {
       >
         <Text style={styles.screenTitle}>Profiel</Text>
 
+        {/* Mijn coaches sectie */}
         <View style={styles.section}>
           <Text style={styles.sectionHeader}>Mijn coaches</Text>
 
           <View style={styles.card}>
-            {loading && (
+            {coachesLoading && (
               <View style={styles.emptyState}>
-                <Ionicons name="people-outline" size={32} color={bcctColors.textSecondary} />
+                <ActivityIndicator size="small" color="#4A90D9" />
                 <Text style={styles.emptyText}>Coaches laden...</Text>
               </View>
             )}
@@ -165,7 +175,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#FFF4E8',
+    backgroundColor: '#EBF4FF',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -199,6 +209,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     color: bcctColors.success,
+  },
+  activeBadge: {
+    backgroundColor: '#e8f5e9',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  activeBadgeText: {
+    fontSize: 12,
+    color: '#2e7d32',
+    fontWeight: '600',
   },
   coachActions: {
     flexDirection: 'row',

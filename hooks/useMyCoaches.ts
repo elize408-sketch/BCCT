@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/contexts/AuthContext';
+import { useEffect, useState } from 'react';
+import { supabase } from '../lib/supabase';
 
 export type CoachProfile = {
   coach_client_id: string;
@@ -10,7 +9,6 @@ export type CoachProfile = {
   org_id: string | null;
   full_name: string | null;
   avatar_url: string | null;
-  organization?: string | null;
 };
 
 export function useMyCoaches() {
@@ -18,68 +16,49 @@ export function useMyCoaches() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
-  const { user, session } = useAuth();
-  const userId = user?.id ?? session?.user?.id ?? null;
-
   useEffect(() => {
-    if (!userId) {
-      console.log('[useMyCoaches] No user ID available, skipping query');
-      setLoading(false);
-      setCoaches([]);
-      return;
-    }
-
     let cancelled = false;
 
-    const fetchCoaches = async () => {
-      console.log('[useMyCoaches] Fetching coaches for user:', userId);
-      setLoading(true);
-      setError(null);
-
+    const run = async () => {
       try {
-        // Step 1: Get active coach_clients rows for this client
+        // Get current session directly from supabase
+        const { data: { session } } = await supabase.auth.getSession();
+        const userId = session?.user?.id;
+
+        console.log('[useMyCoaches] userId from session:', userId);
+
+        if (!userId) {
+          console.log('[useMyCoaches] No userId, aborting');
+          if (!cancelled) setLoading(false);
+          return;
+        }
+
         const { data: links, error: linksError } = await supabase
           .from('coach_clients')
           .select('id, coach_id, client_id, org_id, status, started_at')
           .eq('client_id', userId)
           .eq('status', 'active');
 
-        console.log('[useMyCoaches] coach_clients result:', links, linksError);
+        console.log('[useMyCoaches] links:', JSON.stringify(links), 'error:', linksError);
 
-        if (linksError) throw new Error(linksError.message);
-
+        if (linksError) throw linksError;
         if (!links || links.length === 0) {
-          console.log('[useMyCoaches] No active coach links found');
-          if (!cancelled) {
-            setCoaches([]);
-            setLoading(false);
-          }
+          if (!cancelled) { setCoaches([]); setLoading(false); }
           return;
         }
 
-        // Step 2: Fetch profiles for each coach_id
-        const coachIds = links.map((l: { coach_id: string }) => l.coach_id);
-        console.log('[useMyCoaches] Fetching profiles for coach IDs:', coachIds);
-
+        const coachIds = links.map((l: any) => l.coach_id);
         const { data: profiles, error: profilesError } = await supabase
           .from('profiles')
-          .select('id, full_name, avatar_url, organization')
+          .select('id, full_name, avatar_url')
           .in('id', coachIds);
 
-        console.log('[useMyCoaches] profiles result:', profiles, profilesError);
+        console.log('[useMyCoaches] profiles:', JSON.stringify(profiles), 'error:', profilesError);
 
-        if (profilesError) throw new Error(profilesError.message);
+        if (profilesError) throw profilesError;
 
-        // Step 3: Merge
-        const merged: CoachProfile[] = (links as {
-          id: string;
-          coach_id: string;
-          client_id: string;
-          org_id: string | null;
-          status: string;
-          started_at: string | null;
-        }[]).map((link) => {
-          const profile = (profiles ?? []).find((p: { id: string }) => p.id === link.coach_id);
+        const merged: CoachProfile[] = links.map((link: any) => {
+          const profile = (profiles ?? []).find((p: any) => p.id === link.coach_id);
           return {
             coach_client_id: link.id,
             coach_id: link.coach_id,
@@ -88,29 +67,22 @@ export function useMyCoaches() {
             org_id: link.org_id ?? null,
             full_name: profile?.full_name ?? null,
             avatar_url: profile?.avatar_url ?? null,
-            organization: profile?.organization ?? null,
           };
         });
 
-        console.log('[useMyCoaches] Final merged coaches:', merged);
-
-        if (!cancelled) {
-          setCoaches(merged);
-          setLoading(false);
-        }
-      } catch (err) {
-        console.error('[useMyCoaches] Error:', err);
-        if (!cancelled) {
-          setError(err instanceof Error ? err : new Error(String(err)));
-          setCoaches([]);
-          setLoading(false);
-        }
+        console.log('[useMyCoaches] merged:', JSON.stringify(merged));
+        if (!cancelled) setCoaches(merged);
+      } catch (err: any) {
+        console.error('[useMyCoaches] error:', err);
+        if (!cancelled) setError(err);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     };
 
-    fetchCoaches();
+    run();
     return () => { cancelled = true; };
-  }, [userId]);
+  }, []);
 
   return { coaches, loading, error };
 }

@@ -1,148 +1,102 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useMyCoaches } from '@/hooks/useMyCoaches';
-import { bcctColors } from '@/styles/bcctTheme';
+import { useMyCoaches } from '../hooks/useMyCoaches';
 
-interface CoachSummaryCardProps {
+interface Props {
   onViewAll?: () => void;
 }
 
-export default function CoachSummaryCard({ onViewAll }: CoachSummaryCardProps) {
-  const { coaches, loading, error } = useMyCoaches();
+export function CoachSummaryCard({ onViewAll }: Props) {
+  const { coaches, loading } = useMyCoaches();
 
-  console.log('[CoachSummaryCard] loading:', loading, 'error:', error?.message ?? null, 'coaches:', coaches.length);
+  console.log('[CoachSummaryCard] loading:', loading, 'coaches:', coaches.length);
 
-  if (loading || coaches.length === 0) {
-    return null;
+  if (loading) {
+    return (
+      <View style={styles.card}>
+        <ActivityIndicator size="small" color="#4A90D9" />
+      </View>
+    );
   }
 
-  if (error) {
+  if (coaches.length === 0) {
     return null;
   }
 
   const isSingle = coaches.length === 1;
-  const cardTitle = isSingle ? 'Jouw coach' : 'Mijn coaches';
-  const firstCoach = coaches[0];
-  const secondCoach = coaches[1] ?? null;
+  const title = isSingle ? 'Jouw coach' : 'Mijn coaches';
+  const displayedCoaches = coaches.slice(0, 2);
+  const coachName = coaches[0].full_name ?? 'Coach';
+  const startedAt = coaches[0].started_at;
+  const startedAtDate = startedAt
+    ? new Date(startedAt).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })
+    : null;
   const coachCountLabel = String(coaches.length) + ' actieve coaches';
-  const firstCoachName = firstCoach.full_name ?? 'Onbekende coach';
-  const firstCoachSub = firstCoach.organization ?? null;
-  const secondCoachName = secondCoach ? (secondCoach.full_name ?? 'Onbekende coach') : null;
-  const iconName = isSingle ? 'person-circle-outline' : 'people-outline';
 
-  const handleAllesbekijken = () => {
+  const handleViewAll = () => {
     console.log('[CoachSummaryCard] Tapped "Alles bekijken"');
-    if (onViewAll) {
-      onViewAll();
-    }
+    if (onViewAll) onViewAll();
   };
 
   return (
     <View style={styles.card}>
-      <View style={styles.iconWrap}>
-        <Ionicons
-          name={iconName}
-          size={28}
-          color={bcctColors.primaryOrange}
-        />
+      <View style={styles.row}>
+        <View style={styles.iconWrap}>
+          <Ionicons name="person-circle-outline" size={28} color="#4A90D9" />
+        </View>
+        <View style={styles.content}>
+          <Text style={styles.title}>{title}</Text>
+          {isSingle ? (
+            <>
+              <Text style={styles.name}>{coachName}</Text>
+              {startedAtDate !== null && (
+                <Text style={styles.sub}>
+                  Gekoppeld sinds {startedAtDate}
+                </Text>
+              )}
+            </>
+          ) : (
+            <>
+              <Text style={styles.sub}>{coachCountLabel}</Text>
+              {displayedCoaches.map(c => (
+                <Text key={c.coach_client_id} style={styles.name}>{c.full_name ?? 'Coach'}</Text>
+              ))}
+              {onViewAll && (
+                <TouchableOpacity onPress={handleViewAll} style={styles.viewAllBtn}>
+                  <Text style={styles.viewAllText}>Alles bekijken</Text>
+                </TouchableOpacity>
+              )}
+            </>
+          )}
+        </View>
       </View>
-
-      <View style={styles.content}>
-        <Text style={styles.cardTitle}>{cardTitle}</Text>
-
-        {isSingle ? (
-          <>
-            <Text style={styles.coachName}>{firstCoachName}</Text>
-            {firstCoachSub !== null && (
-              <Text style={styles.coachOrg}>{firstCoachSub}</Text>
-            )}
-          </>
-        ) : (
-          <>
-            <Text style={styles.coachCount}>{coachCountLabel}</Text>
-            <Text style={styles.coachName}>{firstCoachName}</Text>
-            {secondCoachName !== null && (
-              <Text style={styles.coachName}>{secondCoachName}</Text>
-            )}
-          </>
-        )}
-      </View>
-
-      {!isSingle && (
-        <TouchableOpacity
-          style={styles.allesButton}
-          onPress={handleAllesbekijken}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.allesButtonText}>Alles bekijken</Text>
-        </TouchableOpacity>
-      )}
     </View>
   );
 }
 
+// Keep default export for backward compatibility with existing imports
+export default CoachSummaryCard;
+
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#fff',
     borderRadius: 16,
     padding: 16,
     marginHorizontal: 16,
     marginVertical: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
     shadowRadius: 8,
     elevation: 3,
   },
-  iconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#FFF4E8',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  content: {
-    flex: 1,
-    gap: 2,
-  },
-  cardTitle: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: bcctColors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 2,
-  },
-  coachName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: bcctColors.textPrimary,
-  },
-  coachOrg: {
-    fontSize: 13,
-    color: bcctColors.textSecondary,
-  },
-  coachCount: {
-    fontSize: 13,
-    color: bcctColors.textSecondary,
-    marginBottom: 2,
-  },
-  allesButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: bcctColors.primaryOrange,
-    marginLeft: 8,
-  },
-  allesButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: bcctColors.primaryOrange,
-  },
+  row: { flexDirection: 'row', alignItems: 'flex-start' },
+  iconWrap: { marginRight: 12, marginTop: 2 },
+  content: { flex: 1 },
+  title: { fontSize: 13, fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
+  name: { fontSize: 16, fontWeight: '700', color: '#1a1a1a', marginBottom: 2 },
+  sub: { fontSize: 13, color: '#888', marginBottom: 4 },
+  viewAllBtn: { marginTop: 8 },
+  viewAllText: { fontSize: 14, color: '#4A90D9', fontWeight: '600' },
 });
