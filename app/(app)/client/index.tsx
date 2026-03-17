@@ -182,11 +182,7 @@ export default function ClientHomeScreen() {
           .select("id")
           .eq("user_id", userId)
           .eq("date", today)
-          .maybeSingle()
-          .catch((err: any) => {
-            console.error("[Client] Error fetching checkin status:", err?.message);
-            return { data: null, error: err };
-          }),
+          .maybeSingle(),
         supabase
           .from("appointments")
           .select("id, coach_id, client_id, starts_at, ends_at, status")
@@ -194,38 +190,34 @@ export default function ClientHomeScreen() {
           .gt("starts_at", new Date().toISOString())
           .order("starts_at", { ascending: true })
           .limit(1)
-          .maybeSingle()
-          .catch((err: any) => {
-            console.error("[Client] Error fetching next appointment:", err?.message);
-            return { data: null, error: err };
-          }),
+          .maybeSingle(),
         supabase
           .from("messages")
           .select("id", { count: "exact", head: true })
           .is("read_at", null)
-          .neq("sender_id", userId)
-          .catch((err: any) => {
-            console.error("[Client] Error fetching unread chat count:", err?.message);
-            return { data: null, count: 0, error: err };
-          }),
+          .neq("sender_id", userId),
       ]);
 
-      if (checkinResult.error) {
-        console.error("[Client] Error fetching checkin status:", checkinResult.error.message);
+      const { data: checkinData, error: checkinError } = checkinResult;
+      const { data: appointmentData, error: appointmentError } = appointmentResult;
+      const { count: unreadCount, error: chatError } = chatResult;
+
+      if (checkinError) {
+        console.error("[Client] Error fetching checkin status:", checkinError.message);
       }
-      if (appointmentResult.error) {
-        console.error("[Client] Error fetching next appointment:", appointmentResult.error.message);
+      if (appointmentError) {
+        console.error("[Client] Error fetching next appointment:", appointmentError.message);
       }
-      if (chatResult.error) {
-        console.error("[Client] Error fetching unread chat count:", chatResult.error.message);
+      if (chatError) {
+        console.error("[Client] Error fetching unread chat count:", chatError.message);
       }
 
       const assembled: HomeData = {
-        checkinStatus: checkinResult.data ? "Voltooid" : "Niet voltooid",
+        checkinStatus: checkinData ? "Voltooid" : "Niet voltooid",
         currentWeek: null,
         nextTask: null,
-        nextAppointment: appointmentResult.data ?? null,
-        unreadChatCount: chatResult.count ?? 0,
+        nextAppointment: appointmentData ?? null,
+        unreadChatCount: unreadCount ?? 0,
       };
 
       console.log("[Client] Home data assembled", assembled);
