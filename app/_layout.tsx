@@ -43,6 +43,7 @@ export default function RootLayout() {
               <Stack.Screen name="auth-popup" />
               <Stack.Screen name="auth-callback" />
               <Stack.Screen name="onboarding" />
+              <Stack.Screen name="coach-onboarding" />
               <Stack.Screen name="(app)" />
             </Stack>
             <SystemBars style="auto" />

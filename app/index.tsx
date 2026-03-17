@@ -54,8 +54,14 @@ export default function IndexScreen() {
       }
 
       if (!profile.onboarding_completed || !profile.full_name) {
-        console.log('[IndexScreen] Profile incomplete, redirecting to onboarding');
-        router.replace('/onboarding');
+        // Coaches get their own dedicated onboarding flow
+        if (profile.role === 'coach') {
+          console.log('[IndexScreen] Coach onboarding incomplete, redirecting to coach-onboarding');
+          router.replace('/coach-onboarding');
+        } else {
+          console.log('[IndexScreen] Profile incomplete, redirecting to onboarding');
+          router.replace('/onboarding');
+        }
         setChecking(false);
         return;
       }
