@@ -79,7 +79,7 @@ export default function FloatingTabBar({ tabs }: FloatingTabBarProps) {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.tabsRow, { paddingBottom: safeBottom }]}>
+      <View style={[styles.tabsRow, { paddingTop: 6, paddingBottom: safeBottom }]}>
         {tabs.map((tab, index) => {
           const isActive = activeTabIndex === index;
           if (!ICON_MAP[tab.icon] && !ICON_MAP[tab.name]) {
@@ -124,7 +124,6 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 0,
     borderTopWidth: 1,
     borderTopColor: '#E6EAF0',
-    paddingTop: 8,
     zIndex: 1000,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },
@@ -140,7 +139,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
   },
   tabInner: {
     alignItems: 'center',
