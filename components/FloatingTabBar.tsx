@@ -76,12 +76,10 @@ export default function FloatingTabBar({ tabs }: FloatingTabBarProps) {
   };
 
   const safeBottom = insets.bottom;
-  // Match react-navigation's bottom tabs: content height (80) + safe area padding
-  const containerHeight = 80 + safeBottom;
 
   return (
-    <View style={[styles.container, { height: containerHeight }]}>
-      <View style={[styles.tabsRow, { paddingTop: 6, paddingBottom: safeBottom }]}>
+    <View style={[styles.container, { paddingTop: 8, paddingBottom: safeBottom }]}>
+      <View style={styles.tabsRow}>
         {tabs.map((tab, index) => {
           const isActive = activeTabIndex === index;
           if (!ICON_MAP[tab.icon] && !ICON_MAP[tab.name]) {
