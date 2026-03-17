@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 
 export type CoachProfile = {
   coach_client_id: string;
@@ -15,13 +16,22 @@ export function useMyCoaches() {
   const [coaches, setCoaches] = useState<CoachProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const { user } = useAuth();
 
   useEffect(() => {
     let cancelled = false;
+    const userId = user?.id;
 
-    const fetchCoaches = async (userId: string) => {
+    if (!userId) {
+      setCoaches([]);
+      setLoading(false);
+      return;
+    }
+
+    const fetchCoaches = async () => {
       try {
         console.log('[useMyCoaches] fetching for userId:', userId);
+        setLoading(true);
 
         const { data: links, error: linksError } = await supabase
           .from('coach_clients')
@@ -68,33 +78,9 @@ export function useMyCoaches() {
       }
     };
 
-    // Listen to auth state changes so we re-fetch when session is restored
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      const userId = session?.user?.id;
-      console.log('[useMyCoaches] auth state changed, userId:', userId);
-      if (userId) {
-        fetchCoaches(userId);
-      } else {
-        if (!cancelled) { setCoaches([]); setLoading(false); }
-      }
-    });
-
-    // Also try immediately in case session is already available
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      const userId = session?.user?.id;
-      console.log('[useMyCoaches] initial getSession userId:', userId);
-      if (userId) {
-        fetchCoaches(userId);
-      } else {
-        if (!cancelled) setLoading(false);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-      subscription.unsubscribe();
-    };
-  }, []);
+    fetchCoaches();
+    return () => { cancelled = true; };
+  }, [user?.id]);
 
   return { coaches, loading, error };
 }

@@ -7,6 +7,7 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import Modal from "react-native-modal";
 import { useTheme } from "@react-navigation/native";
@@ -14,11 +15,14 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { IconSymbol } from "@/components/IconSymbol";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "expo-router";
+import { useMyCoaches } from "@/hooks/useMyCoaches";
+import { Ionicons } from "@expo/vector-icons";
 
 export default function SettingsScreen() {
   const { colors } = useTheme();
   const { user, signOut } = useAuth();
   const router = useRouter();
+  const { coaches, loading: coachesLoading } = useMyCoaches();
   const [signingOut, setSigningOut] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [modalTitle, setModalTitle] = useState("");
@@ -131,6 +135,68 @@ export default function SettingsScreen() {
                 />
               </TouchableOpacity>
             ))}
+          </View>
+
+          {/* Mijn coaches sectie */}
+          <View style={{ marginHorizontal: 0, marginBottom: 24 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>
+              Mijn coaches
+            </Text>
+            {coachesLoading ? (
+              <ActivityIndicator size="small" color="#4A90D9" />
+            ) : coaches.length === 0 ? (
+              <View style={{ alignItems: 'center', paddingVertical: 24, backgroundColor: '#fff', borderRadius: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 }}>
+                <Ionicons name="person-outline" size={32} color="#ccc" />
+                <Text style={{ color: '#aaa', marginTop: 8, fontSize: 14 }}>Nog geen coaches gekoppeld</Text>
+              </View>
+            ) : (
+              coaches.map(coach => {
+                const coachName = coach.full_name ?? 'Coach';
+                const startedAtDisplay = coach.started_at
+                  ? new Date(coach.started_at).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })
+                  : null;
+                return (
+                  <View key={coach.coach_client_id} style={{ backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                      <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#EBF4FF', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                        <Ionicons name="person-outline" size={20} color="#4A90D9" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 16, fontWeight: '700', color: '#1a1a1a' }}>{coachName}</Text>
+                        {startedAtDisplay !== null && (
+                          <Text style={{ fontSize: 13, color: '#888' }}>
+                            Gekoppeld sinds {startedAtDisplay}
+                          </Text>
+                        )}
+                      </View>
+                      <View style={{ backgroundColor: '#e8f5e9', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 }}>
+                        <Text style={{ fontSize: 12, color: '#2e7d32', fontWeight: '600' }}>Actief</Text>
+                      </View>
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          console.log('[Settings] Bericht pressed for coach:', coach.coach_id);
+                          Alert.alert('Bericht', 'Chat functie komt binnenkort');
+                        }}
+                        style={{ flex: 1, borderWidth: 1.5, borderColor: '#4A90D9', borderRadius: 10, paddingVertical: 10, alignItems: 'center' }}
+                      >
+                        <Text style={{ color: '#4A90D9', fontWeight: '600', fontSize: 14 }}>Bericht</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => {
+                          console.log('[Settings] Bekijk profiel pressed for coach:', coach.coach_id);
+                          Alert.alert('Profiel', 'Coach profiel komt binnenkort');
+                        }}
+                        style={{ flex: 1, borderWidth: 1.5, borderColor: '#ccc', borderRadius: 10, paddingVertical: 10, alignItems: 'center' }}
+                      >
+                        <Text style={{ color: '#555', fontWeight: '600', fontSize: 14 }}>Bekijk profiel</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })
+            )}
           </View>
 
           <View style={styles.section}>

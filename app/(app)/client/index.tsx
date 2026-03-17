@@ -16,6 +16,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { IconSymbol } from "@/components/IconSymbol";
 import { useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
+import { CoachSummaryCard } from "@/components/CoachSummaryCard";
 import Slider from "@react-native-community/slider";
 import { LinearGradient } from "expo-linear-gradient";
 import { bcctColors, bcctTypography, getSliderColor, getStressLabel, getSleepLabel, getEnergyLabel } from "@/styles/bcctTheme";
@@ -532,6 +533,11 @@ export default function ClientHomeScreen() {
               </>
             )}
           </View>
+
+        <CoachSummaryCard onViewAll={() => {
+          console.log("[Client] Navigating to settings/coaches via CoachSummaryCard");
+          router.push("/(app)/client/settings");
+        }} />
 
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Snelle Acties</Text>
