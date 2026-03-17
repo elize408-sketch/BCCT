@@ -4,34 +4,34 @@ import { Stack } from "expo-router";
 import FloatingTabBar from "@/components/FloatingTabBar";
 import type { TabBarItem } from "@/components/FloatingTabBar";
 
-export default function ClientLayout() {
-  const tabs: TabBarItem[] = [
-    {
-      name: "index",
-      route: "/(app)/client/index" as any,
-      icon: "home",
-      label: "",
-    },
-    {
-      name: "chat",
-      route: "/(app)/client/chat" as any,
-      icon: "chat",
-      label: "",
-    },
-    {
-      name: "files",
-      route: "/(app)/client/files" as any,
-      icon: "folder",
-      label: "",
-    },
-    {
-      name: "settings",
-      route: "/(app)/client/settings" as any,
-      icon: "person",
-      label: "",
-    },
-  ];
+const tabs: TabBarItem[] = [
+  {
+    name: "index",
+    route: "/(app)/client/index" as any,
+    icon: "home",
+    label: "Home",
+  },
+  {
+    name: "chat",
+    route: "/(app)/client/chat" as any,
+    icon: "chat",
+    label: "Chat",
+  },
+  {
+    name: "files",
+    route: "/(app)/client/files" as any,
+    icon: "files",
+    label: "Documenten",
+  },
+  {
+    name: "settings",
+    route: "/(app)/client/settings" as any,
+    icon: "settings",
+    label: "Profiel",
+  },
+];
 
+export default function ClientLayout() {
   return (
     <>
       <Stack screenOptions={{ headerShown: false }}>

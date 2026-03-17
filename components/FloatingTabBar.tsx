@@ -12,8 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Href } from 'expo-router';
 
 const BRAND_ORANGE = '#F28C28';
-const INACTIVE_COLOR = '#9CA3AF';
-const ACTIVE_BG = 'rgba(242, 140, 40, 0.12)';
+const INACTIVE_COLOR = '#8E8E93';
 
 export interface TabBarItem {
   name: string;
@@ -36,8 +35,12 @@ const ICON_MAP: Record<string, { active: IoniconsName; inactive: IoniconsName }>
   chat: { active: 'chatbubble', inactive: 'chatbubble-outline' },
   documenten: { active: 'folder', inactive: 'folder-outline' },
   documents: { active: 'folder', inactive: 'folder-outline' },
+  folder: { active: 'folder', inactive: 'folder-outline' },
+  files: { active: 'folder', inactive: 'folder-outline' },
   profiel: { active: 'person', inactive: 'person-outline' },
   profile: { active: 'person', inactive: 'person-outline' },
+  person: { active: 'person', inactive: 'person-outline' },
+  settings: { active: 'person', inactive: 'person-outline' },
 };
 
 export default function FloatingTabBar({ tabs }: FloatingTabBarProps) {
@@ -84,7 +87,7 @@ export default function FloatingTabBar({ tabs }: FloatingTabBarProps) {
           }
           const iconConfig = ICON_MAP[tab.icon] ?? ICON_MAP[tab.name] ?? { active: 'ellipse' as IoniconsName, inactive: 'ellipse-outline' as IoniconsName };
           const iconName = isActive ? iconConfig.active : iconConfig.inactive;
-          const iconColor = isActive ? BRAND_ORANGE : INACTIVE_COLOR;
+          const iconColor = isActive ? '#FFFFFF' : INACTIVE_COLOR;
           const labelColor = isActive ? BRAND_ORANGE : INACTIVE_COLOR;
 
           return (
@@ -94,8 +97,10 @@ export default function FloatingTabBar({ tabs }: FloatingTabBarProps) {
               onPress={() => handleTabPress(tab.route, tab.label)}
               activeOpacity={0.7}
             >
-              <View style={[styles.tabInner, isActive && styles.tabInnerActive]}>
-                <Ionicons name={iconName} size={24} color={iconColor} />
+              <View style={styles.tabInner}>
+                <View style={[styles.iconContainer, isActive && styles.iconContainerActive]}>
+                  <Ionicons name={iconName} size={24} color={iconColor} />
+                </View>
                 <Text style={[styles.tabLabel, { color: labelColor }, isActive && styles.tabLabelActive]}>
                   {tab.label}
                 </Text>
@@ -115,15 +120,17 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingTop: 10,
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    borderTopWidth: 1,
+    borderTopColor: '#E6EAF0',
+    paddingTop: 8,
     zIndex: 1000,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 12,
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 8,
   },
   tabsRow: {
     flexDirection: 'row',
@@ -133,24 +140,30 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 8,
   },
   tabInner: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    gap: 3,
+    gap: 4,
   },
-  tabInnerActive: {
-    backgroundColor: ACTIVE_BG,
+  iconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  iconContainerActive: {
+    backgroundColor: BRAND_ORANGE,
   },
   tabLabel: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '500',
-    marginTop: 1,
+    marginTop: 4,
+    textAlign: 'center',
   },
   tabLabelActive: {
-    fontWeight: '600',
+    fontWeight: '500',
   },
 });
