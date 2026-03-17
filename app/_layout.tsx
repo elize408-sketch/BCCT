@@ -44,6 +44,7 @@ export default function RootLayout() {
               <Stack.Screen name="auth-callback" />
               <Stack.Screen name="onboarding" />
               <Stack.Screen name="(app)" />
+              <Stack.Screen name="chat" options={{ headerShown: true }} />
             </Stack>
             <SystemBars style="auto" />
           </GestureHandlerRootView>

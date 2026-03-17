@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback, useState } from "react";
 import { Stack, useRouter } from "expo-router";
 import { StyleSheet, View, Text, ScrollView, TouchableOpacity } from "react-native";
 import { useTheme } from "@react-navigation/native";
@@ -6,20 +6,107 @@ import { Ionicons } from "@expo/vector-icons";
 import { HeaderRightButton, HeaderLeftButton } from "@/components/HeaderButtons";
 import CoachSummaryCard from "@/components/CoachSummaryCard";
 import { bcctColors } from "@/styles/bcctTheme";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 
 export default function HomeScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const { user } = useAuth();
+  const [chatLoading, setChatLoading] = useState(false);
 
   const handleViewAllCoaches = () => {
     console.log("[HomeScreen] View all coaches pressed");
     router.push('/(tabs)/profiel');
   };
 
-  const handleChatPress = () => {
+  const handleChatPress = useCallback(async () => {
     console.log("[HomeScreen] Quick action: Bericht sturen pressed");
-    router.push('/(tabs)/chat');
-  };
+    if (!user) {
+      router.push('/(tabs)/chat');
+      return;
+    }
+
+    setChatLoading(true);
+    try {
+      // Check user role
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id);
+
+      const userRole = profileData && profileData.length > 0 ? profileData[0].role : 'client';
+      console.log("[HomeScreen] User role for chat navigation:", userRole);
+
+      if (userRole === 'coach') {
+        router.push('/(tabs)/chat');
+        return;
+      }
+
+      // Client: check linked coaches
+      const { data: coachLinks } = await supabase
+        .from('coach_clients')
+        .select('coach_id')
+        .eq('client_id', user.id)
+        .eq('status', 'active');
+
+      const coaches = coachLinks ?? [];
+      console.log("[HomeScreen] Linked coaches count:", coaches.length);
+
+      if (coaches.length !== 1) {
+        // 0 or multiple coaches → go to list
+        router.push('/(tabs)/chat');
+        return;
+      }
+
+      // Exactly 1 coach — find or create conversation
+      const coachId = coaches[0].coach_id;
+      const { data: convData } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('coach_id', coachId)
+        .eq('client_id', user.id);
+
+      let conversationId: string | null = convData && convData.length > 0 ? convData[0].id : null;
+
+      if (!conversationId) {
+        console.log("[HomeScreen] Creating new conversation with coach:", coachId);
+        const { data: newConv, error: insertError } = await supabase
+          .from('conversations')
+          .insert({ coach_id: coachId, client_id: user.id, org_id: null })
+          .select('id');
+
+        if (insertError) {
+          console.error("[HomeScreen] Error creating conversation:", insertError);
+          router.push('/(tabs)/chat');
+          return;
+        }
+        conversationId = newConv && newConv.length > 0 ? newConv[0].id : null;
+      }
+
+      if (conversationId) {
+        // Fetch coach name for header
+        const { data: coachProfile } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', coachId);
+        const coachName = coachProfile && coachProfile.length > 0 ? coachProfile[0].full_name : 'Coach';
+
+        console.log("[HomeScreen] Navigating to conversation:", conversationId);
+        router.push({
+          pathname: '/chat/[id]',
+          params: { id: conversationId, otherName: coachName },
+        });
+      } else {
+        router.push('/(tabs)/chat');
+      }
+    } catch (err) {
+      console.error("[HomeScreen] Error in handleChatPress:", err);
+      router.push('/(tabs)/chat');
+    } finally {
+      setChatLoading(false);
+    }
+  }, [user, router]);
 
   const handleDocumentenPress = () => {
     console.log("[HomeScreen] Quick action: Documenten pressed");
@@ -85,7 +172,7 @@ export default function HomeScreen() {
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Snelle Acties</Text>
           <View style={styles.actionsGrid}>
-            <TouchableOpacity style={styles.actionBtn} onPress={handleChatPress}>
+            <TouchableOpacity style={styles.actionBtn} onPress={handleChatPress} disabled={chatLoading}>
               <View style={styles.actionIcon}>
                 <Ionicons name="chatbubble-outline" size={22} color="#4A90D9" />
               </View>
