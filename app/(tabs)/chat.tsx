@@ -3,10 +3,12 @@ import {
   View,
   Text,
   FlatList,
+  ScrollView,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
   Image,
+  ImageSourcePropType,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
@@ -15,13 +17,31 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bcctColors } from '@/styles/bcctTheme';
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 interface ConversationRow {
-  conversationId: string | null;
+  conversationId: string;
   otherId: string;
   otherName: string;
   otherAvatar: string | null;
   lastMessage: string | null;
   lastMessageAt: string | null;
+}
+
+interface LinkedCoach {
+  coachId: string;
+  name: string;
+  avatarUrl: string | null;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function resolveImageSource(
+  source: string | number | ImageSourcePropType | undefined
+): ImageSourcePropType {
+  if (!source) return { uri: '' };
+  if (typeof source === 'string') return { uri: source };
+  return source as ImageSourcePropType;
 }
 
 function getInitials(name: string): string {
@@ -46,20 +66,66 @@ function formatConversationTime(isoString: string | null): string {
   if (msgDay.getTime() === yesterday.getTime()) {
     return 'Gisteren';
   }
-  return date.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
+  return date.toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit' });
 }
+
+// ─── Avatar component ─────────────────────────────────────────────────────────
+
+function Avatar({ name, avatarUrl, size }: { name: string; avatarUrl: string | null; size: number }) {
+  const initials = getInitials(name);
+  const borderRadius = size / 2;
+
+  if (avatarUrl) {
+    return (
+      <Image
+        source={resolveImageSource(avatarUrl)}
+        style={{ width: size, height: size, borderRadius }}
+      />
+    );
+  }
+
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius,
+        backgroundColor: bcctColors.primaryOrange,
+        justifyContent: 'center',
+        alignItems: 'center',
+      }}
+    >
+      <Text style={{ color: '#FFFFFF', fontSize: size * 0.36, fontWeight: '700' }}>
+        {initials}
+      </Text>
+    </View>
+  );
+}
+
+// ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function ChatListScreen() {
   const { user } = useAuth();
   const router = useRouter();
-  const [rows, setRows] = useState<ConversationRow[]>([]);
+
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [role, setRole] = useState<'coach' | 'client' | null>(null);
+
+  // Client state
+  const [linkedCoaches, setLinkedCoaches] = useState<LinkedCoach[]>([]);
+  const [conversations, setConversations] = useState<ConversationRow[]>([]);
+
+  // Per-coach loading state for "Start gesprek" buttons
+  const [startingConvFor, setStartingConvFor] = useState<string | null>(null);
+
+  // ── Data loading ────────────────────────────────────────────────────────────
 
   const loadData = useCallback(async () => {
     if (!user) return;
-    console.log('[ChatList] Loading conversations for user:', user.id);
+    console.log('[ChatList] Loading data for user:', user.id);
     setLoading(true);
+    setError(null);
 
     try {
       // 1. Fetch role
@@ -70,253 +136,296 @@ export default function ChatListScreen() {
 
       if (profileError) {
         console.error('[ChatList] Error fetching profile:', profileError);
+        setError('Kon profiel niet laden.');
         setLoading(false);
         return;
       }
 
-      const userRole: 'coach' | 'client' = profileData && profileData.length > 0
-        ? profileData[0].role
-        : 'client';
+      const userRole: 'coach' | 'client' =
+        profileData && profileData.length > 0 ? profileData[0].role : 'client';
       setRole(userRole);
       console.log('[ChatList] User role:', userRole);
 
       if (userRole === 'client') {
-        // 2a. Get linked coaches
-        const { data: coachLinks, error: coachLinksError } = await supabase
-          .from('coach_clients')
-          .select('coach_id')
-          .eq('client_id', user.id)
-          .eq('status', 'active');
-
-        if (coachLinksError) {
-          console.error('[ChatList] Error fetching coach links:', coachLinksError);
-          setLoading(false);
-          return;
-        }
-
-        console.log('[ChatList] Coach links found:', coachLinks?.length ?? 0);
-
-        if (!coachLinks || coachLinks.length === 0) {
-          setRows([]);
-          setLoading(false);
-          return;
-        }
-
-        const coachIds = coachLinks.map((l) => l.coach_id);
-
-        // 3a. Fetch coach profiles + existing conversations in parallel
-        const [profilesResult, convsResult] = await Promise.all([
-          supabase.from('profiles').select('id, full_name, avatar_url').in('id', coachIds),
-          supabase
-            .from('conversations')
-            .select('id, coach_id')
-            .eq('client_id', user.id)
-            .in('coach_id', coachIds),
-        ]);
-
-        if (profilesResult.error) {
-          console.error('[ChatList] Error fetching coach profiles:', profilesResult.error);
-        }
-        if (convsResult.error) {
-          console.error('[ChatList] Error fetching conversations:', convsResult.error);
-        }
-
-        const coachProfiles = profilesResult.data ?? [];
-        const existingConvs = convsResult.data ?? [];
-
-        // 4a. For each conversation that exists, fetch last message
-        const convIds = existingConvs.map((c) => c.id);
-        let lastMessages: Record<string, { body: string; created_at: string }> = {};
-
-        if (convIds.length > 0) {
-          const lastMsgPromises = convIds.map((cid) =>
-            supabase
-              .from('messages')
-              .select('body, created_at')
-              .eq('conversation_id', cid)
-              .order('created_at', { ascending: false })
-              .limit(1)
-              .then(({ data }) => ({ cid, data }))
-          );
-          const results = await Promise.all(lastMsgPromises);
-          results.forEach(({ cid, data }) => {
-            if (data && data.length > 0) {
-              lastMessages[cid] = data[0];
-            }
-          });
-          console.log('[ChatList] Last messages fetched for', Object.keys(lastMessages).length, 'conversations');
-        }
-
-        const built: ConversationRow[] = coachProfiles.map((coach) => {
-          const conv = existingConvs.find((c) => c.coach_id === coach.id);
-          const lastMsg = conv ? lastMessages[conv.id] : null;
-          return {
-            conversationId: conv ? conv.id : null,
-            otherId: coach.id,
-            otherName: coach.full_name ?? 'Coach',
-            otherAvatar: coach.avatar_url ?? null,
-            lastMessage: lastMsg ? lastMsg.body : null,
-            lastMessageAt: lastMsg ? lastMsg.created_at : null,
-          };
-        });
-
-        setRows(built);
+        await loadClientData(user.id);
       } else {
-        // 2b. Coach: fetch all conversations
-        const { data: convs, error: convsError } = await supabase
-          .from('conversations')
-          .select('id, client_id')
-          .eq('coach_id', user.id);
-
-        if (convsError) {
-          console.error('[ChatList] Error fetching coach conversations:', convsError);
-          setLoading(false);
-          return;
-        }
-
-        console.log('[ChatList] Conversations found for coach:', convs?.length ?? 0);
-
-        if (!convs || convs.length === 0) {
-          setRows([]);
-          setLoading(false);
-          return;
-        }
-
-        const clientIds = convs.map((c) => c.client_id);
-
-        // 3b. Fetch client profiles + last messages in parallel
-        const [profilesResult, ...lastMsgResults] = await Promise.all([
-          supabase.from('profiles').select('id, full_name, avatar_url').in('id', clientIds),
-          ...convs.map((conv) =>
-            supabase
-              .from('messages')
-              .select('body, created_at')
-              .eq('conversation_id', conv.id)
-              .order('created_at', { ascending: false })
-              .limit(1)
-              .then(({ data }) => ({ cid: conv.id, data }))
-          ),
-        ]);
-
-        if (profilesResult.error) {
-          console.error('[ChatList] Error fetching client profiles:', profilesResult.error);
-        }
-
-        const clientProfiles = profilesResult.data ?? [];
-        const lastMessages: Record<string, { body: string; created_at: string }> = {};
-        lastMsgResults.forEach((r) => {
-          const result = r as { cid: string; data: { body: string; created_at: string }[] | null };
-          if (result.data && result.data.length > 0) {
-            lastMessages[result.cid] = result.data[0];
-          }
-        });
-
-        const built: ConversationRow[] = convs.map((conv) => {
-          const client = clientProfiles.find((p) => p.id === conv.client_id);
-          const lastMsg = lastMessages[conv.id];
-          return {
-            conversationId: conv.id,
-            otherId: conv.client_id,
-            otherName: client?.full_name ?? 'Cliënt',
-            otherAvatar: client?.avatar_url ?? null,
-            lastMessage: lastMsg ? lastMsg.body : null,
-            lastMessageAt: lastMsg ? lastMsg.created_at : null,
-          };
-        });
-
-        // Sort by most recent message
-        built.sort((a, b) => {
-          if (!a.lastMessageAt) return 1;
-          if (!b.lastMessageAt) return -1;
-          return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime();
-        });
-
-        setRows(built);
+        await loadCoachData(user.id);
       }
     } catch (err) {
       console.error('[ChatList] Unexpected error:', err);
+      setError('Er is een fout opgetreden.');
     } finally {
       setLoading(false);
     }
   }, [user]);
 
+  const loadClientData = async (userId: string) => {
+    // Fetch linked coaches + existing conversations in parallel
+    const [coachLinksResult, convsResult] = await Promise.all([
+      supabase
+        .from('coach_clients')
+        .select('coach_id')
+        .eq('client_id', userId)
+        .eq('status', 'active'),
+      supabase
+        .from('conversations')
+        .select('id, coach_id')
+        .eq('client_id', userId),
+    ]);
+
+    if (coachLinksResult.error) {
+      console.error('[ChatList] Error fetching coach links:', coachLinksResult.error);
+    }
+    if (convsResult.error) {
+      console.error('[ChatList] Error fetching conversations:', convsResult.error);
+    }
+
+    const coachLinks = coachLinksResult.data ?? [];
+    const existingConvs = convsResult.data ?? [];
+    console.log('[ChatList] Coach links:', coachLinks.length, 'Conversations:', existingConvs.length);
+
+    // Fetch coach profiles
+    const coachIds = coachLinks.map((l) => l.coach_id);
+    let coachProfiles: { id: string; full_name: string | null; avatar_url: string | null }[] = [];
+
+    if (coachIds.length > 0) {
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url')
+        .in('id', coachIds);
+
+      if (profilesError) {
+        console.error('[ChatList] Error fetching coach profiles:', profilesError);
+      }
+      coachProfiles = profiles ?? [];
+    }
+
+    setLinkedCoaches(
+      coachProfiles.map((p) => ({
+        coachId: p.id,
+        name: p.full_name ?? 'Coach',
+        avatarUrl: p.avatar_url ?? null,
+      }))
+    );
+
+    // If no conversations, stop here — empty state will show linked coaches
+    if (existingConvs.length === 0) {
+      setConversations([]);
+      return;
+    }
+
+    // Fetch last message for each conversation
+    const convIds = existingConvs.map((c) => c.id);
+    const lastMsgResults = await Promise.all(
+      convIds.map((cid) =>
+        supabase
+          .from('messages')
+          .select('body, created_at')
+          .eq('conversation_id', cid)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .then(({ data }) => ({ cid, data }))
+      )
+    );
+
+    const lastMessages: Record<string, { body: string; created_at: string }> = {};
+    lastMsgResults.forEach(({ cid, data }) => {
+      if (data && data.length > 0) lastMessages[cid] = data[0];
+    });
+    console.log('[ChatList] Last messages fetched for', Object.keys(lastMessages).length, 'conversations');
+
+    const built: ConversationRow[] = existingConvs.map((conv) => {
+      const coach = coachProfiles.find((p) => p.id === conv.coach_id);
+      const lastMsg = lastMessages[conv.id];
+      return {
+        conversationId: conv.id,
+        otherId: conv.coach_id,
+        otherName: coach?.full_name ?? 'Coach',
+        otherAvatar: coach?.avatar_url ?? null,
+        lastMessage: lastMsg?.body ?? null,
+        lastMessageAt: lastMsg?.created_at ?? null,
+      };
+    });
+
+    built.sort((a, b) => {
+      if (!a.lastMessageAt) return 1;
+      if (!b.lastMessageAt) return -1;
+      return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime();
+    });
+
+    setConversations(built);
+  };
+
+  const loadCoachData = async (userId: string) => {
+    const { data: convs, error: convsError } = await supabase
+      .from('conversations')
+      .select('id, client_id')
+      .eq('coach_id', userId);
+
+    if (convsError) {
+      console.error('[ChatList] Error fetching coach conversations:', convsError);
+      setConversations([]);
+      return;
+    }
+
+    const convList = convs ?? [];
+    console.log('[ChatList] Conversations found for coach:', convList.length);
+
+    if (convList.length === 0) {
+      setConversations([]);
+      return;
+    }
+
+    const clientIds = convList.map((c) => c.client_id);
+
+    const [profilesResult, ...lastMsgResults] = await Promise.all([
+      supabase.from('profiles').select('id, full_name, avatar_url').in('id', clientIds),
+      ...convList.map((conv) =>
+        supabase
+          .from('messages')
+          .select('body, created_at')
+          .eq('conversation_id', conv.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .then(({ data }) => ({ cid: conv.id, data }))
+      ),
+    ]);
+
+    if (profilesResult.error) {
+      console.error('[ChatList] Error fetching client profiles:', profilesResult.error);
+    }
+
+    const clientProfiles = profilesResult.data ?? [];
+    const lastMessages: Record<string, { body: string; created_at: string }> = {};
+    lastMsgResults.forEach((r) => {
+      const result = r as { cid: string; data: { body: string; created_at: string }[] | null };
+      if (result.data && result.data.length > 0) {
+        lastMessages[result.cid] = result.data[0];
+      }
+    });
+
+    const built: ConversationRow[] = convList.map((conv) => {
+      const client = clientProfiles.find((p) => p.id === conv.client_id);
+      const lastMsg = lastMessages[conv.id];
+      return {
+        conversationId: conv.id,
+        otherId: conv.client_id,
+        otherName: client?.full_name ?? 'Cliënt',
+        otherAvatar: client?.avatar_url ?? null,
+        lastMessage: lastMsg?.body ?? null,
+        lastMessageAt: lastMsg?.created_at ?? null,
+      };
+    });
+
+    built.sort((a, b) => {
+      if (!a.lastMessageAt) return 1;
+      if (!b.lastMessageAt) return -1;
+      return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime();
+    });
+
+    setConversations(built);
+  };
+
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  const handleRowPress = async (row: ConversationRow) => {
-    console.log('[ChatList] Row pressed:', row.otherName, 'conversationId:', row.conversationId);
+  // ── Handlers ─────────────────────────────────────────────────────────────────
 
-    if (row.conversationId) {
-      router.push({
-        pathname: '/chat/[id]',
-        params: { id: row.conversationId, otherName: row.otherName },
-      });
-      return;
-    }
+  const handleConversationPress = (row: ConversationRow) => {
+    console.log('[ChatList] Opening conversation:', row.conversationId, 'with:', row.otherName);
+    router.push({
+      pathname: '/chat/[id]',
+      params: { id: row.conversationId, otherName: row.otherName },
+    });
+  };
 
-    // Client with no conversation yet — create one
+  const handleStartConversation = async (coach: LinkedCoach) => {
     if (!user) return;
-    console.log('[ChatList] Creating new conversation with coach:', row.otherId);
+    console.log('[ChatList] Start gesprek pressed for coach:', coach.coachId, coach.name);
+    setStartingConvFor(coach.coachId);
 
     try {
-      const { data: newConv, error } = await supabase
+      // Check if conversation already exists
+      const { data: existing, error: checkError } = await supabase
         .from('conversations')
-        .insert({ coach_id: row.otherId, client_id: user.id, org_id: null })
+        .select('id')
+        .eq('coach_id', coach.coachId)
+        .eq('client_id', user.id);
+
+      if (checkError) {
+        console.error('[ChatList] Error checking existing conversation:', checkError);
+        setStartingConvFor(null);
+        return;
+      }
+
+      if (existing && existing.length > 0) {
+        console.log('[ChatList] Existing conversation found:', existing[0].id);
+        router.push({
+          pathname: '/chat/[id]',
+          params: { id: existing[0].id, otherName: coach.name },
+        });
+        setStartingConvFor(null);
+        return;
+      }
+
+      // Create new conversation
+      console.log('[ChatList] Creating new conversation with coach:', coach.coachId);
+      const { data: newConv, error: insertError } = await supabase
+        .from('conversations')
+        .insert({ coach_id: coach.coachId, client_id: user.id })
         .select('id');
 
-      if (error) {
-        console.error('[ChatList] Error creating conversation:', error);
+      if (insertError) {
+        console.error('[ChatList] Error creating conversation:', insertError);
+        setStartingConvFor(null);
         return;
       }
 
       const newId = newConv && newConv.length > 0 ? newConv[0].id : null;
       if (!newId) {
         console.error('[ChatList] No id returned from conversation insert');
+        setStartingConvFor(null);
         return;
       }
 
       console.log('[ChatList] Conversation created:', newId);
       router.push({
         pathname: '/chat/[id]',
-        params: { id: newId, otherName: row.otherName },
+        params: { id: newId, otherName: coach.name },
       });
     } catch (err) {
-      console.error('[ChatList] Unexpected error creating conversation:', err);
+      console.error('[ChatList] Unexpected error starting conversation:', err);
+    } finally {
+      setStartingConvFor(null);
     }
   };
 
-  const renderItem = ({ item }: { item: ConversationRow }) => {
-    const initials = getInitials(item.otherName);
+  // ── Render helpers ────────────────────────────────────────────────────────────
+
+  const renderConversationItem = ({ item }: { item: ConversationRow }) => {
     const timeLabel = formatConversationTime(item.lastMessageAt);
-    const hasConversation = item.conversationId !== null;
-    const previewText = item.lastMessage ?? (hasConversation ? 'Geen berichten' : 'Start gesprek');
-    const isPlaceholder = !item.lastMessage;
+    const previewText = item.lastMessage ?? 'Nog geen berichten';
+    const isNoMessages = !item.lastMessage;
 
     return (
       <TouchableOpacity
         style={styles.row}
-        onPress={() => handleRowPress(item)}
+        onPress={() => handleConversationPress(item)}
         activeOpacity={0.7}
       >
         <View style={styles.avatarContainer}>
-          {item.otherAvatar ? (
-            <Image source={{ uri: item.otherAvatar }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatarFallback}>
-              <Text style={styles.avatarInitials}>{initials}</Text>
-            </View>
-          )}
+          <Avatar name={item.otherName} avatarUrl={item.otherAvatar} size={50} />
         </View>
         <View style={styles.rowContent}>
           <View style={styles.rowTop}>
-            <Text style={styles.rowName} numberOfLines={1}>{item.otherName}</Text>
-            {timeLabel ? (
-              <Text style={styles.rowTime}>{timeLabel}</Text>
-            ) : null}
+            <Text style={styles.rowName} numberOfLines={1}>
+              {item.otherName}
+            </Text>
+            {timeLabel ? <Text style={styles.rowTime}>{timeLabel}</Text> : null}
           </View>
           <Text
-            style={[styles.rowPreview, isPlaceholder && styles.rowPreviewPlaceholder]}
+            style={[styles.rowPreview, isNoMessages && styles.rowPreviewEmpty]}
             numberOfLines={1}
           >
             {previewText}
@@ -326,6 +435,97 @@ export default function ChatListScreen() {
     );
   };
 
+  const renderCoachCard = (coach: LinkedCoach) => {
+    const isStarting = startingConvFor === coach.coachId;
+    const coachLabel = 'Coach';
+
+    return (
+      <View key={coach.coachId} style={styles.coachCard}>
+        <View style={styles.coachCardLeft}>
+          <Avatar name={coach.name} avatarUrl={coach.avatarUrl} size={48} />
+          <View style={styles.coachCardInfo}>
+            <Text style={styles.coachCardName} numberOfLines={1}>
+              {coach.name}
+            </Text>
+            <Text style={styles.coachCardRole}>{coachLabel}</Text>
+          </View>
+        </View>
+        <TouchableOpacity
+          style={[styles.startButton, isStarting && styles.startButtonDisabled]}
+          onPress={() => handleStartConversation(coach)}
+          disabled={isStarting}
+          activeOpacity={0.8}
+        >
+          {isStarting ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <Text style={styles.startButtonText}>Start gesprek</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  // ── Screens ───────────────────────────────────────────────────────────────────
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <View style={styles.loadingContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Client with no conversations yet → show linked coaches empty state
+  const showClientEmptyState = role === 'client' && conversations.length === 0;
+
+  if (showClientEmptyState) {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <ScrollView
+          contentInsetAdjustmentBehavior="automatic"
+          contentContainerStyle={styles.emptyScrollContent}
+        >
+          <View style={styles.emptyHeader}>
+            <Text style={styles.emptyTitle}>Start een gesprek</Text>
+            <Text style={styles.emptySubtitle}>
+              Je kunt hier direct contact opnemen met je coach.
+            </Text>
+          </View>
+
+          {linkedCoaches.length > 0 ? (
+            <View style={styles.coachCardList}>
+              {linkedCoaches.map(renderCoachCard)}
+            </View>
+          ) : (
+            <View style={styles.noCoachContainer}>
+              <MessageCircle size={48} color={bcctColors.borderGray} strokeWidth={1.5} />
+              <Text style={styles.noCoachText}>
+                Je hebt nog geen gekoppelde coach. Neem contact op met je organisatie.
+              </Text>
+            </View>
+          )}
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // Conversation list (client with conversations, or coach)
   const listHeader = (
     <View style={styles.listHeader}>
       <Text style={styles.screenTitle}>Chat</Text>
@@ -333,13 +533,13 @@ export default function ChatListScreen() {
   );
 
   const emptyComponent = (
-    <View style={styles.emptyContainer}>
+    <View style={styles.listEmptyContainer}>
       <MessageCircle size={52} color={bcctColors.borderGray} strokeWidth={1.5} />
-      <Text style={styles.emptyTitle}>Geen gesprekken</Text>
-      <Text style={styles.emptySubtitle}>
+      <Text style={styles.listEmptyTitle}>Geen gesprekken gevonden</Text>
+      <Text style={styles.listEmptySubtitle}>
         {role === 'coach'
           ? 'Je hebt nog geen actieve gesprekken met cliënten.'
-          : 'Je bent nog niet gekoppeld aan een coach.'}
+          : 'Je hebt nog geen gesprekken.'}
       </Text>
     </View>
   );
@@ -347,25 +547,21 @@ export default function ChatListScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
-        </View>
-      ) : (
-        <FlatList
-          data={rows}
-          keyExtractor={(item) => item.otherId}
-          renderItem={renderItem}
-          ListHeaderComponent={listHeader}
-          ListEmptyComponent={emptyComponent}
-          contentInsetAdjustmentBehavior="automatic"
-          contentContainerStyle={rows.length === 0 ? styles.emptyList : undefined}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
-        />
-      )}
+      <FlatList
+        data={conversations}
+        keyExtractor={(item) => item.conversationId}
+        renderItem={renderConversationItem}
+        ListHeaderComponent={listHeader}
+        ListEmptyComponent={emptyComponent}
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={conversations.length === 0 ? styles.emptyList : undefined}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
+      />
     </SafeAreaView>
   );
 }
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -377,6 +573,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  errorText: {
+    fontSize: 15,
+    color: bcctColors.error,
+    textAlign: 'center',
+    paddingHorizontal: 32,
+  },
+
+  // ── Conversation list ──────────────────────────────────────────────────────
   listHeader: {
     paddingHorizontal: 16,
     paddingTop: 8,
@@ -397,24 +601,6 @@ const styles = StyleSheet.create({
   },
   avatarContainer: {
     marginRight: 12,
-  },
-  avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-  },
-  avatarFallback: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: bcctColors.primaryOrange,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarInitials: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '700',
   },
   rowContent: {
     flex: 1,
@@ -440,9 +626,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: bcctColors.textSecondary,
   },
-  rowPreviewPlaceholder: {
-    color: bcctColors.primaryOrange,
+  rowPreviewEmpty: {
     fontStyle: 'italic',
+    color: bcctColors.primaryOrangeLight,
   },
   separator: {
     height: 1,
@@ -452,7 +638,7 @@ const styles = StyleSheet.create({
   emptyList: {
     flex: 1,
   },
-  emptyContainer: {
+  listEmptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
@@ -460,12 +646,99 @@ const styles = StyleSheet.create({
     paddingBottom: 80,
     gap: 12,
   },
-  emptyTitle: {
+  listEmptyTitle: {
     fontSize: 20,
     fontWeight: '700',
     color: bcctColors.textPrimary,
   },
+  listEmptySubtitle: {
+    fontSize: 15,
+    color: bcctColors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+
+  // ── Client empty state ─────────────────────────────────────────────────────
+  emptyScrollContent: {
+    paddingBottom: 40,
+  },
+  emptyHeader: {
+    paddingHorizontal: 20,
+    paddingTop: 28,
+    paddingBottom: 24,
+  },
+  emptyTitle: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: bcctColors.textPrimary,
+    marginBottom: 8,
+  },
   emptySubtitle: {
+    fontSize: 15,
+    color: bcctColors.textSecondary,
+    lineHeight: 22,
+  },
+  coachCardList: {
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  coachCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  coachCardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 12,
+  },
+  coachCardInfo: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  coachCardName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: bcctColors.textPrimary,
+    marginBottom: 2,
+  },
+  coachCardRole: {
+    fontSize: 13,
+    color: bcctColors.textSecondary,
+  },
+  startButton: {
+    backgroundColor: bcctColors.primaryOrange,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    minWidth: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  startButtonDisabled: {
+    backgroundColor: bcctColors.primaryOrangeDisabled,
+  },
+  startButtonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  noCoachContainer: {
+    alignItems: 'center',
+    paddingHorizontal: 32,
+    paddingTop: 48,
+    gap: 16,
+  },
+  noCoachText: {
     fontSize: 15,
     color: bcctColors.textSecondary,
     textAlign: 'center',
