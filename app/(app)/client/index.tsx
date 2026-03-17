@@ -534,11 +534,6 @@ export default function ClientHomeScreen() {
             )}
           </View>
 
-        <CoachSummaryCard onViewAll={() => {
-          console.log("[Client] Navigating to settings/coaches via CoachSummaryCard");
-          router.push("/(app)/client/settings");
-        }} />
-
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Snelle Acties</Text>
           <View style={styles.actionsGrid}>
@@ -630,6 +625,11 @@ export default function ClientHomeScreen() {
             )}
           </View>
         </View>
+
+        <CoachSummaryCard onViewAll={() => {
+          console.log("[Client] Navigating to settings/coaches via CoachSummaryCard");
+          router.push("/(app)/client/settings");
+        }} />
 
         <View style={styles.section}>
           <Text style={[styles.infoText, { color: bcctColors.textSecondary }]}>
