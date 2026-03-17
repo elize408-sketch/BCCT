@@ -1,8 +1,10 @@
 import React from "react";
 import { Stack } from "expo-router";
-import { StyleSheet, View, Text } from "react-native";
+import { StyleSheet, View, Text, ScrollView } from "react-native";
 import { useTheme } from "@react-navigation/native";
 import { HeaderRightButton, HeaderLeftButton } from "@/components/HeaderButtons";
+import CoachSummaryCard from "@/components/CoachSummaryCard";
+import { bcctColors } from "@/styles/bcctTheme";
 
 export default function HomeScreen() {
   const theme = useTheme();
@@ -11,38 +13,48 @@ export default function HomeScreen() {
     <>
       <Stack.Screen
         options={{
-          title: "Building the app...",
+          title: "Home",
           headerRight: () => <HeaderRightButton />,
           headerLeft: () => <HeaderLeftButton />,
         }}
       />
-      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-        <Text style={[styles.title, { color: theme.colors.text }]}>
-          Welcome to Natively
-        </Text>
-        <Text style={[styles.subtitle, { color: theme.dark ? '#98989D' : '#666' }]}>
-          Your app is currently building...
-        </Text>
-      </View>
+      <ScrollView
+        style={[styles.scroll, { backgroundColor: theme.colors.background }]}
+        contentContainerStyle={styles.content}
+      >
+        <View style={styles.header}>
+          <Text style={[styles.greeting, { color: theme.colors.text }]}>
+            Welkom terug
+          </Text>
+          <Text style={[styles.subtitle, { color: bcctColors.textSecondary }]}>
+            Hier is je overzicht
+          </Text>
+        </View>
+
+        <CoachSummaryCard />
+      </ScrollView>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  scroll: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginBottom: 8,
-    textAlign: 'center',
+  content: {
+    paddingTop: 24,
+    paddingBottom: 100,
+  },
+  header: {
+    paddingHorizontal: 16,
+    marginBottom: 16,
+  },
+  greeting: {
+    fontSize: 26,
+    fontWeight: "700",
+    marginBottom: 4,
   },
   subtitle: {
-    fontSize: 16,
-    textAlign: 'center',
+    fontSize: 15,
   },
 });
