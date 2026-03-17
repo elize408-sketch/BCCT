@@ -29,6 +29,7 @@ interface CheckinData {
 interface ActionTile {
   id: string;
   title: string;
+  subtitle: string;
   ios_icon: string;
   android_icon: string;
   route: string | null;
@@ -38,6 +39,7 @@ const ACTION_TILES: ActionTile[] = [
   {
     id: "checkin",
     title: "Thema Check-in",
+    subtitle: "Vul je dagelijkse check-in in",
     ios_icon: "checkmark.circle",
     android_icon: "check-circle",
     route: "/(app)/client/checkin",
@@ -45,6 +47,7 @@ const ACTION_TILES: ActionTile[] = [
   {
     id: "program",
     title: "Mijn Programma",
+    subtitle: "Bekijk je trainingsplan",
     ios_icon: "list.bullet",
     android_icon: "list",
     route: null,
@@ -52,6 +55,7 @@ const ACTION_TILES: ActionTile[] = [
   {
     id: "chat",
     title: "Chat met Coach",
+    subtitle: "Stuur een bericht",
     ios_icon: "message",
     android_icon: "chat",
     route: null,
@@ -59,6 +63,7 @@ const ACTION_TILES: ActionTile[] = [
   {
     id: "appointments",
     title: "Afspraken",
+    subtitle: "Jouw geplande sessies",
     ios_icon: "calendar",
     android_icon: "event",
     route: null,
@@ -66,6 +71,7 @@ const ACTION_TILES: ActionTile[] = [
   {
     id: "mycoach",
     title: "Mijn Coach",
+    subtitle: "Profiel & contact",
     ios_icon: "person.circle",
     android_icon: "person",
     route: "/(app)/client/settings",
@@ -73,6 +79,7 @@ const ACTION_TILES: ActionTile[] = [
   {
     id: "profile",
     title: "Mijn Profiel",
+    subtitle: "Instellingen & gegevens",
     ios_icon: "person.crop.circle",
     android_icon: "account-circle",
     route: null,
@@ -613,19 +620,20 @@ export default function ClientHomeScreen() {
           {ACTION_TILES.map((tile) => (
             <TouchableOpacity
               key={tile.id}
-              style={[styles.tile, { backgroundColor: colors.card, borderColor: colors.border }]}
+              style={[styles.tile, { backgroundColor: colors.card }]}
               onPress={() => handleTilePress(tile)}
-              activeOpacity={0.75}
+              activeOpacity={0.7}
             >
-              <View style={[styles.tileIconWrap, { backgroundColor: bcctColors.primaryOrange + "15" }]}>
+              <View style={styles.tileIconRow}>
                 <IconSymbol
                   ios_icon_name={tile.ios_icon}
                   android_material_icon_name={tile.android_icon}
-                  size={26}
-                  color={bcctColors.primaryOrange}
+                  size={20}
+                  color={bcctColors.textSecondary}
                 />
+                <Text style={[styles.tileLabel, { color: colors.text }]}>{tile.title}</Text>
               </View>
-              <Text style={[styles.tileLabel, { color: colors.text }]}>{tile.title}</Text>
+              <Text style={[styles.tileSubtitle, { color: bcctColors.textSecondary }]}>{tile.subtitle}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -838,35 +846,42 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 12,
+    gap: 10,
     alignContent: "flex-start",
   },
   tile: {
     width: "47.5%",
     flex: 0,
-    aspectRatio: 1.15,
-    borderRadius: 18,
+    borderRadius: 12,
     borderWidth: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 10,
+    borderColor: "rgba(0,0,0,0.07)",
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    justifyContent: "flex-start",
+    alignItems: "flex-start",
+    gap: 6,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04,
-    shadowRadius: 6,
+    shadowRadius: 3,
     elevation: 1,
   },
-  tileIconWrap: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    justifyContent: "center",
+  tileIconRow: {
+    flexDirection: "row",
     alignItems: "center",
+    gap: 7,
   },
   tileLabel: {
-    ...bcctTypography.bodyMedium,
-    textAlign: "center",
-    paddingHorizontal: 8,
+    fontSize: 14,
+    fontWeight: "600",
+    color: bcctColors.textPrimary,
+    flexShrink: 1,
+  },
+  tileSubtitle: {
+    fontSize: 11,
+    fontWeight: "400",
+    lineHeight: 15,
+    paddingLeft: 1,
   },
   modalContent: {
     borderRadius: 20,
