@@ -18,6 +18,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bcctColors } from '@/styles/bcctTheme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useHeaderHeight } from '@react-navigation/elements';
 
 // FloatingTabBar height constant (icon 40 + gap 4 + label ~14 + paddingTop 8 = ~66)
 const TAB_BAR_HEIGHT = 66;
@@ -65,11 +66,12 @@ export default function ChatDetailScreen() {
   const [sending, setSending] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
+  const headerHeight = useHeaderHeight();
 
   const headerTitle = otherName ?? 'Chat';
 
-  // Bottom padding = tab bar height + safe area bottom
-  const inputBarBottomPadding = TAB_BAR_HEIGHT + (insets.bottom > 0 ? insets.bottom : 0) + 8;
+  // Bottom padding for input container = tab bar height + safe area bottom + breathing room
+  const inputBarBottomPadding = TAB_BAR_HEIGHT + insets.bottom + 8;
 
   const loadMessages = useCallback(async () => {
     if (!id || !user) return;
@@ -301,60 +303,63 @@ export default function ChatDetailScreen() {
           headerBackButtonDisplayMode: 'minimal',
         }}
       />
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
-      >
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
-          </View>
-        ) : (
-          <FlatList
-            ref={flatListRef}
-            data={messages}
-            keyExtractor={(item) => item.id}
-            renderItem={renderMessage}
-            ListEmptyComponent={emptyComponent}
-            contentContainerStyle={[
-              styles.messageList,
-              { paddingBottom: inputBarBottomPadding + 72 },
-              messages.length === 0 && styles.messageListEmpty,
-            ]}
-            onContentSizeChange={() => {
-              if (messages.length > 0) {
-                flatListRef.current?.scrollToEnd({ animated: false });
-              }
-            }}
-          />
-        )}
+      <View style={styles.flex}>
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={headerHeight}
+        >
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
+            </View>
+          ) : (
+            <FlatList
+              ref={flatListRef}
+              data={messages}
+              keyExtractor={(item) => item.id}
+              renderItem={renderMessage}
+              ListEmptyComponent={emptyComponent}
+              style={styles.flex}
+              contentContainerStyle={[
+                styles.messageList,
+                { paddingBottom: 16 },
+                messages.length === 0 && styles.messageListEmpty,
+              ]}
+              onContentSizeChange={() => {
+                if (messages.length > 0) {
+                  flatListRef.current?.scrollToEnd({ animated: false });
+                }
+              }}
+            />
+          )}
 
-        <View style={[styles.inputBar, { paddingBottom: inputBarBottomPadding }]}>
-          <TextInput
-            style={styles.textInput}
-            value={inputText}
-            onChangeText={setInputText}
-            placeholder="Typ een bericht..."
-            placeholderTextColor={bcctColors.textSecondary}
-            multiline
-            maxLength={2000}
-            returnKeyType="default"
-          />
-          <TouchableOpacity
-            style={[styles.sendButton, (!inputText.trim() || sending) && styles.sendButtonDisabled]}
-            onPress={handleSend}
-            disabled={!inputText.trim() || sending}
-            activeOpacity={0.8}
-          >
-            {sending ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <Send size={20} color="#FFFFFF" strokeWidth={2} />
-            )}
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
+          <View style={[styles.inputBar, { paddingBottom: inputBarBottomPadding }]}>
+            <TextInput
+              style={styles.textInput}
+              value={inputText}
+              onChangeText={setInputText}
+              placeholder="Typ een bericht..."
+              placeholderTextColor={bcctColors.textSecondary}
+              multiline
+              maxLength={2000}
+              returnKeyType="default"
+            />
+            <TouchableOpacity
+              style={[styles.sendButton, (!inputText.trim() || sending) && styles.sendButtonDisabled]}
+              onPress={handleSend}
+              disabled={!inputText.trim() || sending}
+              activeOpacity={0.8}
+            >
+              {sending ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Send size={20} color="#FFFFFF" strokeWidth={2} />
+              )}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </View>
     </>
   );
 }
@@ -480,10 +485,6 @@ const styles = StyleSheet.create({
     textAlign: 'left',
   },
   inputBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     flexDirection: 'row',
     alignItems: 'flex-end',
     paddingHorizontal: 12,
