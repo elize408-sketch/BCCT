@@ -38,6 +38,7 @@ export default function ClientLayout() {
         <Stack.Screen name="index" />
         <Stack.Screen name="checkin" />
         <Stack.Screen name="chat" />
+        <Stack.Screen name="chat-detail" options={{ headerShown: true }} />
         <Stack.Screen name="files" />
         <Stack.Screen name="settings" />
       </Stack>
