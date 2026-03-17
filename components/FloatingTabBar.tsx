@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Home, MessageCircle, FolderOpen, User, LucideIcon } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Href } from 'expo-router';
 
 const BRAND_ORANGE = '#F28C28';
@@ -26,11 +26,13 @@ interface FloatingTabBarProps {
   tabs: TabBarItem[];
 }
 
-const ICON_MAP: Record<TabBarItem['icon'], LucideIcon> = {
-  home: Home,
-  chat: MessageCircle,
-  documenten: FolderOpen,
-  profiel: User,
+type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
+
+const ICON_MAP: Record<TabBarItem['icon'], { active: IoniconsName; inactive: IoniconsName }> = {
+  home: { active: 'home', inactive: 'home-outline' },
+  chat: { active: 'chatbubble', inactive: 'chatbubble-outline' },
+  documenten: { active: 'folder', inactive: 'folder-outline' },
+  profiel: { active: 'person', inactive: 'person-outline' },
 };
 
 export default function FloatingTabBar({ tabs }: FloatingTabBarProps) {
@@ -72,7 +74,7 @@ export default function FloatingTabBar({ tabs }: FloatingTabBarProps) {
       <View style={styles.tabsRow}>
         {tabs.map((tab, index) => {
           const isActive = activeTabIndex === index;
-          const IconComponent = ICON_MAP[tab.icon];
+          const iconName = isActive ? ICON_MAP[tab.icon].active : ICON_MAP[tab.icon].inactive;
           const iconColor = isActive ? BRAND_ORANGE : INACTIVE_COLOR;
           const labelColor = isActive ? BRAND_ORANGE : INACTIVE_COLOR;
 
@@ -84,7 +86,7 @@ export default function FloatingTabBar({ tabs }: FloatingTabBarProps) {
               activeOpacity={0.7}
             >
               <View style={[styles.tabInner, isActive && styles.tabInnerActive]}>
-                <IconComponent size={22} color={iconColor} strokeWidth={isActive ? 2.2 : 1.8} />
+                <Ionicons name={iconName} size={24} color={iconColor} />
                 <Text style={[styles.tabLabel, { color: labelColor }, isActive && styles.tabLabelActive]}>
                   {tab.label}
                 </Text>
