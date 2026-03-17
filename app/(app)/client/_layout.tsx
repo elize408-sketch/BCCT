@@ -7,7 +7,7 @@ import type { TabBarItem } from "@/components/FloatingTabBar";
 const tabs: TabBarItem[] = [
   {
     name: "index",
-    route: "/(app)/client/index" as any,
+    route: "/(app)/client" as any,
     icon: "home",
     label: "Home",
   },
