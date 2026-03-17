@@ -19,19 +19,9 @@ export function useMyCoaches() {
   useEffect(() => {
     let cancelled = false;
 
-    const run = async () => {
+    const fetchCoaches = async (userId: string) => {
       try {
-        // Get current session directly from supabase
-        const { data: { session } } = await supabase.auth.getSession();
-        const userId = session?.user?.id;
-
-        console.log('[useMyCoaches] userId from session:', userId);
-
-        if (!userId) {
-          console.log('[useMyCoaches] No userId, aborting');
-          if (!cancelled) setLoading(false);
-          return;
-        }
+        console.log('[useMyCoaches] fetching for userId:', userId);
 
         const { data: links, error: linksError } = await supabase
           .from('coach_clients')
@@ -39,7 +29,7 @@ export function useMyCoaches() {
           .eq('client_id', userId)
           .eq('status', 'active');
 
-        console.log('[useMyCoaches] links:', JSON.stringify(links), 'error:', linksError);
+        console.log('[useMyCoaches] links:', JSON.stringify(links), 'linksError:', linksError?.message);
 
         if (linksError) throw linksError;
         if (!links || links.length === 0) {
@@ -53,7 +43,7 @@ export function useMyCoaches() {
           .select('id, full_name, avatar_url')
           .in('id', coachIds);
 
-        console.log('[useMyCoaches] profiles:', JSON.stringify(profiles), 'error:', profilesError);
+        console.log('[useMyCoaches] profiles:', JSON.stringify(profiles), 'profilesError:', profilesError?.message);
 
         if (profilesError) throw profilesError;
 
@@ -70,18 +60,40 @@ export function useMyCoaches() {
           };
         });
 
-        console.log('[useMyCoaches] merged:', JSON.stringify(merged));
-        if (!cancelled) setCoaches(merged);
+        console.log('[useMyCoaches] merged result:', JSON.stringify(merged));
+        if (!cancelled) { setCoaches(merged); setLoading(false); }
       } catch (err: any) {
-        console.error('[useMyCoaches] error:', err);
-        if (!cancelled) setError(err);
-      } finally {
-        if (!cancelled) setLoading(false);
+        console.error('[useMyCoaches] error:', err.message);
+        if (!cancelled) { setError(err); setLoading(false); }
       }
     };
 
-    run();
-    return () => { cancelled = true; };
+    // Listen to auth state changes so we re-fetch when session is restored
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const userId = session?.user?.id;
+      console.log('[useMyCoaches] auth state changed, userId:', userId);
+      if (userId) {
+        fetchCoaches(userId);
+      } else {
+        if (!cancelled) { setCoaches([]); setLoading(false); }
+      }
+    });
+
+    // Also try immediately in case session is already available
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const userId = session?.user?.id;
+      console.log('[useMyCoaches] initial getSession userId:', userId);
+      if (userId) {
+        fetchCoaches(userId);
+      } else {
+        if (!cancelled) setLoading(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
   }, []);
 
   return { coaches, loading, error };
