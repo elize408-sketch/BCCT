@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -33,8 +33,13 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const TOTAL_STEPS = 3;
 
 export default function CoachOnboardingScreen() {
-  const { session, loading: authLoading } = useAuth();
+  // TEMPORARILY DISABLED — redirect immediately to avoid crash
   const router = useRouter();
+  useEffect(() => { router.replace('/(tabs)'); }, []);
+  return null;
+
+  // eslint-disable-next-line no-unreachable
+  const { session, loading: authLoading } = useAuth();
   const theme = useTheme();
   const colors = theme?.colors ?? {
     background: '#F7F9FC',

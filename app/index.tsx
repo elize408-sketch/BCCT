@@ -53,16 +53,15 @@ export default function IndexScreen() {
         return;
       }
 
-      // Only redirect to coach-onboarding when role is explicitly 'coach' AND onboarding is incomplete
-      if (profile.role === 'coach' && (!profile.onboarding_completed || !profile.full_name)) {
-        console.log('[IndexScreen] Coach onboarding incomplete, redirecting to coach-onboarding');
-        setTimeout(() => router.replace('/coach-onboarding'), 100);
-        setChecking(false);
-        return;
-      }
+      // TODO: Re-enable coach onboarding after crash fix
+      // Coach onboarding is temporarily disabled due to `Cannot read property 'route' of undefined` crash.
+      // Previously: if (profile.role === 'coach' && (!profile.onboarding_completed || !profile.full_name)) {
+      //   router.replace('/coach-onboarding'); return;
+      // }
+      // Instead, fall through to role-based dashboard routing below for coaches too.
 
       // For all other roles (or undefined role), redirect to generic onboarding if incomplete
-      if (!profile.onboarding_completed || !profile.full_name) {
+      if (profile.role !== 'coach' && (!profile.onboarding_completed || !profile.full_name)) {
         console.log('[IndexScreen] Profile incomplete, redirecting to onboarding');
         setTimeout(() => router.replace('/onboarding'), 100);
         setChecking(false);
