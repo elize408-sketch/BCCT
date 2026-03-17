@@ -7,8 +7,81 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useMyCoaches } from '../hooks/useMyCoaches';
+import { useMyCoaches, CoachProfile } from '@/hooks/useMyCoaches';
+
+// Soft palette — cycles through based on first letter
+const AVATAR_COLORS = [
+  { bg: '#D6E8FF', text: '#1A4A8A' },
+  { bg: '#D6F0E8', text: '#1A6A4A' },
+  { bg: '#F0E0FF', text: '#5A1A8A' },
+  { bg: '#FFE8D6', text: '#8A3A1A' },
+  { bg: '#FFF0D6', text: '#8A5A1A' },
+  { bg: '#E8D6FF', text: '#3A1A8A' },
+  { bg: '#D6F0FF', text: '#1A5A8A' },
+];
+
+function getAvatarColor(name: string | null) {
+  if (!name) return AVATAR_COLORS[0];
+  const index = name.charCodeAt(0) % AVATAR_COLORS.length;
+  return AVATAR_COLORS[index];
+}
+
+function getInitial(name: string | null): string {
+  if (!name) return '?';
+  return name.trim().charAt(0).toUpperCase();
+}
+
+function formatDate(iso: string | null): string | null {
+  if (!iso) return null;
+  return new Date(iso).toLocaleDateString('nl-NL', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function CoachAvatar({ coach, size = 44 }: { coach: CoachProfile; size?: number }) {
+  const color = getAvatarColor(coach.full_name);
+  const initial = getInitial(coach.full_name);
+
+  if (coach.avatar_url) {
+    return (
+      <Image
+        source={{ uri: coach.avatar_url }}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+        }}
+        resizeMode="cover"
+      />
+    );
+  }
+
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: color.bg,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Text
+        style={{
+          fontSize: size * 0.4,
+          fontWeight: '700',
+          color: color.text,
+          letterSpacing: 0,
+        }}
+      >
+        {initial}
+      </Text>
+    </View>
+  );
+}
 
 interface Props {
   onViewAll?: () => void;
@@ -23,62 +96,43 @@ export function CoachSummaryCard({ onViewAll }: Props) {
   const visible = coaches.slice(0, 2);
   const hasMore = coaches.length > 2;
 
-  const formatDate = (iso: string | null) => {
-    if (!iso) return null;
-    return new Date(iso).toLocaleDateString('nl-NL', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    });
-  };
-
   return (
     <View style={styles.card}>
-      <View style={styles.header}>
-        <Ionicons name="people-outline" size={20} color="#4A90D9" style={{ marginRight: 8 }} />
-        <Text style={styles.cardTitle}>{loading ? 'Mijn coaches' : title}</Text>
-      </View>
+      {/* Header row */}
+      <Text style={styles.sectionLabel}>{loading ? 'Mijn coaches' : title}</Text>
 
       {loading ? (
         <View style={styles.loadingRow}>
           <ActivityIndicator size="small" color="#4A90D9" />
-          <Text style={styles.loadingText}>Coaches laden...</Text>
+          <Text style={styles.loadingText}>Laden…</Text>
         </View>
       ) : coaches.length === 0 ? (
         <Text style={styles.emptyText}>Nog geen coaches gekoppeld</Text>
       ) : (
         <>
           {visible.map((coach, index) => {
-            const dateLabel = formatDate(coach.started_at);
-            const coachName = coach.full_name ?? 'Coach';
+            const dateStr = formatDate(coach.started_at);
             const isNotLast = index < visible.length - 1;
+            const coachName = coach.full_name ?? 'Coach';
             return (
               <View
                 key={coach.coach_client_key}
-                style={[styles.coachRow, isNotLast && styles.coachRowBorder]}
+                style={[
+                  styles.coachRow,
+                  isNotLast && styles.coachRowDivider,
+                ]}
               >
-                {coach.avatar_url ? (
-                  <Image
-                    source={{ uri: coach.avatar_url }}
-                    style={styles.avatarImage}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View style={styles.avatar}>
-                    <Ionicons name="person-outline" size={18} color="#4A90D9" />
-                  </View>
-                )}
+                <CoachAvatar coach={coach} size={44} />
                 <View style={styles.coachInfo}>
                   <Text style={styles.coachName}>{coachName}</Text>
-                  {dateLabel !== null && (
-                    <Text style={styles.coachSub}>
-                      Gekoppeld sinds {dateLabel}
-                    </Text>
-                  )}
+                  {dateStr ? (
+                    <Text style={styles.coachSub}>Gekoppeld sinds {dateStr}</Text>
+                  ) : null}
                 </View>
               </View>
             );
           })}
+
           {hasMore && onViewAll && (
             <TouchableOpacity
               onPress={() => {
@@ -87,7 +141,7 @@ export function CoachSummaryCard({ onViewAll }: Props) {
               }}
               style={styles.viewAllBtn}
             >
-              <Text style={styles.viewAllText}>Bekijk alle coaches</Text>
+              <Text style={styles.viewAllText}>Bekijk alle coaches →</Text>
             </TouchableOpacity>
           )}
         </>
@@ -102,81 +156,66 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: '#fff',
     borderRadius: 16,
-    padding: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 18,
     marginHorizontal: 16,
     marginBottom: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
     elevation: 3,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  cardTitle: {
-    fontSize: 16,
+  sectionLabel: {
+    fontSize: 12,
     fontWeight: '700',
-    color: '#1a1a1a',
+    color: '#9AA5B4',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 14,
   },
   loadingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
     gap: 8,
+    paddingVertical: 8,
   },
   loadingText: {
-    fontSize: 13,
-    color: '#888',
+    fontSize: 14,
+    color: '#9AA5B4',
   },
   emptyText: {
     fontSize: 14,
-    color: '#aaa',
-    textAlign: 'center',
-    paddingVertical: 12,
+    color: '#B0BAC5',
+    paddingVertical: 8,
   },
   coachRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
   },
-  coachRowBorder: {
+  coachRowDivider: {
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#EBF4FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  avatarImage: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    marginRight: 12,
+    borderBottomColor: '#F3F4F6',
   },
   coachInfo: {
     flex: 1,
+    marginLeft: 14,
   },
   coachName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1a1a1a',
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 2,
   },
   coachSub: {
     fontSize: 13,
-    color: '#888',
-    marginTop: 2,
+    color: '#9AA5B4',
+    fontWeight: '400',
   },
   viewAllBtn: {
-    marginTop: 10,
-    alignItems: 'center',
+    marginTop: 12,
+    alignSelf: 'flex-start',
   },
   viewAllText: {
     fontSize: 14,
