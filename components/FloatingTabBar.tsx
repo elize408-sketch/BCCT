@@ -75,7 +75,7 @@ export default function FloatingTabBar({ tabs }: FloatingTabBarProps) {
     router.push(route);
   };
 
-  const safeBottom = insets.bottom;
+  const safeBottom = Math.min(insets.bottom, 8);
 
   return (
     <View style={[styles.container, { paddingTop: 8, paddingBottom: safeBottom }]}>
