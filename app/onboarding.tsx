@@ -10,7 +10,6 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Image,
 } from 'react-native';
 import { useTheme } from '@react-navigation/native';
 import { useAuth } from '@/contexts/AuthContext';
@@ -18,6 +17,7 @@ import Modal from 'react-native-modal';
 import { supabase } from '@/lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
 import { bcctColors, bcctTypography } from '@/styles/bcctTheme';
+import { AvatarUpload } from '@/components/AvatarUpload';
 
 export default function OnboardingScreen() {
   const { session } = useAuth();
@@ -25,6 +25,7 @@ export default function OnboardingScreen() {
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<'client' | 'coach' | 'org_admin'>('client');
   const [goals, setGoals] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const { colors } = useTheme();
@@ -51,11 +52,11 @@ export default function OnboardingScreen() {
 
         if (profile) {
           console.log('[Onboarding] Found existing profile:', profile);
-          // Pre-fill form with existing data
           if (profile.full_name) setName(profile.full_name);
           if (profile.phone) setPhone(profile.phone);
           if (profile.role) setRole(profile.role);
           if (profile.goals) setGoals(profile.goals);
+          if (profile.avatar_url) setAvatarUrl(profile.avatar_url);
         }
       } catch (error) {
         console.error('[Onboarding] Error loading profile:', error);
@@ -74,7 +75,7 @@ export default function OnboardingScreen() {
   };
 
   const handleComplete = async () => {
-    console.log('[Onboarding] Starting profile completion', { name, phone, role, goals });
+    console.log('[Onboarding] Starting profile completion', { name, phone, role, goals, hasAvatar: !!avatarUrl });
 
     if (!name.trim()) {
       showModal('Fout', 'Voer je naam in');
@@ -118,7 +119,7 @@ export default function OnboardingScreen() {
         showModal('Fout', error.message || 'Profiel opslaan mislukt. Probeer opnieuw.');
       } else {
         console.log('[Onboarding] Profile saved successfully, redirecting based on role:', role);
-        
+
         if (role === 'client') {
           router.replace('/(app)/client');
         } else if (role === 'coach') {
@@ -142,6 +143,9 @@ export default function OnboardingScreen() {
       </View>
     );
   }
+
+  const isCoach = role === 'coach';
+  const userId = session?.user?.id ?? '';
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
@@ -196,9 +200,33 @@ export default function OnboardingScreen() {
             />
           </View>
 
+          {/* Avatar upload — shown for coaches */}
+          {isCoach && userId ? (
+            <View style={styles.inputGroup}>
+              <Text style={[styles.label, { color: colors.text }]}>Profielfoto (optioneel)</Text>
+              <View style={styles.avatarRow}>
+                <AvatarUpload
+                  avatarUrl={avatarUrl}
+                  userId={userId}
+                  size={80}
+                  onUploaded={(url) => {
+                    console.log('[Onboarding] Avatar uploaded during onboarding:', url);
+                    setAvatarUrl(url);
+                  }}
+                />
+                <Text style={[styles.avatarHint, { color: bcctColors.textSecondary }]}>
+                  Tik op de cirkel om een foto te kiezen
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
           <TouchableOpacity
             style={[styles.buttonContainer]}
-            onPress={handleComplete}
+            onPress={() => {
+              console.log('[Onboarding] Complete button pressed');
+              handleComplete();
+            }}
             disabled={loading}
             activeOpacity={0.9}
           >
@@ -268,6 +296,16 @@ const styles = StyleSheet.create({
   },
   textArea: {
     minHeight: 100,
+  },
+  avatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  avatarHint: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
   },
   buttonContainer: {
     borderRadius: 12,

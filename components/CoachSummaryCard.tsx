@@ -2,6 +2,7 @@ import React from 'react';
 import {
   View,
   Text,
+  Image,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
@@ -56,9 +57,17 @@ export function CoachSummaryCard({ onViewAll }: Props) {
                 key={coach.coach_client_key}
                 style={[styles.coachRow, isNotLast && styles.coachRowBorder]}
               >
-                <View style={styles.avatar}>
-                  <Ionicons name="person-outline" size={18} color="#4A90D9" />
-                </View>
+                {coach.avatar_url ? (
+                  <Image
+                    source={{ uri: coach.avatar_url }}
+                    style={styles.avatarImage}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={styles.avatar}>
+                    <Ionicons name="person-outline" size={18} color="#4A90D9" />
+                  </View>
+                )}
                 <View style={styles.coachInfo}>
                   <Text style={styles.coachName}>{coachName}</Text>
                   {dateLabel !== null && (
@@ -144,6 +153,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#EBF4FF',
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 12,
+  },
+  avatarImage: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     marginRight: 12,
   },
   coachInfo: {

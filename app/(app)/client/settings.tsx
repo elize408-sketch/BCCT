@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -158,9 +159,17 @@ export default function SettingsScreen() {
                 return (
                   <View key={coach.coach_client_key} style={{ backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                      <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#EBF4FF', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                        <Ionicons name="person-outline" size={20} color="#4A90D9" />
-                      </View>
+                      {coach.avatar_url ? (
+                        <Image
+                          source={{ uri: coach.avatar_url }}
+                          style={{ width: 40, height: 40, borderRadius: 20, marginRight: 12 }}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#EBF4FF', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                          <Ionicons name="person-outline" size={20} color="#4A90D9" />
+                        </View>
+                      )}
                       <View style={{ flex: 1 }}>
                         <Text style={{ fontSize: 16, fontWeight: '700', color: '#1a1a1a' }}>{coachName}</Text>
                         {startedAtDisplay !== null && (
@@ -202,7 +211,10 @@ export default function SettingsScreen() {
           <View style={styles.section}>
             <TouchableOpacity
               style={[styles.signOutButton, { backgroundColor: "#ef4444" }]}
-              onPress={() => setConfirmSignOutVisible(true)}
+              onPress={() => {
+                console.log('[Settings] Sign out button pressed');
+                setConfirmSignOutVisible(true);
+              }}
               disabled={signingOut}
             >
               {signingOut ? (

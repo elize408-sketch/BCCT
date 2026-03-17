@@ -1,5 +1,5 @@
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -16,6 +16,8 @@ import { IconSymbol } from "@/components/IconSymbol";
 import { useRouter } from "expo-router";
 import { bcctColors, bcctTypography } from "@/styles/bcctTheme";
 import { LinearGradient } from "expo-linear-gradient";
+import { AvatarUpload } from "@/components/AvatarUpload";
+import { supabase } from "@/lib/supabase";
 
 export default function CoachSettingsScreen() {
   const { colors } = useTheme();
@@ -25,6 +27,23 @@ export default function CoachSettingsScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [modalTitle, setModalTitle] = useState("");
   const [modalMessage, setModalMessage] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    console.log('[Coach Settings] Fetching avatar_url for user:', user.id);
+    supabase
+      .from('profiles')
+      .select('avatar_url')
+      .eq('id', user.id)
+      .single()
+      .then(({ data }) => {
+        if (data?.avatar_url) {
+          console.log('[Coach Settings] Avatar URL loaded:', data.avatar_url);
+          setAvatarUrl(data.avatar_url);
+        }
+      });
+  }, [user?.id]);
 
   const showModal = (title: string, message: string) => {
     setModalTitle(title);
@@ -77,6 +96,8 @@ export default function CoachSettingsScreen() {
     },
   ];
 
+  const userId = user?.id ?? '';
+
   return (
     <>
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={["top"]}>
@@ -85,16 +106,22 @@ export default function CoachSettingsScreen() {
             <Text style={[styles.headerTitle, { color: colors.text }]}>Profiel</Text>
           </View>
 
+          {/* Avatar Upload */}
+          <View style={styles.avatarSection}>
+            <AvatarUpload
+              avatarUrl={avatarUrl}
+              userId={userId}
+              size={90}
+              onUploaded={(url) => {
+                console.log('[Coach Settings] Avatar uploaded, new URL:', url);
+                setAvatarUrl(url);
+              }}
+            />
+            <Text style={styles.avatarHint}>Tik om foto te wijzigen</Text>
+          </View>
+
           {/* Profile Card */}
           <View style={[styles.profileCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={[styles.avatarContainer, { backgroundColor: bcctColors.primaryOrange + "20" }]}>
-              <IconSymbol
-                ios_icon_name="person.fill"
-                android_material_icon_name="person"
-                size={40}
-                color={bcctColors.primaryOrange}
-              />
-            </View>
             <View style={styles.profileInfo}>
               <Text style={[styles.profileName, { color: colors.text }]}>{fullName}</Text>
               <Text style={[styles.profileEmail, { color: bcctColors.textSecondary }]}>{email}</Text>
@@ -112,7 +139,10 @@ export default function CoachSettingsScreen() {
                 <React.Fragment key={option.id}>
                 <TouchableOpacity
                   style={[styles.optionCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-                  onPress={option.onPress}
+                  onPress={() => {
+                    console.log('[Coach Settings] Option pressed:', option.id);
+                    option.onPress();
+                  }}
                   activeOpacity={0.7}
                 >
                   <View style={[styles.optionIconContainer, { backgroundColor: bcctColors.primaryOrange + "20" }]}>
@@ -206,12 +236,19 @@ const styles = StyleSheet.create({
   headerTitle: {
     ...bcctTypography.h1,
   },
+  avatarSection: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  avatarHint: {
+    marginTop: 10,
+    fontSize: 13,
+    color: '#888',
+  },
   profileCard: {
-    flexDirection: "row",
     padding: 20,
     borderRadius: 16,
     borderWidth: 1,
-    gap: 16,
     marginBottom: 32,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
@@ -219,16 +256,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  avatarContainer: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    justifyContent: "center",
-    alignItems: "center",
-  },
   profileInfo: {
-    flex: 1,
-    justifyContent: "center",
     gap: 4,
   },
   profileName: {
