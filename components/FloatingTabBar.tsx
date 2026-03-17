@@ -18,7 +18,7 @@ const ACTIVE_BG = 'rgba(242, 140, 40, 0.12)';
 export interface TabBarItem {
   name: string;
   route: Href;
-  icon: 'home' | 'chat' | 'documenten' | 'profiel';
+  icon: string;
   label: string;
 }
 
@@ -28,11 +28,16 @@ interface FloatingTabBarProps {
 
 type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
 
-const ICON_MAP: Record<TabBarItem['icon'], { active: IoniconsName; inactive: IoniconsName }> = {
+const ICON_MAP: Record<string, { active: IoniconsName; inactive: IoniconsName }> = {
+  // folder-based routes
+  '(home)': { active: 'home', inactive: 'home-outline' },
   home: { active: 'home', inactive: 'home-outline' },
+  index: { active: 'home', inactive: 'home-outline' },
   chat: { active: 'chatbubble', inactive: 'chatbubble-outline' },
   documenten: { active: 'folder', inactive: 'folder-outline' },
+  documents: { active: 'folder', inactive: 'folder-outline' },
   profiel: { active: 'person', inactive: 'person-outline' },
+  profile: { active: 'person', inactive: 'person-outline' },
 };
 
 export default function FloatingTabBar({ tabs }: FloatingTabBarProps) {
@@ -74,7 +79,11 @@ export default function FloatingTabBar({ tabs }: FloatingTabBarProps) {
       <View style={styles.tabsRow}>
         {tabs.map((tab, index) => {
           const isActive = activeTabIndex === index;
-          const iconName = isActive ? ICON_MAP[tab.icon].active : ICON_MAP[tab.icon].inactive;
+          if (!ICON_MAP[tab.icon] && !ICON_MAP[tab.name]) {
+            console.warn('FloatingTabBar: unknown tab key:', tab.icon, tab.name);
+          }
+          const iconConfig = ICON_MAP[tab.icon] ?? ICON_MAP[tab.name] ?? { active: 'ellipse' as IoniconsName, inactive: 'ellipse-outline' as IoniconsName };
+          const iconName = isActive ? iconConfig.active : iconConfig.inactive;
           const iconColor = isActive ? BRAND_ORANGE : INACTIVE_COLOR;
           const labelColor = isActive ? BRAND_ORANGE : INACTIVE_COLOR;
 
