@@ -24,9 +24,9 @@ export default function IndexScreen() {
   useEffect(() => {
     console.log('[IndexScreen] Auth state changed', { session: session?.user?.id, loading: authLoading });
 
-    if (!authLoading) {
-      checkAuthAndRedirect();
-    }
+    // Wait until auth has fully resolved before making any routing decisions
+    if (authLoading) return;
+    checkAuthAndRedirect();
   }, [session, authLoading]);
 
   const checkAuthAndRedirect = async () => {
@@ -53,15 +53,18 @@ export default function IndexScreen() {
         return;
       }
 
+      // Only redirect to coach-onboarding when role is explicitly 'coach' AND onboarding is incomplete
+      if (profile.role === 'coach' && (!profile.onboarding_completed || !profile.full_name)) {
+        console.log('[IndexScreen] Coach onboarding incomplete, redirecting to coach-onboarding');
+        router.replace('/coach-onboarding');
+        setChecking(false);
+        return;
+      }
+
+      // For all other roles (or undefined role), redirect to generic onboarding if incomplete
       if (!profile.onboarding_completed || !profile.full_name) {
-        // Coaches get their own dedicated onboarding flow
-        if (profile.role === 'coach') {
-          console.log('[IndexScreen] Coach onboarding incomplete, redirecting to coach-onboarding');
-          router.replace('/coach-onboarding');
-        } else {
-          console.log('[IndexScreen] Profile incomplete, redirecting to onboarding');
-          router.replace('/onboarding');
-        }
+        console.log('[IndexScreen] Profile incomplete, redirecting to onboarding');
+        router.replace('/onboarding');
         setChecking(false);
         return;
       }

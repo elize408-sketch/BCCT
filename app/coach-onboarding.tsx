@@ -33,9 +33,17 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const TOTAL_STEPS = 3;
 
 export default function CoachOnboardingScreen() {
-  const { session } = useAuth();
+  const { session, loading: authLoading } = useAuth();
   const router = useRouter();
   const { colors } = useTheme();
+
+  // Redirect away if auth resolves with no session
+  React.useEffect(() => {
+    if (!authLoading && !session) {
+      console.log('[CoachOnboarding] No session after auth resolved, redirecting to auth');
+      router.replace('/auth');
+    }
+  }, [authLoading, session]);
 
   const [step, setStep] = useState(0);
   const [firstName, setFirstName] = useState('');
