@@ -41,7 +41,7 @@ export default function CoachOnboardingScreen() {
   React.useEffect(() => {
     if (!authLoading && !session) {
       console.log('[CoachOnboarding] No session after auth resolved, redirecting to auth');
-      router.replace('/auth');
+      setTimeout(() => router.replace('/auth'), 0);
     }
   }, [authLoading, session]);
 
@@ -209,10 +209,19 @@ export default function CoachOnboardingScreen() {
     }
   };
 
+  // Guard: don't render until auth has resolved
+  if (authLoading) {
+    return (
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: colors?.background ?? '#F7F9FC' }]} edges={['top', 'bottom']}>
+        <ActivityIndicator style={{ flex: 1 }} color={bcctColors.primaryOrange} />
+      </SafeAreaView>
+    );
+  }
+
   const stepLabel = `${step + 1}/${TOTAL_STEPS}`;
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors?.background ?? '#F7F9FC' }]} edges={['top', 'bottom']}>
       {/* Progress bar */}
       <View style={styles.progressContainer}>
         <View style={styles.dotsRow}>

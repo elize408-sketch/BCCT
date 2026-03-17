@@ -32,7 +32,7 @@ export default function IndexScreen() {
   const checkAuthAndRedirect = async () => {
     if (!session) {
       console.log('[IndexScreen] No session, redirecting to auth');
-      router.replace('/auth');
+      setTimeout(() => router.replace('/auth'), 0);
       setChecking(false);
       return;
     }
