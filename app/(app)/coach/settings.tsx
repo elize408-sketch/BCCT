@@ -39,8 +39,11 @@ export default function CoachSettingsScreen() {
       .single()
       .then(({ data }) => {
         if (data?.avatar_url) {
-          console.log('[Coach Settings] Avatar URL loaded:', data.avatar_url);
-          setAvatarUrl(data.avatar_url);
+          // Strip any existing cache-buster and add a fresh one so React Native loads the latest image
+          const base = data.avatar_url.split('?')[0];
+          const urlWithBuster = `${base}?t=${Date.now()}`;
+          console.log('[Coach Settings] Avatar URL loaded:', urlWithBuster);
+          setAvatarUrl(urlWithBuster);
         }
       });
   }, [user?.id]);

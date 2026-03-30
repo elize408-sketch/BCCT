@@ -74,19 +74,28 @@ export function AvatarUpload({ avatarUrl, userId, size = 90, onUploaded }: Props
 
       if (uploadError) throw uploadError;
 
-      const { data } = supabase.storage.from('avatars').getPublicUrl(fileName);
-      const publicUrl = `${data.publicUrl}?t=${Date.now()}`;
-      console.log('[AvatarUpload] Upload successful, public URL:', publicUrl);
+      console.log('[AvatarUpload] upload complete, filePath:', fileName);
 
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
+      console.log('[AvatarUpload] publicUrl:', publicUrl);
+
+      // Save the clean URL (no cache-buster) to the DB so it stays stable across sessions
       const { error: updateError } = await supabase
         .from('profiles')
         .update({ avatar_url: publicUrl })
         .eq('id', userId);
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error('[AvatarUpload] profile update error:', updateError);
+        throw updateError;
+      }
 
-      console.log('[AvatarUpload] Profile avatar_url updated in DB');
-      onUploaded(publicUrl);
+      console.log('[AvatarUpload] avatar_url saved to profile');
+
+      // Add cache-buster only for the in-memory display URL so React Native reloads the image
+      const displayUrl = `${publicUrl}?t=${Date.now()}`;
+      setLocalUri(displayUrl);
+      onUploaded(displayUrl);
     } catch (err: any) {
       console.error('[AvatarUpload] error:', err.message);
       Alert.alert('Upload mislukt', 'Probeer het opnieuw.');
