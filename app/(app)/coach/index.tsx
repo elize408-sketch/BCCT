@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   useWindowDimensions,
+  Image,
 } from "react-native";
 import Modal from "react-native-modal";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -322,21 +323,42 @@ export default function CoachDashboardScreen() {
           {/* A. Top section */}
           <View style={styles.topSection}>
             <View style={styles.topLeft}>
-              <Text style={styles.greeting}>
-                Welkom terug, {firstName}
-              </Text>
+              <Text style={styles.greeting}>Welkom terug, {firstName}</Text>
               <Text style={styles.dateText}>{currentDate}</Text>
             </View>
-            <TouchableOpacity
-              style={styles.bellButton}
-              onPress={() => {
-                console.log("[CoachDashboard] Notification bell pressed");
-                showModal("Notificaties", "Notificaties komen binnenkort");
-              }}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="notifications-outline" size={24} color={bcctColors.textSecondary} />
-            </TouchableOpacity>
+            <View style={styles.topRight}>
+              <TouchableOpacity
+                style={styles.bellButton}
+                onPress={() => {
+                  console.log('[CoachDashboard] Notification bell pressed');
+                  showModal('Notificaties', 'Notificaties komen binnenkort');
+                }}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="notifications-outline" size={22} color={bcctColors.textSecondary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.avatarButton}
+                onPress={() => {
+                  console.log('[CoachDashboard] Avatar pressed');
+                  router.push('/(app)/coach/settings');
+                }}
+                activeOpacity={0.8}
+              >
+                {profile?.avatar_url ? (
+                  <Image
+                    source={{ uri: profile.avatar_url }}
+                    style={styles.avatarImage}
+                  />
+                ) : (
+                  <View style={styles.avatarInitials}>
+                    <Text style={styles.avatarInitialsText}>
+                      {firstName.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* B. Stats cards row */}
@@ -396,6 +418,16 @@ export default function CoachDashboardScreen() {
               <Text style={styles.emptyEmoji}>🗓️</Text>
               <Text style={styles.emptyTitle}>Geen afspraken vandaag</Text>
               <Text style={styles.emptySubtitle}>Geniet van je vrije dag!</Text>
+              <TouchableOpacity
+                style={styles.emptyCtaButton}
+                onPress={() => {
+                  console.log('[CoachDashboard] Plan afspraak pressed');
+                  router.push('/(app)/coach/appointments');
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.emptyCtaText}>Plan afspraak</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             todayAppointments.map((appt) => {
@@ -500,7 +532,10 @@ export default function CoachDashboardScreen() {
           <Text style={styles.sectionHeader}>Recente activiteit</Text>
           <View style={[styles.activityCard, CARD_SHADOW]}>
             {recentActivity.length === 0 ? (
-              <Text style={styles.activityEmpty}>Nog geen activiteit</Text>
+              <View style={styles.activityEmptyWrap}>
+                <Text style={styles.activityEmpty}>Nog geen activiteit</Text>
+                <Text style={styles.activityEmptySub}>Voeg je eerste cliënt toe om te starten</Text>
+              </View>
             ) : (
               recentActivity.map((item, index) => {
                 const isLast = index === recentActivity.length - 1;
@@ -657,18 +692,42 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: bcctColors.textSecondary,
   },
+  topRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   bellButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: bcctColors.cardBackground,
+    backgroundColor: "#F3F4F6",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
+  },
+  avatarButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    overflow: "hidden",
+  },
+  avatarImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  avatarInitials: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: bcctColors.primaryOrange,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarInitialsText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#FFFFFF",
   },
 
   // B. Stats
@@ -735,6 +794,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: bcctColors.textSecondary,
     marginTop: 4,
+  },
+  emptyCtaButton: {
+    marginTop: 14,
+    backgroundColor: bcctColors.primaryOrange,
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+    borderRadius: 20,
+  },
+  emptyCtaText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#FFFFFF",
   },
   apptCard: {
     backgroundColor: bcctColors.cardBackground,
@@ -831,11 +902,20 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     overflow: "hidden",
   },
+  activityEmptyWrap: {
+    padding: 20,
+    alignItems: "center",
+  },
   activityEmpty: {
     fontSize: 14,
     color: bcctColors.textSecondary,
     textAlign: "center",
-    padding: 20,
+  },
+  activityEmptySub: {
+    fontSize: 13,
+    color: bcctColors.textSecondary,
+    marginTop: 4,
+    textAlign: "center",
   },
   activityRow: {
     flexDirection: "row",

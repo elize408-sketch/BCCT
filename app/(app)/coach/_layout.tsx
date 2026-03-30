@@ -6,7 +6,6 @@ import { IconSymbol } from "@/components/IconSymbol";
 import { bcctColors } from "@/styles/bcctTheme";
 import { useTheme } from "@react-navigation/native";
 import { BlurView } from "expo-blur";
-import { Ionicons } from "@expo/vector-icons";
 
 export default function CoachLayout() {
   const { colors, dark } = useTheme();
@@ -88,14 +87,14 @@ export default function CoachLayout() {
         }}
       />
       <Tabs.Screen
-        name="modules"
+        name="chat"
         options={{
-          title: "Modules",
+          title: "Chat",
           tabBarIcon: ({ color, focused }) => (
             <View style={[styles.iconContainer, focused && styles.iconFocused]}>
               <IconSymbol
-                ios_icon_name="folder.fill"
-                android_material_icon_name="folder"
+                ios_icon_name="message.fill"
+                android_material_icon_name="chat"
                 size={24}
                 color={focused ? "#FFFFFF" : color}
               />
@@ -120,7 +119,7 @@ export default function CoachLayout() {
         }}
       />
       <Tabs.Screen
-        name="facturatie"
+        name="billing"
         options={{
           title: "Facturatie",
           tabBarIcon: ({ color, focused }) => (
@@ -135,25 +134,12 @@ export default function CoachLayout() {
           ),
         }}
       />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          title: "Profiel",
-          tabBarIcon: ({ color, focused }) => (
-            <View style={[styles.iconContainer, focused && styles.iconFocused]}>
-              <IconSymbol
-                ios_icon_name="person.fill"
-                android_material_icon_name="person"
-                size={24}
-                color={focused ? "#FFFFFF" : color}
-              />
-            </View>
-          ),
-        }}
-      />
       {/* Hidden screens */}
       <Tabs.Screen name="theme-detail" options={{ href: null }} />
       <Tabs.Screen name="client-detail" options={{ href: null }} />
+      <Tabs.Screen name="modules" options={{ href: null }} />
+      <Tabs.Screen name="settings" options={{ href: null }} />
+      <Tabs.Screen name="facturatie" options={{ href: null }} />
     </Tabs>
   );
 }
