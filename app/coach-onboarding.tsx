@@ -24,7 +24,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bcctColors, bcctTypography } from '@/styles/bcctTheme';
 
-const TOTAL_STEPS = 6;
+const TOTAL_STEPS = 7;
 
 const COACHING_TYPES = [
   'Burn-out coaching',
@@ -44,6 +44,36 @@ const CALENDAR_OPTIONS = [
   { key: 'google', label: 'Google Calendar', icon: 'logo-google' as const },
   { key: 'apple', label: 'Apple Calendar', icon: 'logo-apple' as const },
   { key: 'outlook', label: 'Outlook', icon: 'mail-outline' as const },
+];
+
+const COACHING_FORMAT_OPTIONS = [
+  { label: '1-op-1 coaching', value: '1-op-1' },
+  { label: 'Groepscoaching', value: 'groep' },
+  { label: 'Beide', value: 'beide' },
+];
+
+const REVENUE_MODEL_OPTIONS = [
+  { label: 'Per sessie', value: 'per-sessie' },
+  { label: 'Trajectprijs', value: 'trajectprijs' },
+  { label: 'Abonnement', value: 'abonnement' },
+];
+
+const ACTIVE_CLIENT_RANGE_OPTIONS = [
+  { label: '1–5', value: '1-5' },
+  { label: '6–10', value: '6-10' },
+  { label: '11–25', value: '11-25' },
+  { label: '26–50', value: '26-50' },
+  { label: '50+', value: '50+' },
+];
+
+const PRIMARY_GOALS_OPTIONS = [
+  { label: 'Cliëntcontact', value: 'cliëntcontact' },
+  { label: 'Afspraken plannen', value: 'afspraken plannen' },
+  { label: 'Facturatie', value: 'facturatie' },
+  { label: 'Voortgang bijhouden', value: 'voortgang bijhouden' },
+  { label: 'Documenten delen', value: 'documenten delen' },
+  { label: 'Administratie', value: 'administratie' },
+  { label: 'Structuur in mijn praktijk', value: 'structuur in mijn praktijk' },
 ];
 
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
@@ -74,7 +104,11 @@ export default function CoachOnboardingScreen() {
   const { session, loading: authLoading } = useAuth();
 
   const [step, setStep] = useState(0);
-  const slideAnim = useRef(new Animated.Value(0)).current;
+
+  // Animation refs
+  const opacityAnim = useRef(new Animated.Value(1)).current;
+  const translateAnim = useRef(new Animated.Value(0)).current;
+  const progressAnim = useRef(new Animated.Value((1 / TOTAL_STEPS) * 100)).current;
 
   // Step 1 — Bedrijfsinformatie
   const [companyName, setCompanyName] = useState('');
@@ -102,7 +136,14 @@ export default function CoachOnboardingScreen() {
   // Step 5 — Agenda
   const [calendarProvider, setCalendarProvider] = useState<string | null>(null);
 
-  // Step 6 — Afronden
+  // Step 6 — Werkwijze & Verdienmodel
+  const [coachingFormat, setCoachingFormat] = useState<string>('');
+  const [revenueModel, setRevenueModel] = useState<string>('');
+  const [activeClientRange, setActiveClientRange] = useState<string>('');
+  const [primaryGoals, setPrimaryGoals] = useState<string[]>([]);
+  const [step6Error, setStep6Error] = useState('');
+
+  // Step 7 — Afronden
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
 
@@ -137,6 +178,10 @@ export default function CoachOnboardingScreen() {
           if (profile.company_logo_url) { setLogoUrl(profile.company_logo_url); setLogoLocalUri(profile.company_logo_url); }
           if (profile.coaching_types?.length) setSelectedTypes(profile.coaching_types);
           if (profile.calendar_provider) setCalendarProvider(profile.calendar_provider);
+          setCoachingFormat(profile.coaching_format ?? '');
+          setRevenueModel(profile.revenue_model ?? '');
+          setActiveClientRange(profile.active_client_range ?? '');
+          setPrimaryGoals(profile.primary_goals ?? []);
           console.log('[CoachOnboarding] Profile prefilled successfully');
         }
       } catch (err) {
@@ -149,13 +194,45 @@ export default function CoachOnboardingScreen() {
 
   const animateToStep = (nextStep: number) => {
     const direction = nextStep > step ? 1 : -1;
-    slideAnim.setValue(direction * 400);
-    setStep(nextStep);
-    Animated.timing(slideAnim, {
-      toValue: 0,
-      duration: 280,
-      useNativeDriver: true,
+    const outX = direction * -30;
+    const inX = direction * 30;
+
+    // Animate progress bar
+    Animated.timing(progressAnim, {
+      toValue: ((nextStep + 1) / TOTAL_STEPS) * 100,
+      duration: 300,
+      useNativeDriver: false,
     }).start();
+
+    // Fade + slide out
+    Animated.parallel([
+      Animated.timing(opacityAnim, {
+        toValue: 0,
+        duration: 110,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateAnim, {
+        toValue: outX,
+        duration: 110,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setStep(nextStep);
+      translateAnim.setValue(inX);
+      // Fade + slide in
+      Animated.parallel([
+        Animated.timing(opacityAnim, {
+          toValue: 1,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+        Animated.timing(translateAnim, {
+          toValue: 0,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
   };
 
   // ── Step navigation handlers ──
@@ -193,6 +270,16 @@ export default function CoachOnboardingScreen() {
   const handleStep5Next = () => {
     console.log('[CoachOnboarding] Step 5 next pressed', { calendarProvider });
     animateToStep(5);
+  };
+
+  const handleStep6Next = () => {
+    console.log('[CoachOnboarding] Step 6 next pressed', { coachingFormat, revenueModel, activeClientRange, primaryGoals });
+    if (!coachingFormat || !revenueModel) {
+      setStep6Error('Vul werkwijze en verdienmodel in om verder te gaan.');
+      return;
+    }
+    setStep6Error('');
+    animateToStep(6);
   };
 
   const handleBack = () => {
@@ -286,6 +373,15 @@ export default function CoachOnboardingScreen() {
     );
   };
 
+  // ── Primary goals toggle ──
+
+  const toggleGoal = (value: string) => {
+    console.log('[CoachOnboarding] Toggle primary goal:', value);
+    setPrimaryGoals(prev =>
+      prev.includes(value) ? prev.filter(g => g !== value) : [...prev, value]
+    );
+  };
+
   // ── Final save ──
 
   const handleFinish = async () => {
@@ -316,6 +412,10 @@ export default function CoachOnboardingScreen() {
         calendar_connected: false,
         onboarding_completed: true,
         avatar_url: avatarUrl || null,
+        coaching_format: coachingFormat || null,
+        revenue_model: revenueModel || null,
+        active_client_range: activeClientRange || null,
+        primary_goals: primaryGoals.length > 0 ? primaryGoals : null,
       };
 
       console.log('[CoachOnboarding] Supabase update payload for user', userId, ':', updatePayload);
@@ -350,8 +450,12 @@ export default function CoachOnboardingScreen() {
   // ── Derived values for display ──
 
   const stepLabel = `Stap ${step + 1} van ${TOTAL_STEPS}`;
-  const progressWidth = `${((step + 1) / TOTAL_STEPS) * 100}%` as `${number}%`;
   const andersSelected = selectedTypes.includes('Anders, namelijk…');
+
+  const progressWidth = progressAnim.interpolate({
+    inputRange: [0, 100],
+    outputRange: ['0%', '100%'],
+  });
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
@@ -360,7 +464,7 @@ export default function CoachOnboardingScreen() {
         <View style={styles.progressLabelRow}>
           <Text style={[styles.progressLabel, { color: bcctColors.textSecondary }]}>{stepLabel}</Text>
         </View>
-        <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
+        <View style={[styles.progressTrack, { backgroundColor: bcctColors.borderGray }]}>
           <Animated.View
             style={[styles.progressFill, { width: progressWidth, backgroundColor: bcctColors.primaryOrange }]}
           />
@@ -372,7 +476,15 @@ export default function CoachOnboardingScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={0}
       >
-        <Animated.View style={[styles.flex, { transform: [{ translateX: slideAnim }] }]}>
+        <Animated.View
+          style={[
+            styles.flex,
+            {
+              opacity: opacityAnim,
+              transform: [{ translateX: translateAnim }],
+            },
+          ]}
+        >
           <ScrollView
             contentContainerStyle={styles.scrollContent}
             keyboardShouldPersistTaps="handled"
@@ -660,16 +772,166 @@ export default function CoachOnboardingScreen() {
             )}
 
             {/* ══════════════════════════════════════
-                STEP 6 — Afronden
+                STEP 6 — Werkwijze & Verdienmodel
             ══════════════════════════════════════ */}
             {step === 5 && (
+              <View style={styles.stepContent}>
+                <Text style={[styles.stepTitle, { color: colors.text }]}>Hoe werk jij met cliënten?</Text>
+                <Text style={[styles.stepSubtitle, { color: bcctColors.textSecondary }]}>
+                  Dit helpt ons de app op jou af te stemmen.
+                </Text>
+
+                {/* Vraag 1 — Werkwijze */}
+                <View style={styles.questionBlock}>
+                  <Text style={[styles.label, { color: colors.text }]}>
+                    Hoe coach jij? <Text style={{ color: bcctColors.error }}>*</Text>
+                  </Text>
+                  <View style={styles.chipsRow}>
+                    {COACHING_FORMAT_OPTIONS.map(opt => {
+                      const isSelected = coachingFormat === opt.value;
+                      return (
+                        <TouchableOpacity
+                          key={opt.value}
+                          style={[
+                            styles.chip,
+                            {
+                              backgroundColor: isSelected ? bcctColors.primaryOrange : '#fff',
+                              borderColor: isSelected ? bcctColors.primaryOrange : bcctColors.borderGray,
+                            },
+                          ]}
+                          onPress={() => {
+                            console.log('[CoachOnboarding] Coaching format selected:', opt.value);
+                            setCoachingFormat(opt.value);
+                            setStep6Error('');
+                          }}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={[styles.chipText, { color: isSelected ? '#fff' : bcctColors.textPrimary }]}>
+                            {opt.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                {/* Vraag 2 — Verdienmodel */}
+                <View style={styles.questionBlock}>
+                  <Text style={[styles.label, { color: colors.text }]}>
+                    Hoe factureer jij? <Text style={{ color: bcctColors.error }}>*</Text>
+                  </Text>
+                  <View style={styles.chipsRow}>
+                    {REVENUE_MODEL_OPTIONS.map(opt => {
+                      const isSelected = revenueModel === opt.value;
+                      return (
+                        <TouchableOpacity
+                          key={opt.value}
+                          style={[
+                            styles.chip,
+                            {
+                              backgroundColor: isSelected ? bcctColors.primaryOrange : '#fff',
+                              borderColor: isSelected ? bcctColors.primaryOrange : bcctColors.borderGray,
+                            },
+                          ]}
+                          onPress={() => {
+                            console.log('[CoachOnboarding] Revenue model selected:', opt.value);
+                            setRevenueModel(opt.value);
+                            setStep6Error('');
+                          }}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={[styles.chipText, { color: isSelected ? '#fff' : bcctColors.textPrimary }]}>
+                            {opt.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                {/* Vraag 3 — Actieve cliënten */}
+                <View style={styles.questionBlock}>
+                  <Text style={[styles.label, { color: colors.text }]}>
+                    Hoeveel actieve cliënten heb je gemiddeld?
+                  </Text>
+                  <View style={styles.chipsRow}>
+                    {ACTIVE_CLIENT_RANGE_OPTIONS.map(opt => {
+                      const isSelected = activeClientRange === opt.value;
+                      return (
+                        <TouchableOpacity
+                          key={opt.value}
+                          style={[
+                            styles.chip,
+                            {
+                              backgroundColor: isSelected ? bcctColors.primaryOrange : '#fff',
+                              borderColor: isSelected ? bcctColors.primaryOrange : bcctColors.borderGray,
+                            },
+                          ]}
+                          onPress={() => {
+                            console.log('[CoachOnboarding] Active client range selected:', opt.value);
+                            setActiveClientRange(isSelected ? '' : opt.value);
+                          }}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={[styles.chipText, { color: isSelected ? '#fff' : bcctColors.textPrimary }]}>
+                            {opt.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                {/* Vraag 4 — Doelen */}
+                <View style={styles.questionBlock}>
+                  <Text style={[styles.label, { color: colors.text }]}>
+                    Wat wil je verbeteren met deze app?
+                  </Text>
+                  <View style={styles.chipsRow}>
+                    {PRIMARY_GOALS_OPTIONS.map(opt => {
+                      const isSelected = primaryGoals.includes(opt.value);
+                      return (
+                        <TouchableOpacity
+                          key={opt.value}
+                          style={[
+                            styles.chip,
+                            {
+                              backgroundColor: isSelected ? bcctColors.primaryOrange : '#fff',
+                              borderColor: isSelected ? bcctColors.primaryOrange : bcctColors.borderGray,
+                            },
+                          ]}
+                          onPress={() => toggleGoal(opt.value)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={[styles.chipText, { color: isSelected ? '#fff' : bcctColors.textPrimary }]}>
+                            {opt.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                {!!step6Error && (
+                  <Text style={[styles.fieldError, { marginBottom: 12 }]}>{step6Error}</Text>
+                )}
+
+                <PrimaryButton label="Volgende" onPress={handleStep6Next} />
+                <BackButton onPress={handleBack} />
+              </View>
+            )}
+
+            {/* ══════════════════════════════════════
+                STEP 7 — Afronden
+            ══════════════════════════════════════ */}
+            {step === 6 && (
               <View style={[styles.stepContent, styles.finishStep]}>
                 <View style={styles.checkmarkWrap}>
                   <Ionicons name="checkmark-circle" size={96} color={bcctColors.success} />
                 </View>
 
                 <Text style={[styles.finishTitle, { color: colors.text }]}>Je account is klaar!</Text>
-                <Text style={[styles.finishEmoji]}>🎉</Text>
+                <Text style={styles.finishEmoji}>🎉</Text>
                 <Text style={[styles.stepSubtitle, { color: bcctColors.textSecondary, textAlign: 'center' }]}>
                   Welkom bij BCCT Coaching. Je kunt nu beginnen met coachen.
                 </Text>
@@ -898,15 +1160,25 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 24,
   },
+  chipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10,
+  },
   chip: {
-    borderWidth: 1.5,
-    borderRadius: 24,
+    borderWidth: 1,
+    borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 10,
   },
   chipText: {
     ...bcctTypography.small,
     fontWeight: '500',
+  },
+
+  questionBlock: {
+    marginBottom: 28,
   },
 
   calendarOptions: {
