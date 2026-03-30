@@ -53,22 +53,20 @@ function resolveImageSource(source: string | number | ImageSourcePropType | unde
   return source as ImageSourcePropType;
 }
 
-async function uploadImageToStorage(uri: string, path: string): Promise<string> {
+async function uploadImageToStorage(uri: string, bucket: string, path: string): Promise<string> {
+  console.log(`[uploadImageToStorage] Uploading to bucket="${bucket}" path="${path}"`);
   const response = await fetch(uri);
   const blob = await response.blob();
-  const arrayBuffer = await blob.arrayBuffer();
-  const uint8Array = new Uint8Array(arrayBuffer);
-  const ext = uri.split('.').pop()?.toLowerCase() ?? 'jpg';
-  const contentType = ext === 'png' ? 'image/png' : 'image/jpeg';
 
   const { error: uploadError } = await supabase.storage
-    .from('avatars')
-    .upload(path, uint8Array, { contentType, upsert: true });
+    .from(bucket)
+    .upload(path, blob, { contentType: 'image/jpeg', upsert: true });
 
   if (uploadError) throw uploadError;
 
-  const { data } = supabase.storage.from('avatars').getPublicUrl(path);
-  return `${data.publicUrl}?t=${Date.now()}`;
+  const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+  console.log(`[uploadImageToStorage] Public URL: ${data.publicUrl}`);
+  return data.publicUrl;
 }
 
 export default function CoachOnboardingScreen() {
@@ -222,9 +220,10 @@ export default function CoachOnboardingScreen() {
       setAvatarUploading(true);
       console.log('[CoachOnboarding] Uploading avatar:', asset.uri);
 
-      const userId = session?.user?.id;
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      const userId = currentSession?.user?.id;
       if (!userId) throw new Error('Geen sessie');
-      const url = await uploadImageToStorage(asset.uri, `${userId}/avatar.jpg`);
+      const url = await uploadImageToStorage(asset.uri, 'avatars', `${userId}/avatar.jpg`);
       setAvatarUrl(url);
       console.log('[CoachOnboarding] Avatar uploaded:', url);
     } catch (err: any) {
@@ -258,9 +257,10 @@ export default function CoachOnboardingScreen() {
       setLogoUploading(true);
       console.log('[CoachOnboarding] Uploading logo:', asset.uri);
 
-      const userId = session?.user?.id;
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      const userId = currentSession?.user?.id;
       if (!userId) throw new Error('Geen sessie');
-      const url = await uploadImageToStorage(asset.uri, `${userId}/logo.jpg`);
+      const url = await uploadImageToStorage(asset.uri, 'company-logos', `${userId}/logo.jpg`);
       setLogoUrl(url);
       console.log('[CoachOnboarding] Logo uploaded:', url);
     } catch (err: any) {
@@ -307,6 +307,7 @@ export default function CoachOnboardingScreen() {
         coaching_types: finalTypes,
         onboarding_completed: true,
         calendar_provider: calendarProvider ?? null,
+        calendar_connected: false,
       };
       if (avatarUrl) payload.avatar_url = avatarUrl;
       if (logoUrl) payload.company_logo_url = logoUrl;
