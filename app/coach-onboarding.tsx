@@ -23,7 +23,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bcctColors, bcctTypography } from '@/styles/bcctTheme';
-import Constants from 'expo-constants';
 
 const TOTAL_STEPS = 6;
 
@@ -107,41 +106,46 @@ export default function CoachOnboardingScreen() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
 
-  // Prefill from existing profile on mount
+  // Session guard + prefill on mount
   useEffect(() => {
-    if (!authLoading && !session) {
-      console.log('[CoachOnboarding] No session, redirecting to auth');
-      router.replace('/auth');
-      return;
-    }
-    if (session) {
-      prefillProfile();
-    }
-  }, [authLoading, session]);
-
-  const prefillProfile = async () => {
-    try {
-      const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl;
+    const checkSession = async () => {
+      console.log('[CoachOnboarding] Checking session on mount');
       const { data: { session: currentSession } } = await supabase.auth.getSession();
-      const token = currentSession?.access_token;
-      if (!token || !supabaseUrl) return;
 
-      console.log('[CoachOnboarding] Prefilling profile from API');
-      const res = await fetch(`${supabaseUrl}/functions/v1/profiles-me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) return;
-      const profile = await res.json();
+      if (!currentSession) {
+        console.log('[CoachOnboarding] No session found, redirecting to auth');
+        router.replace('/auth');
+        return;
+      }
 
-      if (profile.company_name) setCompanyName(profile.company_name);
-      if (profile.avatar_url) { setAvatarUrl(profile.avatar_url); setAvatarLocalUri(profile.avatar_url); }
-      if (profile.company_logo_url) { setLogoUrl(profile.company_logo_url); setLogoLocalUri(profile.company_logo_url); }
-      if (profile.coaching_types?.length) setSelectedTypes(profile.coaching_types);
-      if (profile.calendar_provider) setCalendarProvider(profile.calendar_provider);
-    } catch (err) {
-      console.warn('[CoachOnboarding] Prefill failed (non-fatal):', err);
-    }
-  };
+      console.log('[CoachOnboarding] Session valid, prefilling profile for user:', currentSession.user.id);
+      try {
+        const { data: profile, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', currentSession.user.id)
+          .single();
+
+        if (error) {
+          console.warn('[CoachOnboarding] Prefill query error (non-fatal):', error.message);
+          return;
+        }
+
+        if (profile) {
+          if (profile.company_name) setCompanyName(profile.company_name);
+          if (profile.avatar_url) { setAvatarUrl(profile.avatar_url); setAvatarLocalUri(profile.avatar_url); }
+          if (profile.company_logo_url) { setLogoUrl(profile.company_logo_url); setLogoLocalUri(profile.company_logo_url); }
+          if (profile.coaching_types?.length) setSelectedTypes(profile.coaching_types);
+          if (profile.calendar_provider) setCalendarProvider(profile.calendar_provider);
+          console.log('[CoachOnboarding] Profile prefilled successfully');
+        }
+      } catch (err) {
+        console.warn('[CoachOnboarding] Prefill failed (non-fatal):', err);
+      }
+    };
+
+    checkSession();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const animateToStep = (nextStep: number) => {
     const direction = nextStep > step ? 1 : -1;
@@ -291,43 +295,37 @@ export default function CoachOnboardingScreen() {
 
     try {
       const { data: { session: currentSession } } = await supabase.auth.getSession();
-      const token = currentSession?.access_token;
-      const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl;
 
-      if (!token || !supabaseUrl) {
-        throw new Error('Geen actieve sessie. Log opnieuw in.');
+      if (!currentSession) {
+        setSaveError('Geen actieve sessie gevonden. Log opnieuw in.');
+        setSaving(false);
+        return;
       }
+
+      const userId = currentSession.user.id;
 
       const finalTypes = selectedTypes.includes('Anders, namelijk…') && customType.trim()
         ? [...selectedTypes.filter(t => t !== 'Anders, namelijk…'), customType.trim()]
         : selectedTypes;
 
-      const payload: Record<string, unknown> = {
-        company_name: companyName.trim(),
-        coaching_types: finalTypes,
-        onboarding_completed: true,
-        calendar_provider: calendarProvider ?? null,
+      const updatePayload = {
+        company_name: companyName.trim() || null,
+        company_logo_url: logoUrl || null,
+        coaching_types: finalTypes.length > 0 ? finalTypes : null,
+        calendar_provider: calendarProvider || null,
         calendar_connected: false,
+        onboarding_completed: true,
+        avatar_url: avatarUrl || null,
       };
-      if (avatarUrl) payload.avatar_url = avatarUrl;
-      if (logoUrl) payload.company_logo_url = logoUrl;
 
-      console.log('[CoachOnboarding] PATCH /functions/v1/profiles-me payload:', payload);
+      console.log('[CoachOnboarding] Supabase update payload for user', userId, ':', updatePayload);
 
-      const response = await fetch(`${supabaseUrl}/functions/v1/profiles-me`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
+      const { error } = await supabase
+        .from('profiles')
+        .update(updatePayload)
+        .eq('id', userId);
 
-      if (!response.ok) {
-        const text = await response.text();
-        console.error('[CoachOnboarding] PATCH error response:', text);
-        throw new Error('Profiel opslaan mislukt. Probeer opnieuw.');
-      }
+      if (error) throw error;
 
       console.log('[CoachOnboarding] Profile saved successfully, navigating to dashboard');
       router.replace('/(tabs)');

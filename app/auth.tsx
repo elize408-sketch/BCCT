@@ -165,16 +165,17 @@ export default function AuthScreen() {
         // For coaches: auto sign-in and go directly to onboarding (skip success popup)
         if (selectedRole === 'coach') {
           console.log('[Auth] Coach signup complete — auto signing in and navigating to onboarding');
-          const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
-          if (signInErr) {
-            console.error('[Auth] Coach auto sign-in error:', signInErr);
+          const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
+          if (signInErr || !signInData.session) {
+            console.error('[Auth] Coach auto sign-in error or no session:', signInErr);
             // Fall back to showing success modal so they can sign in manually
             showModal('Gelukt', 'Account succesvol aangemaakt! Je kunt nu inloggen.', 'success');
             setMode('signin');
             setPassword('');
             setConfirmPassword('');
+            router.replace('/auth');
           } else {
-            console.log('[Auth] Coach auto sign-in successful, navigating to coach-onboarding');
+            console.log('[Auth] Coach auto sign-in successful, session confirmed, navigating to coach-onboarding');
             router.replace('/coach-onboarding');
           }
           return;
