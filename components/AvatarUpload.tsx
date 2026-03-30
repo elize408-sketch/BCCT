@@ -12,6 +12,8 @@ import {
   Alert,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
+import { decode } from 'base64-arraybuffer';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 
@@ -54,19 +56,18 @@ export function AvatarUpload({ avatarUrl, userId, size = 90, onUploaded }: Props
       setUploading(true);
       console.log('[AvatarUpload] Uploading image:', asset.uri);
 
-      const response = await fetch(asset.uri);
-      const blob = await response.blob();
-      const arrayBuffer = await blob.arrayBuffer();
-      const uint8Array = new Uint8Array(arrayBuffer);
-
       const ext = asset.uri.split('.').pop()?.toLowerCase() ?? 'jpg';
       const fileName = `${userId}/avatar.${ext}`;
       const contentType = ext === 'png' ? 'image/png' : 'image/jpeg';
 
+      const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+        encoding: 'base64' as FileSystem.EncodingType,
+      });
+
       console.log('[AvatarUpload] Uploading to Supabase Storage bucket "avatars", file:', fileName);
       const { error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(fileName, uint8Array, {
+        .upload(fileName, decode(base64), {
           contentType,
           upsert: true,
         });
