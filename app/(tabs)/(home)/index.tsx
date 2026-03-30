@@ -4,7 +4,6 @@ import { useTheme } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import CoachSummaryCard from "@/components/CoachSummaryCard";
-import TipsModal from "@/components/TipsModal";
 import { bcctColors } from "@/styles/bcctTheme";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
@@ -15,7 +14,6 @@ export default function HomeScreen() {
   const { user } = useAuth();
   const [chatLoading, setChatLoading] = useState(false);
   const [firstName, setFirstName] = useState('Cliënt');
-  const [tipsVisible, setTipsVisible] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -51,19 +49,6 @@ export default function HomeScreen() {
 
     setChatLoading(true);
     try {
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id);
-
-      const userRole = profileData && profileData.length > 0 ? profileData[0].role : 'client';
-      console.log("[HomeScreen] User role for chat navigation:", userRole);
-
-      if (userRole === 'coach') {
-        router.push('/(tabs)/chat');
-        return;
-      }
-
       const { data: coachLinks } = await supabase
         .from('coach_clients')
         .select('coach_id')
@@ -133,10 +118,6 @@ export default function HomeScreen() {
     console.log("[HomeScreen] Quick action: Mijn Programma pressed");
   };
 
-  const handleAfsprakenPress = () => {
-    console.log("[HomeScreen] Quick action: Afspraken pressed");
-  };
-
   const handleMijnCoachPress = () => {
     console.log("[HomeScreen] Quick action: Mijn Coach pressed");
     router.push('/(tabs)/profiel');
@@ -145,11 +126,6 @@ export default function HomeScreen() {
   const handleProfielPress = () => {
     console.log("[HomeScreen] Quick action: Mijn Profiel pressed");
     router.push('/(tabs)/profiel');
-  };
-
-  const handleTipsPress = () => {
-    console.log("[HomeScreen] Tips icon pressed, opening TipsModal");
-    setTipsVisible(true);
   };
 
   return (
@@ -162,22 +138,15 @@ export default function HomeScreen() {
       >
         {/* Greeting */}
         <View style={styles.header}>
-          <View style={styles.headerRow}>
-            <View style={styles.headerTextGroup}>
-              <Text style={[styles.greeting, { color: theme.colors.text }]}>
-                Welkom terug
-              </Text>
-              <Text style={[styles.name, { color: theme.colors.text }]}>
-                {firstName}
-              </Text>
-              <Text style={[styles.subtitle, { color: bcctColors.textSecondary }]}>
-                Hier is je overzicht van vandaag
-              </Text>
-            </View>
-            <TouchableOpacity style={styles.tipsButton} onPress={handleTipsPress}>
-              <Ionicons name="bulb-outline" size={24} color={bcctColors.primaryOrange} />
-            </TouchableOpacity>
-          </View>
+          <Text style={[styles.greeting, { color: theme.colors.text }]}>
+            Welkom terug
+          </Text>
+          <Text style={[styles.name, { color: theme.colors.text }]}>
+            {firstName}
+          </Text>
+          <Text style={[styles.subtitle, { color: bcctColors.textSecondary }]}>
+            Hier is je overzicht van vandaag
+          </Text>
         </View>
 
         {/* Coaches blok */}
@@ -235,31 +204,25 @@ export default function HomeScreen() {
               </View>
               <Text style={styles.actionLabel}>Chat met Coach</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBtn} onPress={handleAfsprakenPress}>
-              <View style={styles.actionIcon}>
-                <Ionicons name="calendar-outline" size={24} color="#4A90D9" />
-              </View>
-              <Text style={styles.actionLabel}>Afspraken</Text>
-            </TouchableOpacity>
-          </View>
-          {/* Row 3 */}
-          <View style={styles.actionsRow}>
             <TouchableOpacity style={styles.actionBtn} onPress={handleMijnCoachPress}>
               <View style={styles.actionIcon}>
                 <Ionicons name="person-circle-outline" size={24} color="#4A90D9" />
               </View>
               <Text style={styles.actionLabel}>Mijn Coach</Text>
             </TouchableOpacity>
+          </View>
+          {/* Row 3 */}
+          <View style={styles.actionsRow}>
             <TouchableOpacity style={styles.actionBtn} onPress={handleProfielPress}>
               <View style={styles.actionIcon}>
                 <Ionicons name="person-outline" size={24} color="#4A90D9" />
               </View>
               <Text style={styles.actionLabel}>Mijn Profiel</Text>
             </TouchableOpacity>
+            <View style={[styles.actionBtn, { backgroundColor: 'transparent', elevation: 0, shadowOpacity: 0 }]} />
           </View>
         </View>
       </View>
-      <TipsModal visible={tipsVisible} onClose={() => setTipsVisible(false)} />
     </View>
   );
 }
@@ -269,22 +232,6 @@ const styles = StyleSheet.create({
   scroll: { flexShrink: 0 },
   scrollContent: { paddingTop: 24 },
   header: { paddingHorizontal: 16, marginBottom: 16 },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  headerTextGroup: { flex: 1, marginRight: 8 },
-  tipsButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#FFF7ED',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 4,
-  },
   greeting: { fontSize: 26, fontWeight: "700", marginBottom: 2 },
   name: { fontSize: 32, fontWeight: "800", marginBottom: 4 },
   subtitle: { fontSize: 15 },
