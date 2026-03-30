@@ -9,6 +9,7 @@ import { Animated, StyleSheet, Text, View } from 'react-native';
 import {
   getCompletedSteps,
   markStepComplete as persistMarkStepComplete,
+  toggleStep as persistToggleStep,
   TipStepId,
 } from '@/utils/tipsStorage';
 
@@ -18,6 +19,7 @@ const ORANGE = '#F28C28';
 interface TipsContextValue {
   completedSteps: TipStepId[];
   markComplete: (id: TipStepId) => Promise<void>;
+  toggleComplete: (id: TipStepId) => Promise<void>;
   isComplete: (id: TipStepId) => boolean;
   progress: { completed: number; total: number };
 }
@@ -25,6 +27,7 @@ interface TipsContextValue {
 const TipsContext = createContext<TipsContextValue>({
   completedSteps: [],
   markComplete: async () => {},
+  toggleComplete: async () => {},
   isComplete: () => false,
   progress: { completed: 0, total: TOTAL_STEPS },
 });
@@ -99,12 +102,21 @@ export function TipsProvider({ children }: { children: React.ReactNode }) {
     showToast();
   };
 
+  const toggleComplete = async (id: TipStepId) => {
+    console.log('[TipsContext] toggleComplete called for:', id);
+    const updated = await persistToggleStep(id);
+    setCompletedSteps(updated);
+    if (updated.includes(id)) {
+      showToast();
+    }
+  };
+
   const isComplete = (id: TipStepId): boolean => completedSteps.includes(id);
 
   const progress = { completed: completedSteps.length, total: TOTAL_STEPS };
 
   return (
-    <TipsContext.Provider value={{ completedSteps, markComplete, isComplete, progress }}>
+    <TipsContext.Provider value={{ completedSteps, markComplete, toggleComplete, isComplete, progress }}>
       {children}
       {toastVisible && (
         <Animated.View
