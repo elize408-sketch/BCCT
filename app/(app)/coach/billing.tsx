@@ -21,6 +21,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
+import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { bcctColors, bcctTypography } from '@/styles/bcctTheme';
@@ -177,7 +178,7 @@ export default function CoachBillingScreen() {
   // ─── Stripe Connect handler ────────────────────────────────────────────────
 
   const handleCreateStripeAccount = async () => {
-    console.log('[Billing] Stripe account aanmaken/doorgaan pressed');
+    console.log('[Billing] Stripe koppelen/doorgaan pressed');
     setStripeConnectError(null);
     setStripeConnectLoading(true);
     try {
@@ -193,25 +194,27 @@ export default function CoachBillingScreen() {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`,
+          'apikey': SUPABASE_ANON_KEY,
         },
       });
 
+      const data = await res.json();
       if (!res.ok) {
-        const errText = await res.text();
-        console.error('[Billing] stripe-connect-create error:', res.status, errText);
-        setStripeConnectError(`Fout (${res.status}): ${errText || 'Onbekende fout'}`);
+        console.error('[Billing] stripe-connect-create error:', res.status, data);
+        setStripeConnectError(data.error || `Fout (${res.status})`);
         return;
       }
 
-      const data = await res.json();
-      console.log('[Billing] stripe-connect-create response:', data);
-
-      if (data.onboarding_url) {
-        console.log('[Billing] Opening Stripe onboarding URL:', data.onboarding_url);
-        await Linking.openURL(data.onboarding_url);
-      } else {
-        setStripeConnectError('Geen onboarding URL ontvangen. Probeer opnieuw.');
-      }
+      console.log('[Billing] stripe-connect-create response — navigating to WebView');
+      router.push({
+        pathname: '/stripe-onboarding-webview',
+        params: {
+          clientSecret: data.client_secret,
+          publishableKey: data.publishable_key,
+          stripeAccountId: data.stripe_account_id,
+          returnTo: 'billing',
+        },
+      });
     } catch (e: any) {
       console.error('[Billing] stripe-connect-create network error:', e.message);
       setStripeConnectError('Er is iets misgegaan. Probeer opnieuw.');

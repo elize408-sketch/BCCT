@@ -606,10 +606,9 @@ export default function CoachOnboardingScreen() {
   };
 
   const handleStripeConnect = async () => {
-    console.log('[CoachOnboarding] Stripe account aanmaken pressed');
+    console.log('[CoachOnboarding] Stripe koppelen pressed');
     setStripeError('');
     setStripeLoading(true);
-    setStripeUrlOpened(false);
 
     try {
       const { data: { session: currentSession } } = await supabase.auth.getSession();
@@ -628,24 +627,23 @@ export default function CoachOnboardingScreen() {
         },
       });
 
+      const data = await response.json();
       if (!response.ok) {
-        const errText = await response.text();
-        console.error('[CoachOnboarding] stripe-connect-create error:', response.status, errText);
-        setStripeError('Er is iets misgegaan. Probeer het opnieuw.');
+        console.error('[CoachOnboarding] stripe-connect-create error:', response.status, data);
+        setStripeError(data.error || 'Er is iets misgegaan. Probeer het opnieuw.');
         return;
       }
 
-      const data = await response.json();
-      console.log('[CoachOnboarding] stripe-connect-create response:', data);
-
-      if (data.onboarding_url) {
-        console.log('[CoachOnboarding] Opening Stripe onboarding URL:', data.onboarding_url);
-        setStripeUrlOpened(true);
-        await Linking.openURL(data.onboarding_url);
-      } else {
-        console.error('[CoachOnboarding] stripe-connect-create: no onboarding_url in response', data);
-        setStripeError('Er is iets misgegaan. Probeer het opnieuw.');
-      }
+      console.log('[CoachOnboarding] stripe-connect-create response — navigating to WebView');
+      router.push({
+        pathname: '/stripe-onboarding-webview',
+        params: {
+          clientSecret: data.client_secret,
+          publishableKey: data.publishable_key,
+          stripeAccountId: data.stripe_account_id,
+          returnTo: 'onboarding',
+        },
+      });
     } catch (err: any) {
       console.error('[CoachOnboarding] Stripe connect error:', err.message);
       setStripeError('Er is iets misgegaan. Probeer het opnieuw.');
@@ -1419,15 +1417,6 @@ export default function CoachOnboardingScreen() {
                   </View>
                 )}
 
-                {stripeUrlOpened && (
-                  <View style={[styles.stripeInfoBox, { backgroundColor: bcctColors.success + '18' }]}>
-                    <Ionicons name="information-circle-outline" size={18} color={bcctColors.success} />
-                    <Text style={[styles.stripeInfoText, { color: bcctColors.success }]}>
-                      Je wordt doorgestuurd naar Stripe om je account af te ronden.
-                    </Text>
-                  </View>
-                )}
-
                 <TouchableOpacity
                   style={[styles.primaryButtonContainer, stripeLoading && styles.buttonDisabled]}
                   onPress={handleStripeConnect}
@@ -1448,7 +1437,7 @@ export default function CoachOnboardingScreen() {
                         <Text style={styles.primaryButtonText}>Bezig...</Text>
                       </>
                     ) : (
-                      <Text style={styles.primaryButtonText}>Stripe account aanmaken</Text>
+                      <Text style={styles.primaryButtonText}>Stripe koppelen</Text>
                     )}
                   </LinearGradient>
                 </TouchableOpacity>

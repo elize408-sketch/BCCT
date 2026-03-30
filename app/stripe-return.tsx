@@ -104,24 +104,24 @@ export default function StripeReturnScreen() {
         },
       });
 
+      const data = await response.json();
       if (!response.ok) {
-        const errText = await response.text();
-        console.error('[StripeReturn] stripe-connect-create retry error:', response.status, errText);
-        setErrorMessage(`Fout (${response.status}): ${errText || 'Onbekende fout'}`);
+        console.error('[StripeReturn] stripe-connect-create retry error:', response.status, data);
+        setErrorMessage(data.error || `Fout (${response.status})`);
         setScreenState('error');
         return;
       }
 
-      const data = await response.json();
-      console.log('[StripeReturn] stripe-connect-create retry response:', data);
-
-      if (data.onboarding_url) {
-        console.log('[StripeReturn] Opening Stripe onboarding URL:', data.onboarding_url);
-        await Linking.openURL(data.onboarding_url);
-      } else {
-        setErrorMessage('Geen onboarding URL ontvangen. Probeer opnieuw.');
-        setScreenState('error');
-      }
+      console.log('[StripeReturn] stripe-connect-create retry response — navigating to WebView');
+      router.replace({
+        pathname: '/stripe-onboarding-webview',
+        params: {
+          clientSecret: data.client_secret,
+          publishableKey: data.publishable_key,
+          stripeAccountId: data.stripe_account_id,
+          returnTo: 'billing',
+        },
+      } as any);
     } catch (err: any) {
       console.error('[StripeReturn] Retry error:', err.message);
       setErrorMessage('Netwerkfout. Controleer je verbinding en probeer opnieuw.');
