@@ -5,14 +5,17 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import CoachSummaryCard from "@/components/CoachSummaryCard";
 import TipsModal from "@/components/TipsModal";
+import { TIPS_DATA } from "@/components/TipsModal";
 import { bcctColors } from "@/styles/bcctTheme";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTips } from "@/contexts/TipsContext";
 import { supabase } from "@/lib/supabase";
 
 export default function HomeScreen() {
   const theme = useTheme();
   const router = useRouter();
   const { user } = useAuth();
+  const { isComplete } = useTips();
   const [chatLoading, setChatLoading] = useState(false);
   const [firstName, setFirstName] = useState('Cliënt');
   const [tipsVisible, setTipsVisible] = useState(false);
@@ -37,6 +40,8 @@ export default function HomeScreen() {
       });
   }, [user]);
 
+  const nextTip = TIPS_DATA.find((tip) => !isComplete(tip.id)) ?? null;
+
   const handleViewAllCoaches = () => {
     console.log("[HomeScreen] View all coaches pressed");
     router.push('/(tabs)/profiel');
@@ -51,7 +56,6 @@ export default function HomeScreen() {
 
     setChatLoading(true);
     try {
-      // Check user role
       const { data: profileData } = await supabase
         .from('profiles')
         .select('role')
@@ -65,7 +69,6 @@ export default function HomeScreen() {
         return;
       }
 
-      // Client: check linked coaches
       const { data: coachLinks } = await supabase
         .from('coach_clients')
         .select('coach_id')
@@ -76,12 +79,10 @@ export default function HomeScreen() {
       console.log("[HomeScreen] Linked coaches count:", coaches.length);
 
       if (coaches.length !== 1) {
-        // 0 or multiple coaches → go to list
         router.push('/(tabs)/chat');
         return;
       }
 
-      // Exactly 1 coach — find or create conversation
       const coachId = coaches[0].coach_id;
       const { data: convData } = await supabase
         .from('conversations')
@@ -107,7 +108,6 @@ export default function HomeScreen() {
       }
 
       if (conversationId) {
-        // Fetch coach name for header
         const { data: coachProfile } = await supabase
           .from('profiles')
           .select('full_name')
@@ -132,17 +132,14 @@ export default function HomeScreen() {
 
   const handleThemaCheckinPress = () => {
     console.log("[HomeScreen] Quick action: Thema Check-in pressed");
-    // TODO: navigate to thema check-in screen
   };
 
   const handleMijnProgrammaPress = () => {
     console.log("[HomeScreen] Quick action: Mijn Programma pressed");
-    // TODO: navigate to mijn programma screen
   };
 
   const handleAfsprakenPress = () => {
     console.log("[HomeScreen] Quick action: Afspraken pressed");
-    // TODO: navigate to afspraken screen
   };
 
   const handleMijnCoachPress = () => {
@@ -157,6 +154,11 @@ export default function HomeScreen() {
 
   const handleTipsPress = () => {
     console.log("[HomeScreen] Tips icon pressed, opening TipsModal");
+    setTipsVisible(true);
+  };
+
+  const handleTipBannerPress = () => {
+    console.log("[HomeScreen] Tip banner pressed, opening TipsModal. Tip:", nextTip?.id);
     setTipsVisible(true);
   };
 
@@ -186,6 +188,28 @@ export default function HomeScreen() {
               <Ionicons name="bulb-outline" size={24} color={bcctColors.primaryOrange} />
             </TouchableOpacity>
           </View>
+
+          {/* Contextual tip banner */}
+          {nextTip !== null && (
+            <TouchableOpacity
+              style={styles.tipBanner}
+              onPress={handleTipBannerPress}
+              activeOpacity={0.8}
+            >
+              <View style={styles.tipBannerLeft}>
+                <Text style={styles.tipBannerEmoji}>💡</Text>
+                <View style={styles.tipBannerText}>
+                  <Text style={styles.tipBannerTitle} numberOfLines={1}>
+                    {nextTip.title}
+                  </Text>
+                  <Text style={styles.tipBannerDesc} numberOfLines={1}>
+                    {nextTip.description}
+                  </Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={bcctColors.primaryOrange} />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Coaches blok */}
@@ -281,6 +305,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
+    marginBottom: 12,
   },
   headerTextGroup: { flex: 1, marginRight: 8 },
   tipsButton: {
@@ -295,6 +320,40 @@ const styles = StyleSheet.create({
   greeting: { fontSize: 26, fontWeight: "700", marginBottom: 2 },
   name: { fontSize: 32, fontWeight: "800", marginBottom: 4 },
   subtitle: { fontSize: 15 },
+  tipBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  tipBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
+  },
+  tipBannerEmoji: {
+    fontSize: 18,
+    marginRight: 10,
+  },
+  tipBannerText: {
+    flex: 1,
+  },
+  tipBannerTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 2,
+  },
+  tipBannerDesc: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
   sectionCard: {
     backgroundColor: '#fff',
     borderRadius: 16,

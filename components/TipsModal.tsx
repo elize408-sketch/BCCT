@@ -11,48 +11,51 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { bcctColors } from "@/styles/bcctTheme";
+import { useTips } from "@/contexts/TipsContext";
+import type { TipStepId } from "@/utils/tipsStorage";
 
 const ACCENT = bcctColors.primaryOrange;
 const CARD_BG = "#FFF7ED";
+const CARD_BG_DONE = "#F9FAFB";
 
-interface Tip {
-  id: string;
+interface TipData {
+  id: TipStepId;
   icon: string;
   title: string;
   description: string;
 }
 
-const TIPS: Tip[] = [
+const TIPS_DATA: TipData[] = [
   {
-    id: "1",
+    id: "add_client",
     icon: "person-add-outline",
     title: "Nodig je eerste cliënt uit",
     description:
       "Ga naar het tabblad Cliënten en stuur een uitnodiging. Je cliënt ontvangt een e-mail om de app te downloaden.",
   },
   {
-    id: "2",
+    id: "plan_appointment",
+    icon: "calendar-outline",
+    title: "Plan je eerste afspraak",
+    description:
+      "Gebruik de agenda om een sessie in te plannen en je week goed voor te bereiden.",
+  },
+  {
+    id: "use_chat",
+    icon: "chatbubble-outline",
+    title: "Stuur je eerste bericht",
+    description:
+      "Blijf in contact met je cliënten via de ingebouwde chat voor snelle communicatie.",
+  },
+  {
+    id: "create_module",
     icon: "albums-outline",
     title: "Gebruik modules voor structuur",
     description:
-      "Maak modules aan om je coaching programma overzichtelijk te structureren voor je cliënten.",
+      "Maak modules aan om je coaching programma overzichtelijk te structureren.",
   },
   {
-    id: "3",
-    icon: "calendar-outline",
-    title: "Plan je week vooruit",
-    description:
-      "Gebruik de agenda om sessies in te plannen en je week goed voor te bereiden.",
-  },
-  {
-    id: "4",
-    icon: "chatbubble-outline",
-    title: "Stuur berichten via chat",
-    description:
-      "Blijf in contact met je cliënten via de ingebouwde chat voor snelle en persoonlijke communicatie.",
-  },
-  {
-    id: "5",
+    id: "ask_feedback",
     icon: "star-outline",
     title: "Vraag om feedback",
     description:
@@ -61,19 +64,34 @@ const TIPS: Tip[] = [
 ];
 
 interface TipCardProps {
-  tip: Tip;
+  tip: TipData;
+  completed: boolean;
 }
 
-function TipCard({ tip }: TipCardProps) {
+function TipCard({ tip, completed }: TipCardProps) {
+  const cardBg = completed ? CARD_BG_DONE : CARD_BG;
+  const iconBg = completed ? "#D1FAE5" : "#FEE9D1";
+  const iconColor = completed ? bcctColors.success : ACCENT;
+
   return (
-    <View style={styles.tipCard}>
-      <View style={styles.tipIconContainer}>
-        <Ionicons name={tip.icon as any} size={22} color={ACCENT} />
+    <View style={[styles.tipCard, { backgroundColor: cardBg }]}>
+      <View style={[styles.tipIconContainer, { backgroundColor: iconBg }]}>
+        <Ionicons name={tip.icon as any} size={22} color={iconColor} />
       </View>
       <View style={styles.tipTextContainer}>
-        <Text style={styles.tipTitle}>{tip.title}</Text>
+        <Text style={[styles.tipTitle, completed && styles.tipTitleDone]}>
+          {tip.title}
+        </Text>
         <Text style={styles.tipDescription}>{tip.description}</Text>
       </View>
+      {completed && (
+        <Ionicons
+          name="checkmark-circle"
+          size={22}
+          color={bcctColors.success}
+          style={styles.checkIcon}
+        />
+      )}
     </View>
   );
 }
@@ -84,8 +102,13 @@ interface TipsModalProps {
 }
 
 export default function TipsModal({ visible, onClose }: TipsModalProps) {
+  const { isComplete, progress } = useTips();
   const slideAnim = useRef(new Animated.Value(400)).current;
   const backdropAnim = useRef(new Animated.Value(0)).current;
+
+  const allDone = progress.completed === progress.total;
+  const progressPercent = progress.total > 0 ? progress.completed / progress.total : 0;
+  const progressLabel = `${progress.completed} van ${progress.total} stappen voltooid`;
 
   useEffect(() => {
     if (visible) {
@@ -163,6 +186,16 @@ export default function TipsModal({ visible, onClose }: TipsModalProps) {
               <Text style={styles.sheetSubtitle}>
                 Haal meer uit je coaching praktijk
               </Text>
+              <Text style={styles.progressLabel}>{progressLabel}</Text>
+              {/* Progress bar */}
+              <View style={styles.progressBarTrack}>
+                <Animated.View
+                  style={[
+                    styles.progressBarFill,
+                    { width: `${progressPercent * 100}%` as any },
+                  ]}
+                />
+              </View>
             </View>
             <TouchableOpacity
               style={styles.closeButton}
@@ -179,15 +212,26 @@ export default function TipsModal({ visible, onClose }: TipsModalProps) {
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
           >
-            {TIPS.map((tip) => (
-              <TipCard key={tip.id} tip={tip} />
+            {TIPS_DATA.map((tip) => (
+              <TipCard key={tip.id} tip={tip} completed={isComplete(tip.id)} />
             ))}
+
+            {/* All done banner */}
+            {allDone && (
+              <View style={styles.allDoneBanner}>
+                <Text style={styles.allDoneText}>
+                  🎉 Je hebt alle stappen voltooid!
+                </Text>
+              </View>
+            )}
           </ScrollView>
         </Animated.View>
       </View>
     </Modal>
   );
 }
+
+export { TIPS_DATA };
 
 const styles = StyleSheet.create({
   overlay: {
@@ -202,7 +246,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: "80%",
+    maxHeight: "85%",
     paddingBottom: 32,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -4 },
@@ -242,6 +286,23 @@ const styles = StyleSheet.create({
   sheetSubtitle: {
     fontSize: 14,
     color: bcctColors.textSecondary,
+    marginBottom: 8,
+  },
+  progressLabel: {
+    fontSize: 12,
+    color: bcctColors.textSecondary,
+    marginBottom: 6,
+  },
+  progressBarTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#E5E7EB",
+    overflow: "hidden",
+  },
+  progressBarFill: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: ACCENT,
   },
   closeButton: {
     width: 32,
@@ -262,12 +323,11 @@ const styles = StyleSheet.create({
   tipCard: {
     flexDirection: "row",
     alignItems: "flex-start",
-    backgroundColor: CARD_BG,
     borderRadius: 12,
     padding: 14,
     shadowColor: ACCENT,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.06,
     shadowRadius: 6,
     elevation: 2,
   },
@@ -275,7 +335,6 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: "#FEE9D1",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
@@ -290,9 +349,29 @@ const styles = StyleSheet.create({
     color: bcctColors.textPrimary,
     marginBottom: 4,
   },
+  tipTitleDone: {
+    color: bcctColors.textSecondary,
+  },
   tipDescription: {
     fontSize: 13,
     color: "#6B7280",
     lineHeight: 19,
+  },
+  checkIcon: {
+    marginLeft: 8,
+    alignSelf: "center",
+    flexShrink: 0,
+  },
+  allDoneBanner: {
+    backgroundColor: "#D1FAE5",
+    borderRadius: 12,
+    padding: 14,
+    alignItems: "center",
+    marginTop: 4,
+  },
+  allDoneText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#065F46",
   },
 });

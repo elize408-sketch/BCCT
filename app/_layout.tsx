@@ -10,7 +10,9 @@ import { ThemeProvider } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { SubscriptionProvider, useSubscription } from "@/contexts/SubscriptionContext";
+import { TipsProvider } from "@/contexts/TipsContext";
 import { BCCTLightTheme, BCCTDarkTheme } from "@/styles/bcctTheme";
+import { isOnboardingDone } from "@/utils/tipsStorage";
 
 // Prevent the splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
@@ -34,10 +36,11 @@ function SubscriptionRedirect() {
       router.replace("/auth");
       return;
     }
-    // Allow onboarding, coach-onboarding, and paywall screens to render freely
+    // Allow onboarding, coach-onboarding, welcome-onboarding, and paywall screens to render freely
     const isExempt =
       pathname.startsWith("/onboarding") ||
       pathname === "/coach-onboarding" ||
+      pathname === "/coach-welcome-onboarding" ||
       pathname === "/paywall";
     if (isExempt) return;
 
@@ -45,6 +48,31 @@ function SubscriptionRedirect() {
       router.replace("/paywall");
     }
   }, [isSubscribed, loading, authLoading, pathname, user, router]);
+
+  return null;
+}
+
+function OnboardingRedirect() {
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) return;
+
+    // Only redirect to welcome onboarding from the main tabs area
+    const isOnMainTabs = pathname.startsWith("/(tabs)") || pathname === "/";
+    if (!isOnMainTabs) return;
+
+    console.log('[OnboardingRedirect] Checking if coach welcome onboarding is done for user:', user.id);
+    isOnboardingDone().then((done) => {
+      if (!done) {
+        console.log('[OnboardingRedirect] Onboarding not done, redirecting to coach-welcome-onboarding');
+        router.replace("/coach-welcome-onboarding");
+      }
+    });
+  }, [user, authLoading, pathname, router]);
 
   return null;
 }
@@ -68,20 +96,24 @@ export default function RootLayout() {
       >
         <AuthProvider>
         <SubscriptionProvider>
-          <SubscriptionRedirect />
-          <GestureHandlerRootView style={{ flex: 1 }}>
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="index" />
-              <Stack.Screen name="auth" />
-              <Stack.Screen name="auth-popup" />
-              <Stack.Screen name="auth-callback" />
-              <Stack.Screen name="onboarding" />
-              <Stack.Screen name="coach-onboarding" />
-              <Stack.Screen name="paywall" />
-              <Stack.Screen name="(app)" />
-            </Stack>
-            <SystemBars style="auto" />
-          </GestureHandlerRootView>
+          <TipsProvider>
+            <SubscriptionRedirect />
+            <OnboardingRedirect />
+            <GestureHandlerRootView style={{ flex: 1 }}>
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="index" />
+                <Stack.Screen name="auth" />
+                <Stack.Screen name="auth-popup" />
+                <Stack.Screen name="auth-callback" />
+                <Stack.Screen name="onboarding" />
+                <Stack.Screen name="coach-onboarding" />
+                <Stack.Screen name="coach-welcome-onboarding" />
+                <Stack.Screen name="paywall" />
+                <Stack.Screen name="(app)" />
+              </Stack>
+              <SystemBars style="auto" />
+            </GestureHandlerRootView>
+          </TipsProvider>
         </SubscriptionProvider>
         </AuthProvider>
       </ThemeProvider>
