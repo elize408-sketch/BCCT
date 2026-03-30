@@ -33,6 +33,7 @@ const ICON_MAP: Record<string, { active: IoniconsName; inactive: IoniconsName }>
   home: { active: 'home', inactive: 'home-outline' },
   index: { active: 'home', inactive: 'home-outline' },
   chat: { active: 'chatbubble', inactive: 'chatbubble-outline' },
+  appointments: { active: 'calendar', inactive: 'calendar-outline' },
   documenten: { active: 'folder', inactive: 'folder-outline' },
   documents: { active: 'folder', inactive: 'folder-outline' },
   folder: { active: 'folder', inactive: 'folder-outline' },

@@ -8,6 +8,8 @@ export default function AppLayout() {
       <Stack.Screen name="client" />
       <Stack.Screen name="coach" />
       <Stack.Screen name="org" />
+      <Stack.Screen name="appointment-detail" />
+      <Stack.Screen name="appointment-form" />
     </Stack>
   );
 }

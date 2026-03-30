@@ -13,9 +13,9 @@ export default function TabLayout() {
         <Icon sf="message.circle.fill" />
         <Label>Chat</Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger key="documenten" name="documenten">
-        <Icon sf="folder.fill" />
-        <Label>Documenten</Label>
+      <NativeTabs.Trigger key="appointments" name="appointments">
+        <Icon sf="calendar" />
+        <Label>Afspraken</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger key="profiel" name="profiel">
         <Icon sf="person.fill" />
