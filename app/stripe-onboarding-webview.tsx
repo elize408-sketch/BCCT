@@ -39,7 +39,7 @@ function buildHtml(secret: string, pubKey: string): string {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       -webkit-text-size-adjust: 100%;
     }
-    #root {
+    #stripe-container {
       width: 100%;
       padding: 0;
     }
@@ -63,75 +63,80 @@ function buildHtml(secret: string, pubKey: string): string {
 <body>
   <div id="loading">Stripe laden...</div>
   <div id="error-msg"></div>
-  <div id="root"></div>
+  <div id="stripe-container"></div>
 
   <script>
-    function postToRN(data) {
-      try {
-        if (window.ReactNativeWebView) {
-          window.ReactNativeWebView.postMessage(JSON.stringify(data));
-        }
-      } catch(e) {}
-    }
-
-    function showError(msg) {
-      document.getElementById('loading').style.display = 'none';
-      var el = document.getElementById('error-msg');
-      el.style.display = 'block';
-      el.textContent = msg;
-      postToRN({ type: 'ERROR', message: msg });
-    }
-
-    function initStripe() {
-      try {
-        document.getElementById('loading').style.display = 'none';
-
-        var stripeConnect = StripeConnect.initialize({
-          publishableKey: '${safePubKey}',
-          fetchClientSecret: function() {
-            return Promise.resolve('${safeSecret}');
-          },
-          appearance: {
-            overlays: 'dialog',
-            variables: {
-              colorPrimary: '#F97316',
-              fontFamily: '-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
-              borderRadius: '8px',
-              spacingUnit: '4px',
-            }
-          },
-          locale: 'nl-NL',
-        });
-
-        var onboarding = stripeConnect.create('account_onboarding');
-
-        onboarding.setOnExit(function() {
-          postToRN({ type: 'EXIT' });
-        });
-
-        onboarding.setOnStepChange(function(stepChange) {
-          postToRN({ type: 'STEP_CHANGE', step: stepChange && stepChange.step });
-        });
-
-        onboarding.setOnLoadError(function(err) {
-          var msg = (err && err.error && err.error.message) || 'Stripe kon niet laden';
-          showError(msg);
-        });
-
-        var root = document.getElementById('root');
-        root.appendChild(onboarding);
-      } catch(e) {
-        showError('Initialisatie mislukt: ' + e.message);
+    (function() {
+      function postToRN(data) {
+        try {
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify(data));
+          }
+        } catch(e) {}
       }
-    }
 
-    // Load Stripe Connect JS
-    var script = document.createElement('script');
-    script.src = 'https://connect-js.stripe.com/v1.0/connect.js';
-    script.async = true;
-    script.onload = function() { initStripe(); };
-    script.onerror = function() { showError('Stripe script kon niet worden geladen. Controleer je internetverbinding.'); };
-    document.head.appendChild(script);
+      function showError(msg) {
+        document.getElementById('loading').style.display = 'none';
+        var el = document.getElementById('error-msg');
+        el.style.display = 'block';
+        el.textContent = msg;
+        postToRN({ type: 'ERROR', message: msg });
+      }
+
+      var script = document.createElement('script');
+      script.src = 'https://connect-js.stripe.com/v1.0/connect.js';
+      script.onload = function() {
+        try {
+          console.log('[Stripe] connect.js loaded, initializing...');
+          document.getElementById('loading').style.display = 'none';
+
+          var stripeConnect = StripeConnect.initialize({
+            publishableKey: '${safePubKey}',
+            clientSecret: '${safeSecret}',
+            appearance: {
+              overlays: 'dialog',
+              variables: {
+                colorPrimary: '#F97316',
+                fontFamily: '-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
+                borderRadius: '8px',
+                spacingUnit: '4px',
+              }
+            },
+            locale: 'nl-NL',
+            onLoadError: function(loadError) {
+              console.error('[Stripe] Load error:', JSON.stringify(loadError));
+              postToRN({ type: 'ERROR', message: (loadError && loadError.error && loadError.error.message) || 'Stripe kon niet laden' });
+            },
+            onLoaderStart: function() {
+              console.log('[Stripe] Loader started');
+            },
+          });
+
+          var accountOnboarding = stripeConnect.create('account_onboarding');
+
+          accountOnboarding.setOnExit(function() {
+            postToRN({ type: 'EXIT' });
+          });
+
+          accountOnboarding.setOnStepChange(function(stepChange) {
+            postToRN({ type: 'STEP_CHANGE', step: stepChange && stepChange.step });
+          });
+
+          var container = document.getElementById('stripe-container');
+          container.appendChild(accountOnboarding);
+          console.log('[Stripe] Embedded onboarding mounted successfully');
+          postToRN({ type: 'MOUNTED' });
+        } catch(e) {
+          console.error('[Stripe] Init error:', e.message);
+          showError('Initialisatie mislukt: ' + e.message);
+        }
+      };
+      script.onerror = function() {
+        console.error('[Stripe] Failed to load connect.js');
+        showError('Stripe script kon niet worden geladen. Controleer je internetverbinding.');
+      };
+      document.head.appendChild(script);
+    })();
   </script>
 </body>
 </html>`;
@@ -192,9 +197,11 @@ export default function StripeOnboardingWebView() {
     async (event: any) => {
       try {
         const message = JSON.parse(event.nativeEvent.data);
-        console.log('[StripeWebView] message:', message);
+        console.log('[Stripe] WebView message received:', message.type);
 
-        if (message.type === 'EXIT') {
+        if (message.type === 'MOUNTED') {
+          setWebViewLoading(false);
+        } else if (message.type === 'EXIT') {
           setCompleting(true);
           await syncStripeStatus();
           setCompleting(false);
@@ -235,6 +242,7 @@ export default function StripeOnboardingWebView() {
   }, [navigateAway]);
 
   if (!clientSecret || !publishableKey) {
+    console.log('[Stripe] Missing publishableKey or clientSecret');
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.header}>
@@ -256,6 +264,9 @@ export default function StripeOnboardingWebView() {
       </View>
     );
   }
+
+  console.log('[Stripe] publishableKey exists:', !!publishableKey);
+  console.log('[Stripe] clientSecret exists:', !!clientSecret);
 
   const html = buildHtml(clientSecret, publishableKey);
 
