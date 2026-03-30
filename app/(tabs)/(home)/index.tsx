@@ -4,6 +4,7 @@ import { useTheme } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import CoachSummaryCard from "@/components/CoachSummaryCard";
+import TipsModal from "@/components/TipsModal";
 import { bcctColors } from "@/styles/bcctTheme";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
@@ -14,6 +15,7 @@ export default function HomeScreen() {
   const { user } = useAuth();
   const [chatLoading, setChatLoading] = useState(false);
   const [firstName, setFirstName] = useState('Cliënt');
+  const [tipsVisible, setTipsVisible] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -153,6 +155,11 @@ export default function HomeScreen() {
     router.push('/(tabs)/profiel');
   };
 
+  const handleTipsPress = () => {
+    console.log("[HomeScreen] Tips icon pressed, opening TipsModal");
+    setTipsVisible(true);
+  };
+
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
       {/* Scrollable top section */}
@@ -163,15 +170,22 @@ export default function HomeScreen() {
       >
         {/* Greeting */}
         <View style={styles.header}>
-          <Text style={[styles.greeting, { color: theme.colors.text }]}>
-            Welkom terug
-          </Text>
-          <Text style={[styles.name, { color: theme.colors.text }]}>
-            {firstName}
-          </Text>
-          <Text style={[styles.subtitle, { color: bcctColors.textSecondary }]}>
-            Hier is je overzicht van vandaag
-          </Text>
+          <View style={styles.headerRow}>
+            <View style={styles.headerTextGroup}>
+              <Text style={[styles.greeting, { color: theme.colors.text }]}>
+                Welkom terug
+              </Text>
+              <Text style={[styles.name, { color: theme.colors.text }]}>
+                {firstName}
+              </Text>
+              <Text style={[styles.subtitle, { color: bcctColors.textSecondary }]}>
+                Hier is je overzicht van vandaag
+              </Text>
+            </View>
+            <TouchableOpacity style={styles.tipsButton} onPress={handleTipsPress}>
+              <Ionicons name="bulb-outline" size={24} color={bcctColors.primaryOrange} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Coaches blok */}
@@ -253,6 +267,7 @@ export default function HomeScreen() {
           </View>
         </View>
       </View>
+      <TipsModal visible={tipsVisible} onClose={() => setTipsVisible(false)} />
     </View>
   );
 }
@@ -262,6 +277,21 @@ const styles = StyleSheet.create({
   scroll: { flexShrink: 0 },
   scrollContent: { paddingTop: 24 },
   header: { paddingHorizontal: 16, marginBottom: 16 },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  headerTextGroup: { flex: 1, marginRight: 8 },
+  tipsButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFF7ED',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
   greeting: { fontSize: 26, fontWeight: "700", marginBottom: 2 },
   name: { fontSize: 32, fontWeight: "800", marginBottom: 4 },
   subtitle: { fontSize: 15 },

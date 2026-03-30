@@ -5,6 +5,7 @@ import { useTheme } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { HeaderRightButton, HeaderLeftButton } from "@/components/HeaderButtons";
 import CoachSummaryCard from "@/components/CoachSummaryCard";
+import TipsModal from "@/components/TipsModal";
 import { bcctColors } from "@/styles/bcctTheme";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
@@ -15,6 +16,7 @@ export default function HomeScreen() {
   const { user } = useAuth();
   const [chatLoading, setChatLoading] = useState(false);
   const [firstName, setFirstName] = useState('Cliënt');
+  const [tipsVisible, setTipsVisible] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -154,12 +156,17 @@ export default function HomeScreen() {
     router.push('/(tabs)/profiel');
   };
 
+  const handleTipsPress = () => {
+    console.log("[HomeScreen] Tips icon pressed, opening TipsModal");
+    setTipsVisible(true);
+  };
+
   return (
     <>
       <Stack.Screen
         options={{
           title: "Home",
-          headerRight: () => <HeaderRightButton />,
+          headerRight: () => <HeaderRightButton onTipsPress={handleTipsPress} />,
           headerLeft: () => <HeaderLeftButton />,
         }}
       />
@@ -263,6 +270,7 @@ export default function HomeScreen() {
           </View>
         </View>
       </View>
+      <TipsModal visible={tipsVisible} onClose={() => setTipsVisible(false)} />
     </>
   );
 }
