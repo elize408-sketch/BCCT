@@ -132,7 +132,7 @@ export default function AppointmentDetailScreen() {
 
   const handleStartChat = () => {
     console.log('[AppointmentDetail] Start chat pressed for client:', appointment?.client?.id);
-    Alert.alert('Chat', 'Chat functie komt binnenkort');
+    router.push('/(tabs)/(chat)/');
   };
 
   const handleBack = () => {

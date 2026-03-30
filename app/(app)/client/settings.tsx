@@ -186,7 +186,7 @@ export default function SettingsScreen() {
                       <TouchableOpacity
                         onPress={() => {
                           console.log('[Settings] Bericht pressed for coach:', coach.coach_id);
-                          Alert.alert('Bericht', 'Chat functie komt binnenkort');
+                          router.push('/(tabs)/(chat)/');
                         }}
                         style={{ flex: 1, borderWidth: 1.5, borderColor: '#4A90D9', borderRadius: 10, paddingVertical: 10, alignItems: 'center' }}
                       >

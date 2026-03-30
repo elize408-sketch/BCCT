@@ -46,7 +46,7 @@ export default function HomeScreen() {
   const handleChatPress = useCallback(async () => {
     console.log("[HomeScreen] Quick action: Bericht sturen pressed");
     if (!user) {
-      router.push('/(tabs)/chat');
+      router.push('/(tabs)/(chat)/');
       return;
     }
 
@@ -61,7 +61,7 @@ export default function HomeScreen() {
       console.log("[HomeScreen] User role for chat navigation:", userRole);
 
       if (userRole === 'coach') {
-        router.push('/(tabs)/chat');
+        router.push('/(tabs)/(chat)/');
         return;
       }
 
@@ -75,7 +75,7 @@ export default function HomeScreen() {
       console.log("[HomeScreen] Linked coaches count:", coaches.length);
 
       if (coaches.length !== 1) {
-        router.push('/(tabs)/chat');
+        router.push('/(tabs)/(chat)/');
         return;
       }
 
@@ -97,7 +97,7 @@ export default function HomeScreen() {
 
         if (insertError) {
           console.error("[HomeScreen] Error creating conversation:", insertError);
-          router.push('/(tabs)/chat');
+          router.push('/(tabs)/(chat)/');
           return;
         }
         conversationId = newConv && newConv.length > 0 ? newConv[0].id : null;
@@ -112,15 +112,15 @@ export default function HomeScreen() {
 
         console.log("[HomeScreen] Navigating to conversation:", conversationId);
         router.push({
-          pathname: '/chat/[id]',
+          pathname: '/(tabs)/(chat)/[id]',
           params: { id: conversationId, otherName: coachName },
         });
       } else {
-        router.push('/(tabs)/chat');
+        router.push('/(tabs)/(chat)/');
       }
     } catch (err) {
       console.error("[HomeScreen] Error in handleChatPress:", err);
-      router.push('/(tabs)/chat');
+      router.push('/(tabs)/(chat)/');
     } finally {
       setChatLoading(false);
     }
