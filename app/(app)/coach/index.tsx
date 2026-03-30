@@ -7,19 +7,17 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
+  useWindowDimensions,
 } from "react-native";
-import * as Clipboard from 'expo-clipboard';
 import Modal from "react-native-modal";
-import { useTheme } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
-import { IconSymbol } from "@/components/IconSymbol";
 import { useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { bcctColors, bcctTypography } from "@/styles/bcctTheme";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSubscription } from "@/contexts/SubscriptionContext";
+import { Ionicons } from "@expo/vector-icons";
 
 interface DashboardStats {
   clientsCount: number;
@@ -27,11 +25,48 @@ interface DashboardStats {
   todayAppointmentsCount: number;
 }
 
+const TIPS = [
+  { icon: "👤", text: "Voeg je eerste cliënt toe via de Cliënten tab." },
+  { icon: "📅", text: "Plan je eerste afspraak om structuur te bieden." },
+  { icon: "📚", text: "Gebruik modules voor een gestructureerd traject." },
+  { icon: "💬", text: "Stuur een bericht om de verbinding warm te houden." },
+  { icon: "📊", text: "Check de inzichten om voortgang te meten." },
+];
+
+const formatDate = () => {
+  const days = ["Zondag", "Maandag", "Dinsdag", "Woensdag", "Donderdag", "Vrijdag", "Zaterdag"];
+  const months = [
+    "januari", "februari", "maart", "april", "mei", "juni",
+    "juli", "augustus", "september", "oktober", "november", "december",
+  ];
+  const now = new Date();
+  return `${days[now.getDay()]} ${now.getDate()} ${months[now.getMonth()]}`;
+};
+
+const relativeTime = (dateStr: string) => {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins} min geleden`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} uur geleden`;
+  const days = Math.floor(hours / 24);
+  return `${days} dag${days !== 1 ? "en" : ""} geleden`;
+};
+
+const CARD_SHADOW = {
+  shadowColor: "#000",
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.06,
+  shadowRadius: 8,
+  elevation: 3,
+};
+
 export default function CoachDashboardScreen() {
-  const { colors } = useTheme();
   const { user, session } = useAuth();
   const router = useRouter();
   const { isSubscribed } = useSubscription();
+  const { width } = useWindowDimensions();
+
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<DashboardStats>({
     clientsCount: 0,
@@ -39,9 +74,20 @@ export default function CoachDashboardScreen() {
     todayAppointmentsCount: 0,
   });
   const [profile, setProfile] = useState<any>(null);
+  const [todayAppointments, setTodayAppointments] = useState<
+    { id: string; time: string; clientName: string }[]
+  >([]);
+  const [recentActivity, setRecentActivity] = useState<
+    { icon: string; text: string; time: string }[]
+  >([]);
+  const [tipIndex, setTipIndex] = useState(0);
   const [modalVisible, setModalVisible] = useState(false);
   const [modalTitle, setModalTitle] = useState("");
   const [modalMessage, setModalMessage] = useState("");
+
+  const tileWidth = (width - 52) / 2;
+  const currentDate = formatDate();
+  const currentTip = TIPS[tipIndex];
 
   const showModal = (title: string, message: string) => {
     setModalTitle(title);
@@ -50,6 +96,7 @@ export default function CoachDashboardScreen() {
   };
 
   useEffect(() => {
+    setTipIndex(Math.floor(Math.random() * TIPS.length));
     fetchDashboardData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -62,91 +109,174 @@ export default function CoachDashboardScreen() {
         return;
       }
 
-      // Fetch profile with invite_code
+      const userId = session.user.id;
+
+      // Fetch profile
       const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', session.user.id)
+        .from("profiles")
+        .select("*")
+        .eq("id", userId)
         .single();
 
       if (profileError) {
         console.error("[Coach Dashboard] Profile fetch error:", profileError);
       } else {
-        console.log("[Coach Dashboard] Profile loaded:", profileData);
+        console.log("[Coach Dashboard] Profile loaded:", profileData?.full_name);
         setProfile(profileData);
       }
 
-      // Fetch clients count from coach_clients table
+      // Fetch clients count
       const { count: clientsCount, error: clientsError } = await supabase
-        .from('coach_clients')
-        .select('*', { count: 'exact', head: true })
-        .eq('coach_id', session.user.id);
+        .from("coach_clients")
+        .select("*", { count: "exact", head: true })
+        .eq("coach_id", userId);
 
       if (clientsError) {
-        console.error("[Coach Dashboard] Clients count error:", clientsError, JSON.stringify(clientsError));
+        console.error("[Coach Dashboard] Clients count error:", clientsError);
       } else {
         console.log("[Coach Dashboard] Clients count:", clientsCount);
       }
 
-      // TODO: Fetch active programs count
-      // This requires joining coach_clients with client_programs
-      // For now, we'll set to 0 and add a TODO comment
-      const activeProgramsCount = 0;
+      // Fetch today's appointments
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const todayEnd = new Date();
+      todayEnd.setHours(23, 59, 59, 999);
 
-      // Fetch upcoming appointments count
-      let appointmentsCount = 0;
+      const { data: todayApptData, error: todayApptError } = await supabase
+        .from("appointments")
+        .select("id, starts_at, client_id")
+        .eq("coach_id", userId)
+        .gte("starts_at", todayStart.toISOString())
+        .lte("starts_at", todayEnd.toISOString());
 
-      const { count, error: appointmentsError } = await supabase
-        .from('appointments')
-        .select('*', { count: 'exact', head: true })
-        .eq('coach_id', session.user.id)
-        .gte('starts_at', new Date().toISOString());
+      if (todayApptError) {
+        console.error("[Coach Dashboard] Today appointments error:", todayApptError);
+      } else {
+        console.log("[Coach Dashboard] Today appointments:", todayApptData?.length);
+      }
+
+      // Fetch total appointments count
+      const { count: appointmentsCount, error: appointmentsError } = await supabase
+        .from("appointments")
+        .select("*", { count: "exact", head: true })
+        .eq("coach_id", userId)
+        .gte("starts_at", new Date().toISOString());
 
       if (appointmentsError) {
-        console.log('[Coach Dashboard] Appointments count error:', {
-          code: appointmentsError.code,
-          message: appointmentsError.message,
-          details: appointmentsError.details,
-          hint: appointmentsError.hint,
-        });
-        // safe fallback — dashboard still renders
-        appointmentsCount = 0;
+        console.error("[Coach Dashboard] Appointments count error:", appointmentsError);
       } else {
-        console.log("[Coach Dashboard] Upcoming appointments count:", count);
-        appointmentsCount = count ?? 0;
+        console.log("[Coach Dashboard] Upcoming appointments count:", appointmentsCount);
       }
 
       setStats({
         clientsCount: clientsCount || 0,
-        activeProgramsCount: activeProgramsCount,
-        todayAppointmentsCount: appointmentsCount,
+        activeProgramsCount: 0,
+        todayAppointmentsCount: todayApptData?.length || 0,
       });
+
+      // Build today's appointments with client names
+      if (todayApptData && todayApptData.length > 0) {
+        const clientIds = todayApptData.map((a: any) => a.client_id).filter(Boolean);
+        let clientMap: Record<string, string> = {};
+
+        if (clientIds.length > 0) {
+          const { data: clientProfiles } = await supabase
+            .from("profiles")
+            .select("id, full_name")
+            .in("id", clientIds);
+
+          if (clientProfiles) {
+            clientProfiles.forEach((p: any) => {
+              clientMap[p.id] = p.full_name || "Onbekend";
+            });
+          }
+        }
+
+        const formatted = todayApptData.map((a: any) => {
+          const d = new Date(a.starts_at);
+          const hh = String(d.getHours()).padStart(2, "0");
+          const mm = String(d.getMinutes()).padStart(2, "0");
+          return {
+            id: a.id,
+            time: `${hh}:${mm}`,
+            clientName: clientMap[a.client_id] || "Cliënt",
+          };
+        });
+        setTodayAppointments(formatted);
+      }
+
+      // Fetch recent activity: last 2 coach_clients + last 1 appointment
+      const { data: recentClients, error: recentClientsError } = await supabase
+        .from("coach_clients")
+        .select("client_id, created_at")
+        .eq("coach_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(2);
+
+      if (recentClientsError) {
+        console.error("[Coach Dashboard] Recent clients error:", recentClientsError);
+      }
+
+      const { data: recentAppt, error: recentApptError } = await supabase
+        .from("appointments")
+        .select("id, created_at")
+        .eq("coach_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (recentApptError) {
+        console.error("[Coach Dashboard] Recent appointment error:", recentApptError);
+      }
+
+      const activity: { icon: string; text: string; time: string }[] = [];
+
+      if (recentClients && recentClients.length > 0) {
+        const recentClientIds = recentClients.map((c: any) => c.client_id).filter(Boolean);
+        let recentClientMap: Record<string, string> = {};
+
+        if (recentClientIds.length > 0) {
+          const { data: rcProfiles } = await supabase
+            .from("profiles")
+            .select("id, full_name")
+            .in("id", recentClientIds);
+
+          if (rcProfiles) {
+            rcProfiles.forEach((p: any) => {
+              recentClientMap[p.id] = p.full_name || "Onbekend";
+            });
+          }
+        }
+
+        recentClients.slice(0, 2).forEach((c: any) => {
+          activity.push({
+            icon: "person-add-outline",
+            text: `Nieuwe cliënt: ${recentClientMap[c.client_id] || "Onbekend"}`,
+            time: relativeTime(c.created_at),
+          });
+        });
+      }
+
+      if (recentAppt && recentAppt.length > 0) {
+        activity.push({
+          icon: "calendar-outline",
+          text: "Afspraak gepland",
+          time: relativeTime(recentAppt[0].created_at),
+        });
+      }
+
+      setRecentActivity(activity);
     } catch (error: any) {
-      console.error("[Coach Dashboard] Error fetching dashboard data", error, JSON.stringify(error));
+      console.error("[Coach Dashboard] Error fetching dashboard data", error);
       showModal("Fout", "Kon dashboardgegevens niet laden");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCopyInviteCode = async () => {
-    if (!profile?.invite_code) {
-      showModal("Geen code", "Je hebt nog geen coachcode. Neem contact op met support.");
-      return;
-    }
-
-    try {
-      await Clipboard.setStringAsync(profile.invite_code);
-      showModal("Gekopieerd!", `Code ${profile.invite_code} is gekopieerd naar het klembord.`);
-    } catch (error) {
-      console.error("[Coach Dashboard] Copy error:", error);
-      showModal("Fout", "Kon code niet kopiëren");
-    }
-  };
-
   if (loading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={["top"]}>
+      <SafeAreaView style={styles.container} edges={["top"]}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
         </View>
@@ -156,7 +286,7 @@ export default function CoachDashboardScreen() {
 
   if (!isSubscribed) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={["top", "bottom"]}>
+      <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
         <View style={gateStyles.container}>
           <View style={gateStyles.iconWrap}>
             <Text style={gateStyles.iconText}>🔒</Text>
@@ -178,166 +308,249 @@ export default function CoachDashboardScreen() {
     );
   }
 
-  const fullName = profile?.full_name || user?.user_metadata?.full_name || "Coach";
-  const welcomeText = `Welkom terug, ${fullName}`;
-
-  const clientsCountText = stats.clientsCount.toString();
-  const activeProgramsCountText = stats.activeProgramsCount.toString();
-  const todayAppointmentsCountText = stats.todayAppointmentsCount.toString();
-
-  const todayStats = [
-    { label: "Cliënten", value: clientsCountText, icon: "group" as const },
-    { label: "Actieve programma's", value: activeProgramsCountText, icon: "school" as const },
-    { label: "Afspraken vandaag", value: todayAppointmentsCountText, icon: "event" as const },
-  ];
-
-  const quickActions = [
-    {
-      id: "clients",
-      title: "Cliënten",
-      subtitle: "Bekijk en beheer je cliënten",
-      icon: "group" as const,
-      route: "/(app)/coach/clients" as const,
-    },
-    {
-      id: "modules",
-      title: "Modules",
-      subtitle: "Beheer thema's en vragen",
-      icon: "folder" as const,
-      route: "/(app)/coach/modules" as const,
-    },
-    {
-      id: "insights",
-      title: "Inzichten",
-      subtitle: "Bekijk grafieken en patronen",
-      icon: "insights" as const,
-      route: null,
-    },
-  ];
+  const rawName = profile?.full_name || user?.user_metadata?.full_name || "Coach";
+  const firstName = rawName.split(" ")[0];
+  const clientsCountText = String(stats.clientsCount);
+  const activeProgramsCountText = String(stats.activeProgramsCount);
+  const todayAppointmentsCountText = String(stats.todayAppointmentsCount);
 
   return (
     <>
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={["top"]}>
-        <ScrollView 
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Header */}
-          <View style={styles.header}>
-            <View style={styles.headerLeft}>
-              <Text style={[styles.headerTitle, { color: colors.text }]}>Coach Dashboard</Text>
-              <Text style={[styles.headerSubtitle, { color: bcctColors.textSecondary }]}>
-                {welcomeText}
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <ScrollView showsVerticalScrollIndicator={false}>
+
+          {/* A. Top section */}
+          <View style={styles.topSection}>
+            <View style={styles.topLeft}>
+              <Text style={styles.greeting}>
+                Welkom terug, {firstName}
               </Text>
+              <Text style={styles.dateText}>{currentDate}</Text>
             </View>
             <TouchableOpacity
-              style={[styles.settingsButton, { backgroundColor: colors.card, borderColor: colors.border }]}
-              onPress={() => router.push("/(app)/coach/settings" as any)}
+              style={styles.bellButton}
+              onPress={() => {
+                console.log("[CoachDashboard] Notification bell pressed");
+                showModal("Notificaties", "Notificaties komen binnenkort");
+              }}
+              activeOpacity={0.7}
             >
-              <IconSymbol
-                ios_icon_name="gear"
-                android_material_icon_name="settings"
-                size={24}
-                color={colors.text}
-              />
+              <Ionicons name="notifications-outline" size={24} color={bcctColors.textSecondary} />
             </TouchableOpacity>
           </View>
 
-          {/* Vandaag Section */}
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Vandaag</Text>
-            <View style={styles.statsRow}>
-              {todayStats.map((stat, index) => (
-                <React.Fragment key={index}>
-                <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <IconSymbol
-                    ios_icon_name="star"
-                    android_material_icon_name={stat.icon}
-                    size={24}
-                    color={bcctColors.primaryOrange}
-                  />
-                  <Text style={[styles.statValue, { color: colors.text }]}>{stat.value}</Text>
-                  <Text style={[styles.statLabel, { color: bcctColors.textSecondary }]}>
-                    {stat.label}
-                  </Text>
+          {/* B. Stats cards row */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.statsScroll}
+          >
+            <TouchableOpacity
+              style={styles.statCard}
+              onPress={() => {
+                console.log("[CoachDashboard] Stats card Cliënten pressed");
+                router.push("/(app)/coach/clients");
+              }}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="people-outline" size={22} color={bcctColors.primaryOrange} />
+              <Text style={styles.statNumber}>{clientsCountText}</Text>
+              <Text style={styles.statLabel}>Cliënten</Text>
+              <Text style={styles.statSub}>+2 deze week</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.statCard}
+              onPress={() => {
+                console.log("[CoachDashboard] Stats card Programma's pressed");
+                router.push("/(app)/coach/modules");
+              }}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="book-outline" size={22} color={bcctColors.primaryOrange} />
+              <Text style={styles.statNumber}>{activeProgramsCountText}</Text>
+              <Text style={styles.statLabel}>Programma's</Text>
+              <Text style={styles.statSub}>3 actief</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.statCard}
+              onPress={() => {
+                console.log("[CoachDashboard] Stats card Afspraken pressed");
+                router.push("/(app)/coach/appointments");
+              }}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="calendar-outline" size={22} color={bcctColors.primaryOrange} />
+              <Text style={styles.statNumber}>{todayAppointmentsCountText}</Text>
+              <Text style={styles.statLabel}>Afspraken</Text>
+              <Text style={styles.statSub}>Vandaag</Text>
+            </TouchableOpacity>
+          </ScrollView>
+
+          {/* C. Vandaag te doen */}
+          <Text style={styles.sectionHeader}>Vandaag te doen</Text>
+
+          {todayAppointments.length === 0 ? (
+            <View style={[styles.emptyCard, CARD_SHADOW]}>
+              <Text style={styles.emptyEmoji}>🗓️</Text>
+              <Text style={styles.emptyTitle}>Geen afspraken vandaag</Text>
+              <Text style={styles.emptySubtitle}>Geniet van je vrije dag!</Text>
+            </View>
+          ) : (
+            todayAppointments.map((appt) => {
+              const sessionLabel = `Sessie starten voor ${appt.clientName}`;
+              return (
+                <View key={appt.id} style={[styles.apptCard, CARD_SHADOW]}>
+                  <View style={styles.apptLeft}>
+                    <View style={styles.apptDot} />
+                    <View style={styles.apptInfo}>
+                      <Text style={styles.apptName}>{appt.clientName}</Text>
+                      <Text style={styles.apptTime}>{appt.time}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.apptActions}>
+                    <TouchableOpacity
+                      style={styles.pillOrange}
+                      onPress={() => {
+                        console.log("[CoachDashboard] Start sessie pressed for:", appt.clientName);
+                        showModal("Sessie starten", sessionLabel);
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.pillOrangeText}>Start sessie</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.pillOutline}
+                      onPress={() => {
+                        console.log("[CoachDashboard] Bericht pressed for:", appt.clientName);
+                        router.push("/(app)/coach/clients");
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.pillOutlineText}>Bericht</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-                </React.Fragment>
-              ))}
-            </View>
-          </View>
+              );
+            })
+          )}
 
-          {/* Snelle Acties Section */}
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Snelle Acties</Text>
-            <View style={styles.actionsList}>
-              {quickActions.map((action) => (
-                <React.Fragment key={action.id}>
-                <TouchableOpacity
-                  style={[styles.actionCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-                  onPress={() => {
-                    if (action.route) {
-                      router.push(action.route);
-                    } else {
-                      console.log("Action pressed:", action.id);
-                      showModal("Binnenkort", "Deze functie komt binnenkort beschikbaar.");
-                    }
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.actionIconContainer, { backgroundColor: bcctColors.primaryOrange + "20" }]}>
-                    <IconSymbol
-                      ios_icon_name="star"
-                      android_material_icon_name={action.icon}
-                      size={24}
-                      color={bcctColors.primaryOrange}
-                    />
-                  </View>
-                  <View style={styles.actionContent}>
-                    <Text style={[styles.actionTitle, { color: colors.text }]}>{action.title}</Text>
-                    <Text style={[styles.actionSubtitle, { color: bcctColors.textSecondary }]}>
-                      {action.subtitle}
-                    </Text>
-                  </View>
-                  <IconSymbol
-                    ios_icon_name="chevron.right"
-                    android_material_icon_name="chevron-right"
-                    size={20}
-                    color={bcctColors.textSecondary}
-                  />
-                </TouchableOpacity>
-                </React.Fragment>
-              ))}
-            </View>
-          </View>
+          {/* D. Snel starten */}
+          <Text style={styles.sectionHeader}>Snel starten</Text>
+          <View style={styles.gridContainer}>
+            <TouchableOpacity
+              style={[styles.actionTile, { width: tileWidth }, CARD_SHADOW]}
+              onPress={() => {
+                console.log("[CoachDashboard] Quick action Cliënten pressed");
+                router.push("/(app)/coach/clients");
+              }}
+              activeOpacity={0.8}
+            >
+              <View style={styles.actionIconCircle}>
+                <Ionicons name="people-outline" size={20} color={bcctColors.primaryOrange} />
+              </View>
+              <Text style={styles.actionLabel}>Cliënten</Text>
+            </TouchableOpacity>
 
-          {/* Tip Card */}
-          <View style={[styles.tipCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={styles.tipHeader}>
-              <IconSymbol
-                ios_icon_name="lightbulb"
-                android_material_icon_name="lightbulb"
-                size={20}
-                color={bcctColors.primaryOrange}
-              />
-              <Text style={[styles.tipTitle, { color: colors.text }]}>Tip</Text>
-            </View>
-            <Text style={[styles.tipText, { color: bcctColors.textSecondary }]}>
-              Nodig een cliënt uit met een coachcode.
-            </Text>
-            <TouchableOpacity onPress={handleCopyInviteCode}>
-              <LinearGradient
-                colors={[bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.tipButton}
-              >
-                <Text style={styles.tipButtonText}>Kopieer coachcode</Text>
-              </LinearGradient>
+            <TouchableOpacity
+              style={[styles.actionTile, { width: tileWidth }, CARD_SHADOW]}
+              onPress={() => {
+                console.log("[CoachDashboard] Quick action Modules pressed");
+                router.push("/(app)/coach/modules");
+              }}
+              activeOpacity={0.8}
+            >
+              <View style={styles.actionIconCircle}>
+                <Ionicons name="book-outline" size={20} color={bcctColors.primaryOrange} />
+              </View>
+              <Text style={styles.actionLabel}>Modules</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionTile, { width: tileWidth }, CARD_SHADOW]}
+              onPress={() => {
+                console.log("[CoachDashboard] Quick action Inzichten pressed");
+                showModal("Inzichten", "Binnenkort beschikbaar");
+              }}
+              activeOpacity={0.8}
+            >
+              <View style={styles.actionIconCircle}>
+                <Ionicons name="bar-chart-outline" size={20} color={bcctColors.primaryOrange} />
+              </View>
+              <Text style={styles.actionLabel}>Inzichten</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionTile, { width: tileWidth }, CARD_SHADOW]}
+              onPress={() => {
+                console.log("[CoachDashboard] Quick action Nieuwe cliënt pressed");
+                router.push("/(app)/coach/clients");
+              }}
+              activeOpacity={0.8}
+            >
+              <View style={styles.actionIconCircle}>
+                <Ionicons name="person-add-outline" size={20} color={bcctColors.primaryOrange} />
+              </View>
+              <Text style={styles.actionLabel}>+ Nieuwe cliënt</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Bottom padding for tab bar */}
-          <View style={{ height: 100 }} />
+          {/* E. Recente activiteit */}
+          <Text style={styles.sectionHeader}>Recente activiteit</Text>
+          <View style={[styles.activityCard, CARD_SHADOW]}>
+            {recentActivity.length === 0 ? (
+              <Text style={styles.activityEmpty}>Nog geen activiteit</Text>
+            ) : (
+              recentActivity.map((item, index) => {
+                const isLast = index === recentActivity.length - 1;
+                return (
+                  <View key={index}>
+                    <View style={styles.activityRow}>
+                      <View style={styles.activityIconCircle}>
+                        <Ionicons
+                          name={item.icon as any}
+                          size={16}
+                          color={bcctColors.textSecondary}
+                        />
+                      </View>
+                      <View style={styles.activityTextCol}>
+                        <Text style={styles.activityText}>{item.text}</Text>
+                        <Text style={styles.activityTime}>{item.time}</Text>
+                      </View>
+                    </View>
+                    {!isLast && <View style={styles.activityDivider} />}
+                  </View>
+                );
+              })
+            )}
+          </View>
+
+          {/* F. Tip card */}
+          <LinearGradient
+            colors={["#F28C28", "#E67E1F"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.tipCard}
+          >
+            <View style={styles.tipRow}>
+              <Text style={styles.tipEmoji}>{currentTip.icon}</Text>
+              <Text style={styles.tipText}>{currentTip.text}</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.tipNext}
+              onPress={() => {
+                console.log("[CoachDashboard] Volgende tip pressed");
+                setTipIndex((prev) => (prev + 1) % TIPS.length);
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.tipNextText}>Volgende tip →</Text>
+            </TouchableOpacity>
+          </LinearGradient>
+
+          {/* G. Bottom padding */}
+          <View style={{ height: 120 }} />
         </ScrollView>
       </SafeAreaView>
 
@@ -349,12 +562,15 @@ export default function CoachDashboardScreen() {
         animationOut="fadeOut"
         backdropOpacity={0.5}
       >
-        <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-          <Text style={[styles.modalTitle, { color: bcctColors.primaryOrange }]}>{modalTitle}</Text>
-          <Text style={[styles.modalMessage, { color: bcctColors.textSecondary }]}>{modalMessage}</Text>
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>{modalTitle}</Text>
+          <Text style={styles.modalMessage}>{modalMessage}</Text>
           <TouchableOpacity
-            style={[styles.modalButton, { backgroundColor: bcctColors.primaryOrange }]}
-            onPress={() => setModalVisible(false)}
+            style={styles.modalButton}
+            onPress={() => {
+              console.log("[CoachDashboard] Modal OK pressed");
+              setModalVisible(false);
+            }}
           >
             <Text style={styles.modalButtonText}>OK</Text>
           </TouchableOpacity>
@@ -381,9 +597,7 @@ const gateStyles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 8,
   },
-  iconText: {
-    fontSize: 36,
-  },
+  iconText: { fontSize: 36 },
   title: {
     ...bcctTypography.h2,
     color: bcctColors.textPrimary,
@@ -415,156 +629,296 @@ const gateStyles = StyleSheet.create({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: bcctColors.lightBackground,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
   },
-  scrollContent: {
-    padding: 20,
-  },
-  header: {
+
+  // A. Top section
+  topSection: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 32,
-    marginTop: 8,
-  },
-  headerLeft: {
-    flex: 1,
-  },
-  headerTitle: {
-    ...bcctTypography.h1,
-    marginBottom: 4,
-  },
-  headerSubtitle: {
-    ...bcctTypography.small,
-  },
-  settingsButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    borderWidth: 1,
-    justifyContent: "center",
     alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  topLeft: { flex: 1 },
+  greeting: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: bcctColors.textPrimary,
+    marginBottom: 2,
+  },
+  dateText: {
+    fontSize: 14,
+    color: bcctColors.textSecondary,
+  },
+  bellButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: bcctColors.cardBackground,
+    alignItems: "center",
+    justifyContent: "center",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
     shadowRadius: 4,
     elevation: 2,
   },
-  section: {
-    marginBottom: 32,
-  },
-  sectionTitle: {
-    ...bcctTypography.h3,
-    marginBottom: 16,
-  },
-  statsRow: {
-    flexDirection: "row",
+
+  // B. Stats
+  statsScroll: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
     gap: 12,
   },
   statCard: {
-    flex: 1,
-    padding: 16,
+    width: 140,
+    backgroundColor: bcctColors.cardBackground,
     borderRadius: 16,
-    borderWidth: 1,
-    alignItems: "center",
-    gap: 8,
+    padding: 16,
+    alignItems: "flex-start",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.06,
     shadowRadius: 8,
-    elevation: 2,
+    elevation: 3,
   },
-  statValue: {
-    ...bcctTypography.h1,
+  statNumber: {
+    fontSize: 28,
+    fontWeight: "700",
+    color: bcctColors.textPrimary,
+    marginTop: 8,
   },
   statLabel: {
-    ...bcctTypography.small,
-    textAlign: "center",
+    fontSize: 13,
+    fontWeight: "600",
+    color: bcctColors.textPrimary,
+    marginTop: 2,
   },
-  actionsList: {
+  statSub: {
+    fontSize: 11,
+    color: bcctColors.textSecondary,
+    marginTop: 2,
+  },
+
+  // Section header
+  sectionHeader: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: bcctColors.textPrimary,
+    paddingHorizontal: 20,
+    marginTop: 24,
+    marginBottom: 12,
+  },
+
+  // C. Today appointments
+  emptyCard: {
+    backgroundColor: bcctColors.cardBackground,
+    borderRadius: 16,
+    padding: 20,
+    marginHorizontal: 20,
+    alignItems: "center",
+  },
+  emptyEmoji: { fontSize: 28, marginBottom: 8 },
+  emptyTitle: {
+    fontSize: 15,
+    color: bcctColors.textSecondary,
+    fontWeight: "500",
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    color: bcctColors.textSecondary,
+    marginTop: 4,
+  },
+  apptCard: {
+    backgroundColor: bcctColors.cardBackground,
+    borderRadius: 16,
+    padding: 16,
+    marginHorizontal: 20,
+    marginBottom: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  apptLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  apptDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: bcctColors.primaryOrange,
+    marginRight: 10,
+  },
+  apptInfo: { flex: 1 },
+  apptName: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: bcctColors.textPrimary,
+  },
+  apptTime: {
+    fontSize: 13,
+    color: bcctColors.textSecondary,
+    marginTop: 2,
+  },
+  apptActions: {
+    flexDirection: "row",
+    gap: 6,
+  },
+  pillOrange: {
+    backgroundColor: bcctColors.primaryOrange,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+  },
+  pillOrangeText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  pillOutline: {
+    borderWidth: 1,
+    borderColor: bcctColors.primaryOrange,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+  },
+  pillOutlineText: {
+    color: bcctColors.primaryOrange,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+
+  // D. Quick actions grid
+  gridContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 12,
+    paddingHorizontal: 20,
   },
-  actionCard: {
+  actionTile: {
+    backgroundColor: bcctColors.cardBackground,
+    borderRadius: 16,
+    padding: 16,
+  },
+  actionIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#FFF3E8",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: bcctColors.textPrimary,
+    marginTop: 8,
+  },
+
+  // E. Recent activity
+  activityCard: {
+    backgroundColor: bcctColors.cardBackground,
+    borderRadius: 16,
+    marginHorizontal: 20,
+    overflow: "hidden",
+  },
+  activityEmpty: {
+    fontSize: 14,
+    color: bcctColors.textSecondary,
+    textAlign: "center",
+    padding: 20,
+  },
+  activityRow: {
     flexDirection: "row",
     alignItems: "center",
     padding: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    gap: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
   },
-  actionIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  activityIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
     justifyContent: "center",
-    alignItems: "center",
   },
-  actionContent: {
+  activityTextCol: {
     flex: 1,
-    gap: 4,
+    marginLeft: 12,
   },
-  actionTitle: {
-    ...bcctTypography.bodyMedium,
+  activityText: {
+    fontSize: 14,
+    color: bcctColors.textPrimary,
   },
-  actionSubtitle: {
-    ...bcctTypography.small,
+  activityTime: {
+    fontSize: 12,
+    color: bcctColors.textSecondary,
+    marginTop: 2,
   },
+  activityDivider: {
+    height: 1,
+    backgroundColor: "#F3F4F6",
+    marginHorizontal: 16,
+  },
+
+  // F. Tip card
   tipCard: {
-    padding: 20,
     borderRadius: 16,
-    borderWidth: 1,
-    gap: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    padding: 20,
+    marginHorizontal: 20,
+    marginTop: 24,
   },
-  tipHeader: {
+  tipRow: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+    alignItems: "flex-start",
   },
-  tipTitle: {
-    ...bcctTypography.bodyMedium,
-  },
+  tipEmoji: { fontSize: 24 },
   tipText: {
-    ...bcctTypography.body,
-  },
-  tipButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  tipButtonText: {
+    fontSize: 14,
     color: "#fff",
-    ...bcctTypography.button,
+    flex: 1,
+    marginLeft: 10,
+    lineHeight: 20,
   },
+  tipNext: {
+    alignSelf: "flex-end",
+    marginTop: 12,
+  },
+  tipNextText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+
+  // Modal
   modalContent: {
+    backgroundColor: bcctColors.cardBackground,
     borderRadius: 20,
     padding: 24,
     alignItems: "center",
   },
   modalTitle: {
-    ...bcctTypography.h3,
+    fontSize: 17,
+    fontWeight: "700",
+    color: bcctColors.primaryOrange,
     marginBottom: 12,
   },
   modalMessage: {
-    ...bcctTypography.body,
+    fontSize: 15,
+    color: bcctColors.textSecondary,
     textAlign: "center",
     marginBottom: 24,
   },
   modalButton: {
+    backgroundColor: bcctColors.primaryOrange,
     borderRadius: 12,
     paddingHorizontal: 32,
     paddingVertical: 12,
@@ -572,7 +926,8 @@ const styles = StyleSheet.create({
   },
   modalButtonText: {
     color: "#fff",
-    ...bcctTypography.button,
+    fontWeight: "700",
+    fontSize: 15,
     textAlign: "center",
   },
 });

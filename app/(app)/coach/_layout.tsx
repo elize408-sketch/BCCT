@@ -6,6 +6,7 @@ import { IconSymbol } from "@/components/IconSymbol";
 import { bcctColors } from "@/styles/bcctTheme";
 import { useTheme } from "@react-navigation/native";
 import { BlurView } from "expo-blur";
+import { Ionicons } from "@expo/vector-icons";
 
 export default function CoachLayout() {
   const { colors, dark } = useTheme();
@@ -45,14 +46,10 @@ export default function CoachLayout() {
         tabBarItemStyle: {
           paddingVertical: 8,
         },
-        tabBarBackground: () => (
-          Platform.OS === 'ios' ? (
-            <BlurView
-              intensity={80}
-              style={StyleSheet.absoluteFill}
-            />
-          ) : null
-        ),
+        tabBarBackground: () =>
+          Platform.OS === "ios" ? (
+            <BlurView intensity={80} style={StyleSheet.absoluteFill} />
+          ) : null,
         tabBarIconStyle: {
           marginTop: 4,
         },
@@ -63,10 +60,7 @@ export default function CoachLayout() {
         options={{
           title: "Home",
           tabBarIcon: ({ color, focused }) => (
-            <View style={[
-              styles.iconContainer,
-              focused && { backgroundColor: bcctColors.primaryOrange }
-            ]}>
+            <View style={[styles.iconContainer, focused && styles.iconFocused]}>
               <IconSymbol
                 ios_icon_name="house.fill"
                 android_material_icon_name="home"
@@ -82,10 +76,7 @@ export default function CoachLayout() {
         options={{
           title: "Cliënten",
           tabBarIcon: ({ color, focused }) => (
-            <View style={[
-              styles.iconContainer,
-              focused && { backgroundColor: bcctColors.primaryOrange }
-            ]}>
+            <View style={[styles.iconContainer, focused && styles.iconFocused]}>
               <IconSymbol
                 ios_icon_name="person.2.fill"
                 android_material_icon_name="group"
@@ -101,10 +92,7 @@ export default function CoachLayout() {
         options={{
           title: "Modules",
           tabBarIcon: ({ color, focused }) => (
-            <View style={[
-              styles.iconContainer,
-              focused && { backgroundColor: bcctColors.primaryOrange }
-            ]}>
+            <View style={[styles.iconContainer, focused && styles.iconFocused]}>
               <IconSymbol
                 ios_icon_name="folder.fill"
                 android_material_icon_name="folder"
@@ -120,13 +108,26 @@ export default function CoachLayout() {
         options={{
           title: "Afspraken",
           tabBarIcon: ({ color, focused }) => (
-            <View style={[
-              styles.iconContainer,
-              focused && { backgroundColor: bcctColors.primaryOrange }
-            ]}>
+            <View style={[styles.iconContainer, focused && styles.iconFocused]}>
               <IconSymbol
                 ios_icon_name="calendar"
                 android_material_icon_name="event"
+                size={24}
+                color={focused ? "#FFFFFF" : color}
+              />
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="facturatie"
+        options={{
+          title: "Facturatie",
+          tabBarIcon: ({ color, focused }) => (
+            <View style={[styles.iconContainer, focused && styles.iconFocused]}>
+              <IconSymbol
+                ios_icon_name="creditcard"
+                android_material_icon_name="credit_card"
                 size={24}
                 color={focused ? "#FFFFFF" : color}
               />
@@ -139,10 +140,7 @@ export default function CoachLayout() {
         options={{
           title: "Profiel",
           tabBarIcon: ({ color, focused }) => (
-            <View style={[
-              styles.iconContainer,
-              focused && { backgroundColor: bcctColors.primaryOrange }
-            ]}>
+            <View style={[styles.iconContainer, focused && styles.iconFocused]}>
               <IconSymbol
                 ios_icon_name="person.fill"
                 android_material_icon_name="person"
@@ -153,19 +151,9 @@ export default function CoachLayout() {
           ),
         }}
       />
-      {/* Hidden screens that shouldn't appear in tabs */}
-      <Tabs.Screen
-        name="theme-detail"
-        options={{
-          href: null, // Hide from tab bar
-        }}
-      />
-      <Tabs.Screen
-        name="client-detail"
-        options={{
-          href: null, // Hide from tab bar
-        }}
-      />
+      {/* Hidden screens */}
+      <Tabs.Screen name="theme-detail" options={{ href: null }} />
+      <Tabs.Screen name="client-detail" options={{ href: null }} />
     </Tabs>
   );
 }
@@ -177,5 +165,8 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     justifyContent: "center",
     alignItems: "center",
+  },
+  iconFocused: {
+    backgroundColor: bcctColors.primaryOrange,
   },
 });
