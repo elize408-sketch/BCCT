@@ -410,7 +410,6 @@ export default function CoachOnboardingScreen() {
         coaching_types: finalTypes.length > 0 ? finalTypes : null,
         calendar_provider: calendarProvider || null,
         calendar_connected: false,
-        onboarding_completed: true,
         avatar_url: avatarUrl || null,
         coaching_format: coachingFormat || null,
         revenue_model: revenueModel || null,
@@ -427,8 +426,8 @@ export default function CoachOnboardingScreen() {
 
       if (error) throw error;
 
-      console.log('[CoachOnboarding] Profile saved successfully, navigating to coach dashboard');
-      router.replace('/(app)/coach');
+      console.log('[CoachOnboarding] Profile saved successfully, navigating to paywall');
+      router.push('/paywall');
     } catch (err: any) {
       console.error('[CoachOnboarding] Save error:', err.message);
       setSaveError(err.message || 'Er is een fout opgetreden. Probeer opnieuw.');

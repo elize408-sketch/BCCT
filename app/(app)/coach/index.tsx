@@ -19,6 +19,7 @@ import { useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { bcctColors, bcctTypography } from "@/styles/bcctTheme";
 import { LinearGradient } from "expo-linear-gradient";
+import { useSubscription } from "@/contexts/SubscriptionContext";
 
 interface DashboardStats {
   clientsCount: number;
@@ -30,6 +31,7 @@ export default function CoachDashboardScreen() {
   const { colors } = useTheme();
   const { user, session } = useAuth();
   const router = useRouter();
+  const { isSubscribed } = useSubscription();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<DashboardStats>({
     clientsCount: 0,
@@ -49,6 +51,7 @@ export default function CoachDashboardScreen() {
 
   useEffect(() => {
     fetchDashboardData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchDashboardData = async () => {
@@ -146,6 +149,30 @@ export default function CoachDashboardScreen() {
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={["top"]}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!isSubscribed) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={["top", "bottom"]}>
+        <View style={gateStyles.container}>
+          <View style={gateStyles.iconWrap}>
+            <Text style={gateStyles.iconText}>🔒</Text>
+          </View>
+          <Text style={gateStyles.title}>Je hebt een actief abonnement nodig</Text>
+          <Text style={gateStyles.subtitle}>Activeer je Pro Plan om de app te gebruiken.</Text>
+          <TouchableOpacity
+            onPress={() => {
+              console.log("[CoachDashboard] Subscription gate — activate subscription pressed");
+              router.push("/paywall");
+            }}
+            style={gateStyles.button}
+            activeOpacity={0.9}
+          >
+            <Text style={gateStyles.buttonText}>Abonnement activeren</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -336,6 +363,54 @@ export default function CoachDashboardScreen() {
     </>
   );
 }
+
+const gateStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 32,
+    gap: 16,
+  },
+  iconWrap: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: `${bcctColors.primaryOrange}18`,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+  iconText: {
+    fontSize: 36,
+  },
+  title: {
+    ...bcctTypography.h2,
+    color: bcctColors.textPrimary,
+    textAlign: "center",
+  },
+  subtitle: {
+    ...bcctTypography.body,
+    color: bcctColors.textSecondary,
+    textAlign: "center",
+  },
+  button: {
+    marginTop: 8,
+    backgroundColor: bcctColors.primaryOrange,
+    paddingVertical: 15,
+    paddingHorizontal: 32,
+    borderRadius: 14,
+    shadowColor: bcctColors.primaryOrange,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  buttonText: {
+    color: "#fff",
+    ...bcctTypography.button,
+  },
+});
 
 const styles = StyleSheet.create({
   container: {

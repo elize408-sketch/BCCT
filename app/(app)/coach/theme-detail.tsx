@@ -56,6 +56,7 @@ export default function ThemeDetailScreen() {
     if (id) {
       fetchThemeDetails();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const fetchThemeDetails = async () => {

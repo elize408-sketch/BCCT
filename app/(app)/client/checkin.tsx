@@ -53,6 +53,7 @@ export default function ClientCheckinScreen() {
 
   useEffect(() => {
     fetchActiveTheme();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchActiveTheme = async () => {

@@ -49,6 +49,7 @@ export default function CoachModulesScreen() {
 
   useEffect(() => {
     fetchThemes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchThemes = async () => {

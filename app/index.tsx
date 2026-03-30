@@ -27,6 +27,7 @@ export default function IndexScreen() {
     // Wait until auth has fully resolved before making any routing decisions
     if (authLoading) return;
     checkAuthAndRedirect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, authLoading]);
 
   const checkAuthAndRedirect = async () => {

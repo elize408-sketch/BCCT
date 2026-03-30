@@ -59,6 +59,7 @@ export default function CoachClientsScreen() {
   useEffect(() => {
     fetchClients();
     fetchInvites();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchClients = async () => {

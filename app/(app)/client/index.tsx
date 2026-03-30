@@ -127,6 +127,7 @@ export default function ClientHomeScreen() {
       setSessionLoading(false);
     };
     checkSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
