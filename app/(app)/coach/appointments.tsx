@@ -965,19 +965,23 @@ export default function CoachAppointmentsScreen() {
                 <View key={rowIdx} style={styles.calRow}>
                   {row.map((day, colIdx) => {
                     if (!day) {
-                      return <View key={colIdx} style={styles.calCell} />;
+                      return <View key={`empty-${rowIdx}-${colIdx}`} style={[styles.calCell, styles.calendarEmptyCell]} />;
                     }
-                    const isDayToday = isSameDay(day, new Date());
-                    const isSelected = isSameDay(day, selectedDate);
-                    const hasAppts = monthDaysWithAppts.has(day.toDateString());
+
+                    const today = new Date();
+                    const isDayToday = isSameDay(day, today);
+                    const isSelected = selectedDate != null && isSameDay(day, selectedDate);
+                    const safeMonthAppts = monthAppointments ?? [];
+                    const hasAppts = safeMonthAppts.length > 0 && monthDaysWithAppts.has(day.toDateString());
+                    const dayDate = new Date(day);
 
                     return (
                       <TouchableOpacity
-                        key={colIdx}
+                        key={`day-${rowIdx}-${colIdx}`}
                         style={styles.calCell}
                         onPress={() => {
-                          console.log("[Appointments] Month calendar day tapped:", day.toDateString());
-                          setSelectedDate(new Date(day));
+                          console.log("[Appointments] Month calendar day tapped:", dayDate.toDateString());
+                          setSelectedDate(dayDate);
                           setViewMode("dag");
                         }}
                         activeOpacity={0.7}
@@ -1821,6 +1825,9 @@ const styles = StyleSheet.create({
     borderRadius: 2.5,
     backgroundColor: bcctColors.primaryOrange,
     marginTop: 2,
+  },
+  calendarEmptyCell: {
+    // intentionally empty — no press handler, no date logic
   },
 
   // Modal shared
