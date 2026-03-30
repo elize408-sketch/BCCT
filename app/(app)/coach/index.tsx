@@ -16,9 +16,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { bcctColors, bcctTypography } from "@/styles/bcctTheme";
-import { LinearGradient } from "expo-linear-gradient";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { Ionicons } from "@expo/vector-icons";
+import TipsModal from "@/components/TipsModal";
+import { useTips } from "@/contexts/TipsContext";
 
 interface DashboardStats {
   clientsCount: number;
@@ -82,13 +83,17 @@ export default function CoachDashboardScreen() {
     { icon: string; text: string; time: string }[]
   >([]);
   const [tipIndex, setTipIndex] = useState(0);
+  const [tipsVisible, setTipsVisible] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [modalTitle, setModalTitle] = useState("");
   const [modalMessage, setModalMessage] = useState("");
 
+  // useTips is needed by TipsModal (consumed internally), but we still call the hook here
+  // so the context is available in this component tree if needed.
+  useTips();
+
   const tileWidth = (width - 52) / 2;
   const currentDate = formatDate();
-  const currentTip = TIPS[tipIndex];
 
   const showModal = (title: string, message: string) => {
     setModalTitle(title);
@@ -338,6 +343,16 @@ export default function CoachDashboardScreen() {
                 <Ionicons name="notifications-outline" size={22} color={bcctColors.textSecondary} />
               </TouchableOpacity>
               <TouchableOpacity
+                style={styles.bellButton}
+                onPress={() => {
+                  console.log('[CoachDashboard] Tips lightbulb pressed');
+                  setTipsVisible(true);
+                }}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="bulb-outline" size={22} color={bcctColors.textSecondary} />
+              </TouchableOpacity>
+              <TouchableOpacity
                 style={styles.avatarButton}
                 onPress={() => {
                   console.log('[CoachDashboard] Avatar pressed');
@@ -561,29 +576,6 @@ export default function CoachDashboardScreen() {
             )}
           </View>
 
-          {/* F. Tip card */}
-          <LinearGradient
-            colors={["#F28C28", "#E67E1F"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.tipCard}
-          >
-            <View style={styles.tipRow}>
-              <Text style={styles.tipEmoji}>{currentTip.icon}</Text>
-              <Text style={styles.tipText}>{currentTip.text}</Text>
-            </View>
-            <TouchableOpacity
-              style={styles.tipNext}
-              onPress={() => {
-                console.log("[CoachDashboard] Volgende tip pressed");
-                setTipIndex((prev) => (prev + 1) % TIPS.length);
-              }}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.tipNextText}>Volgende tip →</Text>
-            </TouchableOpacity>
-          </LinearGradient>
-
           {/* G. Bottom padding */}
           <View style={{ height: 120 }} />
         </ScrollView>
@@ -611,6 +603,8 @@ export default function CoachDashboardScreen() {
           </TouchableOpacity>
         </View>
       </Modal>
+
+      <TipsModal visible={tipsVisible} onClose={() => setTipsVisible(false)} />
     </>
   );
 }
