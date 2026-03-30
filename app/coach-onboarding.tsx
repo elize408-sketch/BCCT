@@ -13,6 +13,7 @@ import {
   ScrollView,
   Animated,
   ImageSourcePropType,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -20,11 +21,14 @@ import { useTheme } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bcctColors, bcctTypography } from '@/styles/bcctTheme';
 
-const TOTAL_STEPS = 7;
+const TOTAL_STEPS = 8;
+const SUPABASE_URL = Constants.expoConfig?.extra?.supabaseUrl as string;
+const STRIPE_CONNECT_CREATE_ENDPOINT = `${SUPABASE_URL}/functions/v1/stripe-connect-create`;
 
 const COACHING_TYPES = [
   'Burn-out coaching',
@@ -146,6 +150,11 @@ export default function CoachOnboardingScreen() {
   // Step 7 — Afronden
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+
+  // Step 8 — Stripe Connect
+  const [stripeLoading, setStripeLoading] = useState(false);
+  const [stripeError, setStripeError] = useState('');
+  const [stripeUrlOpened, setStripeUrlOpened] = useState(false);
 
   // Session guard + prefill on mount
   useEffect(() => {
@@ -426,14 +435,66 @@ export default function CoachOnboardingScreen() {
 
       if (error) throw error;
 
-      console.log('[CoachOnboarding] Profile saved successfully, navigating to paywall');
-      router.push('/paywall');
+      console.log('[CoachOnboarding] Profile saved successfully, advancing to Stripe step');
+      animateToStep(7);
     } catch (err: any) {
       console.error('[CoachOnboarding] Save error:', err.message);
       setSaveError(err.message || 'Er is een fout opgetreden. Probeer opnieuw.');
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleStripeConnect = async () => {
+    console.log('[CoachOnboarding] Stripe account aanmaken pressed');
+    setStripeError('');
+    setStripeLoading(true);
+    setStripeUrlOpened(false);
+
+    try {
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      if (!currentSession) {
+        setStripeError('Geen actieve sessie. Log opnieuw in.');
+        return;
+      }
+
+      console.log('[CoachOnboarding] POST stripe-connect-create');
+      const response = await fetch(STRIPE_CONNECT_CREATE_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentSession.access_token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error('[CoachOnboarding] stripe-connect-create error:', response.status, errText);
+        setStripeError(`Fout (${response.status}): ${errText || 'Onbekende fout'}`);
+        return;
+      }
+
+      const data = await response.json();
+      console.log('[CoachOnboarding] stripe-connect-create response:', data);
+
+      if (data.onboarding_url) {
+        console.log('[CoachOnboarding] Opening Stripe onboarding URL:', data.onboarding_url);
+        await Linking.openURL(data.onboarding_url);
+        setStripeUrlOpened(true);
+      } else {
+        setStripeError('Geen onboarding URL ontvangen. Probeer opnieuw.');
+      }
+    } catch (err: any) {
+      console.error('[CoachOnboarding] Stripe connect error:', err.message);
+      setStripeError('Netwerkfout. Controleer je verbinding en probeer opnieuw.');
+    } finally {
+      setStripeLoading(false);
+    }
+  };
+
+  const handleStripeLater = async () => {
+    console.log('[CoachOnboarding] Later instellen pressed — skipping Stripe step');
+    router.push('/paywall');
   };
 
   // ── Loading guard ──
@@ -448,7 +509,7 @@ export default function CoachOnboardingScreen() {
 
   // ── Derived values for display ──
 
-  const stepLabel = `Stap ${step + 1} van ${TOTAL_STEPS}`;
+  const stepLabel = step < 7 ? `Stap ${step + 1} van 7` : 'Stap 7 van 7';
   const andersSelected = selectedTypes.includes('Anders, namelijk…');
 
   const progressWidth = progressAnim.interpolate({
@@ -958,12 +1019,72 @@ export default function CoachOnboardingScreen() {
                     {saving ? (
                       <ActivityIndicator color="#fff" />
                     ) : (
-                      <Text style={styles.primaryButtonText}>Naar dashboard</Text>
+                      <Text style={styles.primaryButtonText}>Volgende</Text>
                     )}
                   </LinearGradient>
                 </TouchableOpacity>
 
                 <BackButton onPress={handleBack} />
+              </View>
+            )}
+
+            {/* ══════════════════════════════════════
+                STEP 8 — Stripe Connect
+            ══════════════════════════════════════ */}
+            {step === 7 && (
+              <View style={[styles.stepContent, styles.stripeStep]}>
+                <View style={[styles.stripeIconWrap, { backgroundColor: bcctColors.primaryOrange + '18' }]}>
+                  <Ionicons name="card-outline" size={56} color={bcctColors.primaryOrange} />
+                </View>
+
+                <Text style={[styles.finishTitle, { color: colors.text }]}>Koppel je Stripe account</Text>
+                <Text style={[styles.stepSubtitle, { color: bcctColors.textSecondary, textAlign: 'center' }]}>
+                  Om betalingen te ontvangen van cliënten, koppel je eenmalig je Stripe account. Dit duurt slechts een paar minuten.
+                </Text>
+
+                {!!stripeError && (
+                  <View style={styles.saveErrorBox}>
+                    <Text style={styles.saveErrorText}>{stripeError}</Text>
+                  </View>
+                )}
+
+                {stripeUrlOpened && (
+                  <View style={[styles.stripeInfoBox, { backgroundColor: bcctColors.success + '18' }]}>
+                    <Ionicons name="information-circle-outline" size={18} color={bcctColors.success} />
+                    <Text style={[styles.stripeInfoText, { color: bcctColors.success }]}>
+                      Je wordt teruggestuurd na het voltooien van Stripe.
+                    </Text>
+                  </View>
+                )}
+
+                <TouchableOpacity
+                  style={[styles.primaryButtonContainer, stripeLoading && styles.buttonDisabled]}
+                  onPress={handleStripeConnect}
+                  disabled={stripeLoading}
+                  activeOpacity={0.9}
+                >
+                  <LinearGradient
+                    colors={stripeLoading
+                      ? [bcctColors.primaryOrangeDisabled, bcctColors.primaryOrangeDisabled]
+                      : [bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.primaryButton}
+                  >
+                    {stripeLoading ? (
+                      <>
+                        <ActivityIndicator color="#fff" />
+                        <Text style={styles.primaryButtonText}>Bezig...</Text>
+                      </>
+                    ) : (
+                      <Text style={styles.primaryButtonText}>Stripe account aanmaken</Text>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.skipLink} onPress={handleStripeLater} activeOpacity={0.7}>
+                  <Text style={[styles.skipText, { color: bcctColors.textSecondary }]}>Later instellen</Text>
+                </TouchableOpacity>
               </View>
             )}
 
@@ -1280,5 +1401,33 @@ const styles = StyleSheet.create({
   },
   backText: {
     ...bcctTypography.small,
+  },
+
+  // Stripe step
+  stripeStep: {
+    alignItems: 'center',
+    paddingTop: 32,
+  },
+  stripeIconWrap: {
+    width: 104,
+    height: 104,
+    borderRadius: 52,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  stripeInfoBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 20,
+    width: '100%',
+  },
+  stripeInfoText: {
+    ...bcctTypography.small,
+    flex: 1,
+    lineHeight: 20,
   },
 });

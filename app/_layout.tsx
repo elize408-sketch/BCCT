@@ -41,7 +41,8 @@ function SubscriptionRedirect() {
       pathname.startsWith("/onboarding") ||
       pathname === "/coach-onboarding" ||
       pathname === "/coach-welcome-onboarding" ||
-      pathname === "/paywall";
+      pathname === "/paywall" ||
+      pathname === "/stripe-return";
     if (isExempt) return;
 
     if (!isSubscribed) {
@@ -109,6 +110,7 @@ export default function RootLayout() {
                 <Stack.Screen name="coach-onboarding" />
                 <Stack.Screen name="coach-welcome-onboarding" />
                 <Stack.Screen name="paywall" />
+                <Stack.Screen name="stripe-return" />
                 <Stack.Screen name="(app)" />
               </Stack>
               <SystemBars style="auto" />

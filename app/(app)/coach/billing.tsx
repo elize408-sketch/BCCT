@@ -15,6 +15,7 @@ import {
 import Modal from 'react-native-modal';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
@@ -42,6 +43,8 @@ interface FormErrors {
 const SUPABASE_URL = Constants.expoConfig?.extra?.supabaseUrl as string;
 const SUPABASE_ANON_KEY = Constants.expoConfig?.extra?.supabaseAnonKey as string;
 const CHECKOUT_ENDPOINT = `${SUPABASE_URL}/functions/v1/billing-checkout-session`;
+const STRIPE_CREATE_ENDPOINT = `${SUPABASE_URL}/functions/v1/stripe-connect-create`;
+const STRIPE_STATUS_ENDPOINT = `${SUPABASE_URL}/functions/v1/stripe-connect-status`;
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
@@ -51,6 +54,9 @@ export default function CoachBillingScreen() {
 
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [stripeAccountId, setStripeAccountId] = useState<string | null>(null);
+  const [stripeOnboardingCompleted, setStripeOnboardingCompleted] = useState(false);
+  const [stripeConnectLoading, setStripeConnectLoading] = useState(false);
+  const [stripeConnectError, setStripeConnectError] = useState<string | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [loadingClients, setLoadingClients] = useState(false);
 
@@ -75,20 +81,52 @@ export default function CoachBillingScreen() {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('stripe_account_id')
+        .select('stripe_account_id, stripe_onboarding_completed')
         .eq('id', user.id)
         .single();
 
       if (error) {
         console.error('[Billing] Error loading profile:', error);
       } else {
-        console.log('[Billing] Profile loaded, stripe_account_id:', data?.stripe_account_id ?? 'none');
+        console.log('[Billing] Profile loaded, stripe_account_id:', data?.stripe_account_id ?? 'none', 'onboarding_completed:', data?.stripe_onboarding_completed);
         setStripeAccountId(data?.stripe_account_id ?? null);
+        setStripeOnboardingCompleted(data?.stripe_onboarding_completed ?? false);
       }
     } catch (err) {
       console.error('[Billing] Unexpected error loading profile:', err);
     } finally {
       setLoadingProfile(false);
+    }
+  }, [user]);
+
+  const refreshStripeStatus = useCallback(async () => {
+    if (!user) return;
+    console.log('[Billing] Refreshing Stripe status on focus');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      console.log('[Billing] POST stripe-connect-status');
+      const response = await fetch(STRIPE_STATUS_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        console.warn('[Billing] stripe-connect-status non-ok:', response.status, errText);
+        return;
+      }
+
+      const data = await response.json();
+      console.log('[Billing] stripe-connect-status response:', data);
+      if (data.stripe_account_id) setStripeAccountId(data.stripe_account_id);
+      setStripeOnboardingCompleted(data.onboarding_completed ?? false);
+    } catch (err: any) {
+      console.warn('[Billing] stripe-connect-status error (non-fatal):', err.message);
     }
   }, [user]);
 
@@ -138,6 +176,61 @@ export default function CoachBillingScreen() {
     loadProfile();
     loadClients();
   }, [loadProfile, loadClients]);
+
+  // Refresh Stripe status every time the screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      if (stripeAccountId) {
+        refreshStripeStatus();
+      }
+    }, [stripeAccountId, refreshStripeStatus])
+  );
+
+  // ─── Stripe Connect handler ────────────────────────────────────────────────
+
+  const handleCreateStripeAccount = async () => {
+    console.log('[Billing] Stripe account aanmaken/doorgaan pressed');
+    setStripeConnectError(null);
+    setStripeConnectLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        setStripeConnectError('Geen actieve sessie. Log opnieuw in.');
+        return;
+      }
+
+      console.log('[Billing] POST stripe-connect-create');
+      const res = await fetch(STRIPE_CREATE_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error('[Billing] stripe-connect-create error:', res.status, errText);
+        setStripeConnectError(`Fout (${res.status}): ${errText || 'Onbekende fout'}`);
+        return;
+      }
+
+      const data = await res.json();
+      console.log('[Billing] stripe-connect-create response:', data);
+
+      if (data.onboarding_url) {
+        console.log('[Billing] Opening Stripe onboarding URL:', data.onboarding_url);
+        await Linking.openURL(data.onboarding_url);
+      } else {
+        setStripeConnectError('Geen onboarding URL ontvangen. Probeer opnieuw.');
+      }
+    } catch (e: any) {
+      console.error('[Billing] stripe-connect-create network error:', e.message);
+      setStripeConnectError('Er is iets misgegaan. Probeer opnieuw.');
+    } finally {
+      setStripeConnectLoading(false);
+    }
+  };
 
   // ─── Form helpers ──────────────────────────────────────────────────────────
 
@@ -251,10 +344,118 @@ export default function CoachBillingScreen() {
     );
   }
 
-  const hasStripe = !!stripeAccountId;
+  const stripeFullySetup = !!stripeAccountId && stripeOnboardingCompleted;
+  const stripeIncomplete = !!stripeAccountId && !stripeOnboardingCompleted;
 
   const selectedClientName = selectedClient ? selectedClient.full_name : null;
   const selectedClientEmail = selectedClient ? selectedClient.email : null;
+
+  // State 1: No Stripe account at all
+  if (!stripeAccountId) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+        <View style={[styles.header, { borderBottomColor: colors.border }]}>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Facturatie</Text>
+        </View>
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.emptyState}>
+            <View style={[styles.emptyIconWrap, { backgroundColor: bcctColors.primaryOrange + '18' }]}>
+              <Ionicons name="card-outline" size={48} color={bcctColors.primaryOrange} />
+            </View>
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>Koppel je Stripe account</Text>
+            <Text style={[styles.emptySub, { color: bcctColors.textSecondary }]}>
+              Maak een Stripe account aan om betalingen te ontvangen.
+            </Text>
+            {!!stripeConnectError && (
+              <View style={styles.connectErrorBox}>
+                <Ionicons name="alert-circle-outline" size={16} color={bcctColors.error} />
+                <Text style={styles.connectErrorText}>{stripeConnectError}</Text>
+              </View>
+            )}
+            <TouchableOpacity
+              style={[styles.stripeButtonContainer, stripeConnectLoading && styles.stripeButtonDisabled]}
+              activeOpacity={0.9}
+              disabled={stripeConnectLoading}
+              onPress={handleCreateStripeAccount}
+            >
+              <LinearGradient
+                colors={stripeConnectLoading
+                  ? [bcctColors.primaryOrangeDisabled, bcctColors.primaryOrangeDisabled]
+                  : [bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.stripeButton}
+              >
+                {stripeConnectLoading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="link-outline" size={20} color="#fff" />
+                    <Text style={styles.stripeButtonText}>Stripe account aanmaken</Text>
+                  </>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // State 2: Account exists but onboarding not complete
+  if (stripeIncomplete) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+        <View style={[styles.header, { borderBottomColor: colors.border }]}>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Facturatie</Text>
+        </View>
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.emptyState}>
+            <View style={[styles.emptyIconWrap, { backgroundColor: bcctColors.accentOrange + '18' }]}>
+              <Ionicons name="warning-outline" size={48} color={bcctColors.accentOrange} />
+            </View>
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>Maak je Stripe account af</Text>
+            <Text style={[styles.emptySub, { color: bcctColors.textSecondary }]}>
+              Je Stripe account is aangemaakt maar nog niet volledig ingesteld.
+            </Text>
+            {!!stripeConnectError && (
+              <View style={styles.connectErrorBox}>
+                <Ionicons name="alert-circle-outline" size={16} color={bcctColors.error} />
+                <Text style={styles.connectErrorText}>{stripeConnectError}</Text>
+              </View>
+            )}
+            <TouchableOpacity
+              style={[styles.stripeButtonContainer, stripeConnectLoading && styles.stripeButtonDisabled]}
+              activeOpacity={0.9}
+              disabled={stripeConnectLoading}
+              onPress={handleCreateStripeAccount}
+            >
+              <LinearGradient
+                colors={stripeConnectLoading
+                  ? [bcctColors.primaryOrangeDisabled, bcctColors.primaryOrangeDisabled]
+                  : [bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.stripeButton}
+              >
+                {stripeConnectLoading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="arrow-forward-circle-outline" size={20} color="#fff" />
+                    <Text style={styles.stripeButtonText}>Doorgaan met Stripe</Text>
+                  </>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // State 3: Fully set up — show real billing UI
+  void stripeFullySetup;
 
   return (
     <>
@@ -264,68 +465,40 @@ export default function CoachBillingScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          {hasStripe ? (
-            <>
-              {/* Stats / intro card */}
-              <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <View style={styles.infoCardIcon}>
-                  <Ionicons name="card-outline" size={28} color={bcctColors.primaryOrange} />
-                </View>
-                <View style={styles.infoCardText}>
-                  <Text style={[styles.infoCardTitle, { color: colors.text }]}>Stripe gekoppeld</Text>
-                  <Text style={[styles.infoCardSub, { color: bcctColors.textSecondary }]}>
-                    Stuur betaallinks rechtstreeks naar je cliënten.
-                  </Text>
-                </View>
-                <View style={styles.connectedBadge}>
-                  <Ionicons name="checkmark-circle" size={20} color={bcctColors.success} />
-                </View>
+          <>
+            {/* Stats / intro card */}
+            <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={styles.infoCardIcon}>
+                <Ionicons name="card-outline" size={28} color={bcctColors.primaryOrange} />
               </View>
-
-              {/* CTA */}
-              <TouchableOpacity
-                style={styles.ctaButtonContainer}
-                onPress={openForm}
-                activeOpacity={0.9}
-              >
-                <LinearGradient
-                  colors={[bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.ctaButton}
-                >
-                  <Ionicons name="receipt-outline" size={22} color="#fff" />
-                  <Text style={styles.ctaButtonText}>Factuur maken</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </>
-          ) : (
-            /* No Stripe empty state */
-            <View style={styles.emptyState}>
-              <View style={[styles.emptyIconWrap, { backgroundColor: bcctColors.primaryOrange + '18' }]}>
-                <Ionicons name="card-outline" size={48} color={bcctColors.primaryOrange} />
+              <View style={styles.infoCardText}>
+                <Text style={[styles.infoCardTitle, { color: colors.text }]}>Stripe gekoppeld</Text>
+                <Text style={[styles.infoCardSub, { color: bcctColors.textSecondary }]}>
+                  Stuur betaallinks rechtstreeks naar je cliënten.
+                </Text>
               </View>
-              <Text style={[styles.emptyTitle, { color: colors.text }]}>Stripe nog niet gekoppeld</Text>
-              <Text style={[styles.emptySub, { color: bcctColors.textSecondary }]}>
-                Koppel eerst je Stripe account om betalingen te ontvangen.
-              </Text>
-              <TouchableOpacity
-                style={styles.stripeButtonContainer}
-                activeOpacity={0.9}
-                onPress={() => console.log('[Billing] Stripe koppelen pressed')}
-              >
-                <LinearGradient
-                  colors={[bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.stripeButton}
-                >
-                  <Ionicons name="link-outline" size={20} color="#fff" />
-                  <Text style={styles.stripeButtonText}>Stripe koppelen</Text>
-                </LinearGradient>
-              </TouchableOpacity>
+              <View style={styles.connectedBadge}>
+                <Ionicons name="checkmark-circle" size={20} color={bcctColors.success} />
+              </View>
             </View>
-          )}
+
+            {/* CTA */}
+            <TouchableOpacity
+              style={styles.ctaButtonContainer}
+              onPress={openForm}
+              activeOpacity={0.9}
+            >
+              <LinearGradient
+                colors={[bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.ctaButton}
+              >
+                <Ionicons name="receipt-outline" size={22} color="#fff" />
+                <Text style={styles.ctaButtonText}>Factuur maken</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </>
 
           <View style={{ height: 100 }} />
         </ScrollView>
@@ -713,6 +886,9 @@ const styles = StyleSheet.create({
     marginTop: 8,
     width: '100%',
   },
+  stripeButtonDisabled: {
+    opacity: 0.7,
+  },
   stripeButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -724,6 +900,21 @@ const styles = StyleSheet.create({
   stripeButtonText: {
     color: '#fff',
     ...bcctTypography.button,
+  },
+  connectErrorBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: bcctColors.error + '12',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
+    width: '100%',
+  },
+  connectErrorText: {
+    color: bcctColors.error,
+    ...bcctTypography.small,
+    flex: 1,
   },
 
   // Bottom modal
