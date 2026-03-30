@@ -19,7 +19,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { bcctColors, bcctTypography } from "@/styles/bcctTheme";
-import { useRouter } from "expo-router";
+import { useRouter, useRootNavigationState } from "expo-router";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -166,7 +166,8 @@ async function enrichWithClients(appts: Appointment[]): Promise<Appointment[]> {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function CoachAppointmentsScreen() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+  const navState = useRootNavigationState();
   const router = useRouter();
 
   // ── View mode ─────────────────────────────────────────────────────────────
@@ -662,6 +663,13 @@ export default function CoachAppointmentsScreen() {
   }, [monthAppointments]);
 
   // ─── Render ───────────────────────────────────────────────────────────────
+
+  // Defer rendering until the navigation container is mounted.
+  // Without this guard, useRouter() can throw "Cannot read property 'route' of null"
+  // when the tab is rendered before the navigator context is ready.
+  if (!navState?.key) {
+    return <View style={styles.container} />;
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
