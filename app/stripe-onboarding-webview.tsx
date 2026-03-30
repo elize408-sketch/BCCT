@@ -6,114 +6,179 @@ import {
   ActivityIndicator,
   Text,
   TouchableOpacity,
+  Platform,
 } from 'react-native';
-import { WebView } from 'react-native-webview';
+import { WebView, WebViewNavigation } from 'react-native-webview';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import { supabase } from '@/lib/supabase';
-import { bcctColors, bcctTypography } from '@/styles/bcctTheme';
+import { bcctColors } from '@/styles/bcctTheme';
 
 const SUPABASE_URL = (Constants.expoConfig?.extra?.supabaseUrl as string) ?? '';
 const SUPABASE_ANON_KEY = (Constants.expoConfig?.extra?.supabaseAnonKey as string) ?? '';
 const STRIPE_STATUS_ENDPOINT = `${SUPABASE_URL}/functions/v1/stripe-connect-status`;
 
 function buildHtml(secret: string, pubKey: string): string {
+  // Escape values to prevent XSS / injection in the HTML template
+  const safeSecret = secret.replace(/['"\\]/g, '');
+  const safePubKey = pubKey.replace(/['"\\]/g, '');
+
   return `<!DOCTYPE html>
-<html>
+<html lang="nl">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Stripe Onboarding</title>
-  <script src="https://connect-js.stripe.com/v1.0/connect.js"></script>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%;
+      min-height: 100vh;
       background: #ffffff;
-      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      -webkit-text-size-adjust: 100%;
     }
-    #container {
+    #root {
       width: 100%;
-      min-height: 100vh;
+      padding: 0;
     }
-    stripe-connect-account-onboarding {
-      display: block;
-      width: 100%;
+    #loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 200px;
+      color: #6b7280;
+      font-size: 14px;
+    }
+    #error-msg {
+      display: none;
+      padding: 16px;
+      color: #ef4444;
+      font-size: 14px;
+      text-align: center;
     }
   </style>
 </head>
 <body>
-  <div id="container"></div>
+  <div id="loading">Stripe laden...</div>
+  <div id="error-msg"></div>
+  <div id="root"></div>
+
   <script>
-    const stripe = StripeConnect.initialize({
-      publishableKey: "${pubKey}",
-      fetchClientSecret: async () => "${secret}",
-      appearance: {
-        overlays: 'dialog',
-        variables: {
-          colorPrimary: '#F97316',
-          fontFamily: '-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif',
-          borderRadius: '8px',
+    function postToRN(data) {
+      try {
+        if (window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify(data));
         }
+      } catch(e) {}
+    }
+
+    function showError(msg) {
+      document.getElementById('loading').style.display = 'none';
+      var el = document.getElementById('error-msg');
+      el.style.display = 'block';
+      el.textContent = msg;
+      postToRN({ type: 'ERROR', message: msg });
+    }
+
+    function initStripe() {
+      try {
+        document.getElementById('loading').style.display = 'none';
+
+        var stripeConnect = StripeConnect.initialize({
+          publishableKey: '${safePubKey}',
+          fetchClientSecret: function() {
+            return Promise.resolve('${safeSecret}');
+          },
+          appearance: {
+            overlays: 'dialog',
+            variables: {
+              colorPrimary: '#F97316',
+              fontFamily: '-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
+              borderRadius: '8px',
+              spacingUnit: '4px',
+            }
+          },
+          locale: 'nl-NL',
+        });
+
+        var onboarding = stripeConnect.create('account_onboarding');
+
+        onboarding.setOnExit(function() {
+          postToRN({ type: 'EXIT' });
+        });
+
+        onboarding.setOnStepChange(function(stepChange) {
+          postToRN({ type: 'STEP_CHANGE', step: stepChange && stepChange.step });
+        });
+
+        onboarding.setOnLoadError(function(err) {
+          var msg = (err && err.error && err.error.message) || 'Stripe kon niet laden';
+          showError(msg);
+        });
+
+        var root = document.getElementById('root');
+        root.appendChild(onboarding);
+      } catch(e) {
+        showError('Initialisatie mislukt: ' + e.message);
       }
-    });
+    }
 
-    const container = document.getElementById('container');
-    const onboardingComponent = stripe.create('account_onboarding');
-
-    onboardingComponent.setOnExit(() => {
-      window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'EXIT' }));
-    });
-
-    onboardingComponent.setOnStepChange((stepChange) => {
-      window.ReactNativeWebView.postMessage(JSON.stringify({
-        type: 'STEP_CHANGE',
-        step: stepChange.step
-      }));
-    });
-
-    container.appendChild(onboardingComponent);
+    // Load Stripe Connect JS
+    var script = document.createElement('script');
+    script.src = 'https://connect-js.stripe.com/v1.0/connect.js';
+    script.async = true;
+    script.onload = function() { initStripe(); };
+    script.onerror = function() { showError('Stripe script kon niet worden geladen. Controleer je internetverbinding.'); };
+    document.head.appendChild(script);
   </script>
 </body>
 </html>`;
 }
 
 export default function StripeOnboardingWebView() {
-  const { clientSecret, publishableKey, stripeAccountId, returnTo } = useLocalSearchParams<{
-    clientSecret: string;
-    publishableKey: string;
-    stripeAccountId: string;
-    returnTo: string;
-  }>();
+  const { clientSecret, publishableKey, stripeAccountId, returnTo } =
+    useLocalSearchParams<{
+      clientSecret: string;
+      publishableKey: string;
+      stripeAccountId: string;
+      returnTo: string;
+    }>();
 
   const insets = useSafeAreaInsets();
   const webViewRef = useRef<WebView>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [webViewLoading, setWebViewLoading] = useState(true);
   const [completing, setCompleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // Track whether we've already navigated away to prevent double-navigation
+  const hasNavigated = useRef(false);
 
   const syncStripeStatus = useCallback(async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const accessToken = session?.access_token;
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
       console.log('[StripeWebView] POST stripe-connect-status to sync latest state');
-      const statusRes = await fetch(STRIPE_STATUS_ENDPOINT, {
+      const res = await fetch(STRIPE_STATUS_ENDPOINT, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-          'apikey': SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${session.access_token}`,
+          apikey: SUPABASE_ANON_KEY,
         },
       });
-      const statusData = await statusRes.json();
-      console.log('[StripeWebView] stripe-connect-status response:', statusData);
+      const data = await res.json();
+      console.log('[StripeWebView] status synced:', data);
     } catch (e) {
-      console.warn('[StripeWebView] stripe-connect-status sync failed (non-fatal):', e);
+      console.warn('[StripeWebView] status sync failed (non-fatal):', e);
     }
   }, []);
 
   const navigateAway = useCallback(() => {
+    if (hasNavigated.current) return;
+    hasNavigated.current = true;
     if (returnTo === 'onboarding') {
       console.log('[StripeWebView] returnTo=onboarding — navigating to /(tabs)');
       router.replace('/(tabs)');
@@ -123,41 +188,79 @@ export default function StripeOnboardingWebView() {
     }
   }, [returnTo]);
 
-  const handleMessage = useCallback(async (event: any) => {
-    try {
-      const message = JSON.parse(event.nativeEvent.data);
-      console.log('[StripeWebView] Message from WebView:', message);
+  const handleMessage = useCallback(
+    async (event: any) => {
+      try {
+        const message = JSON.parse(event.nativeEvent.data);
+        console.log('[StripeWebView] message:', message);
 
-      if (message.type === 'EXIT') {
-        setCompleting(true);
-        await syncStripeStatus();
-        setCompleting(false);
-        navigateAway();
-      } else if (message.type === 'STEP_CHANGE') {
-        console.log('[StripeWebView] Step changed to:', message.step);
+        if (message.type === 'EXIT') {
+          setCompleting(true);
+          await syncStripeStatus();
+          setCompleting(false);
+          navigateAway();
+        } else if (message.type === 'ERROR') {
+          setError(message.message || 'Er is iets misgegaan');
+        } else if (message.type === 'STEP_CHANGE') {
+          console.log('[StripeWebView] step:', message.step);
+        }
+      } catch (e) {
+        // ignore JSON parse errors
       }
-    } catch (e) {
-      // ignore parse errors
-    }
-  }, [syncStripeStatus, navigateAway]);
+    },
+    [syncStripeStatus, navigateAway]
+  );
+
+  // Allow ALL navigation inside the WebView — Stripe needs to open OAuth flows,
+  // identity verification pages, and other external URLs. Blocking them breaks onboarding.
+  // We only intercept the app's own deep link scheme to handle completion.
+  const handleShouldStartLoad = useCallback(
+    (request: WebViewNavigation) => {
+      const url = request.url ?? '';
+      // If Stripe redirects back to our app scheme, handle it natively
+      if (url.startsWith('bcct-coaching://') || url.startsWith('exp://')) {
+        console.log('[StripeWebView] Intercepted app deep link, navigating away:', url);
+        navigateAway();
+        return false;
+      }
+      // Allow everything else — Stripe needs full navigation freedom
+      return true;
+    },
+    [navigateAway]
+  );
 
   const handleClose = useCallback(() => {
     console.log('[StripeWebView] Close button pressed');
     navigateAway();
   }, [navigateAway]);
 
-  const handleWebViewError = useCallback((e: any) => {
-    const desc = e.nativeEvent.description;
-    console.error('[StripeWebView] WebView error:', desc);
-    setError(desc);
-  }, []);
+  if (!clientSecret || !publishableKey) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={handleClose} style={styles.closeButton} activeOpacity={0.7}>
+            <Text style={styles.closeText}>✕</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Stripe koppelen</Text>
+          <View style={styles.closeButton} />
+        </View>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorTitle}>Configuratie ontbreekt</Text>
+          <Text style={styles.errorText}>
+            Stripe kon niet worden gestart. Probeer het opnieuw.
+          </Text>
+          <TouchableOpacity onPress={handleClose} style={styles.errorButton} activeOpacity={0.9}>
+            <Text style={styles.errorButtonText}>Sluiten</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
-  const html = buildHtml(clientSecret ?? '', publishableKey ?? '');
-
-  const paddingTop = insets.top;
+  const html = buildHtml(clientSecret, publishableKey);
 
   return (
-    <View style={[styles.container, { paddingTop }]}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={handleClose} style={styles.closeButton} activeOpacity={0.7}>
@@ -167,50 +270,55 @@ export default function StripeOnboardingWebView() {
         <View style={styles.closeButton} />
       </View>
 
-      {/* WebView */}
+      {/* WebView — allow all navigation so Stripe OAuth/verification flows work */}
       <WebView
         ref={webViewRef}
-        source={{ html, baseUrl: 'https://connect-js.stripe.com' }}
+        source={{ html }}
         style={styles.webview}
         onLoadStart={() => {
           console.log('[StripeWebView] WebView load started');
-          setLoading(true);
+          setWebViewLoading(true);
         }}
         onLoadEnd={() => {
           console.log('[StripeWebView] WebView load ended');
-          setLoading(false);
+          setWebViewLoading(false);
         }}
-        onError={handleWebViewError}
+        onError={(e) => {
+          console.error('[StripeWebView] WebView error:', e.nativeEvent);
+          setError(e.nativeEvent.description || 'WebView fout');
+        }}
+        onHttpError={(e) => {
+          console.warn('[StripeWebView] HTTP error:', e.nativeEvent.statusCode, e.nativeEvent.url);
+        }}
         onMessage={handleMessage}
+        onShouldStartLoadWithRequest={handleShouldStartLoad}
         javaScriptEnabled
         domStorageEnabled
         originWhitelist={['*']}
         mixedContentMode="always"
         allowsInlineMediaPlayback
         mediaPlaybackRequiresUserAction={false}
-        onShouldStartLoadWithRequest={(request) => {
-          const url = request.url;
-          const allowed =
-            url.startsWith('about:') ||
-            url === 'about:blank' ||
-            url.startsWith('https://connect-js.stripe.com') ||
-            url.startsWith('https://js.stripe.com') ||
-            url.startsWith('https://stripe.com') ||
-            url.startsWith('https://connect.stripe.com');
-          if (!allowed) {
-            console.log('[StripeWebView] Blocked navigation to:', url);
-          }
-          return allowed;
-        }}
+        // Allow Stripe to open camera/files for identity verification
+        allowsProtectedMedia
+        // Needed for Stripe's popup dialogs
+        setSupportMultipleWindows={false}
+        // iOS: allow Stripe to open links in Safari when needed
+        {...(Platform.OS === 'ios' ? {} : {})}
       />
 
-      {/* Loading overlay */}
-      {(loading || completing) && (
+      {/* Initial WebView loading overlay */}
+      {webViewLoading && !error && (
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
-          <Text style={styles.loadingText}>
-            {completing ? 'Status controleren...' : 'Stripe laden...'}
-          </Text>
+          <Text style={styles.loadingText}>Stripe laden...</Text>
+        </View>
+      )}
+
+      {/* Status sync overlay (after EXIT) */}
+      {completing && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
+          <Text style={styles.loadingText}>Status controleren...</Text>
         </View>
       )}
 
@@ -239,12 +347,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e5e7eb',
     backgroundColor: '#ffffff',
   },
   headerTitle: {
-    ...bcctTypography.bodyMedium,
+    fontSize: 16,
+    fontWeight: '600',
     color: '#111827',
   },
   closeButton: {
@@ -254,50 +363,58 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   closeText: {
-    fontSize: 16,
-    color: bcctColors.textSecondary,
+    fontSize: 18,
+    color: '#6b7280',
+    lineHeight: 22,
   },
   webview: {
     flex: 1,
+    backgroundColor: '#ffffff',
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
+    top: 61, // below header
     backgroundColor: '#ffffff',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
   },
   loadingText: {
-    ...bcctTypography.body,
-    color: bcctColors.textSecondary,
+    fontSize: 14,
+    color: '#6b7280',
+    marginTop: 8,
   },
   errorContainer: {
     ...StyleSheet.absoluteFillObject,
+    top: 61,
     backgroundColor: '#ffffff',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
+    padding: 32,
     gap: 12,
   },
   errorTitle: {
-    ...bcctTypography.h3,
-    color: bcctColors.textPrimary,
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
     textAlign: 'center',
   },
   errorText: {
-    ...bcctTypography.body,
-    color: bcctColors.error,
+    fontSize: 14,
+    color: '#6b7280',
     textAlign: 'center',
+    lineHeight: 20,
   },
   errorButton: {
-    backgroundColor: bcctColors.primaryOrange,
-    paddingHorizontal: 32,
-    paddingVertical: 14,
-    borderRadius: 14,
     marginTop: 8,
+    backgroundColor: bcctColors.primaryOrange,
+    paddingHorizontal: 28,
+    paddingVertical: 12,
+    borderRadius: 10,
   },
   errorButtonText: {
     color: '#ffffff',
-    ...bcctTypography.button,
+    fontWeight: '600',
+    fontSize: 15,
   },
 });
