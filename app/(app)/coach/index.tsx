@@ -90,28 +90,27 @@ export default function CoachDashboardScreen() {
       // For now, we'll set to 0 and add a TODO comment
       const activeProgramsCount = 0;
 
-      // Fetch today's appointments count
-      const today = new Date().toISOString().split('T')[0];
+      // Fetch upcoming appointments count
       let appointmentsCount = 0;
-      
-      try {
-        const { count, error: appointmentsError } = await supabase
-          .from('appointments')
-          .select('*', { count: 'exact', head: true })
-          .eq('coach_id', session.user.id)
-          .gte('scheduled_at', `${today}T00:00:00`)
-          .lt('scheduled_at', `${today}T23:59:59`);
 
-        if (appointmentsError) {
-          console.error("[Coach Dashboard] Appointments count error:", appointmentsError, JSON.stringify(appointmentsError));
-          appointmentsCount = 0;
-        } else {
-          console.log("[Coach Dashboard] Today's appointments count:", count);
-          appointmentsCount = count || 0;
-        }
-      } catch (appointmentsException: any) {
-        console.error("[Coach Dashboard] Appointments count error (catch):", appointmentsException, JSON.stringify(appointmentsException));
+      const { count, error: appointmentsError } = await supabase
+        .from('appointments')
+        .select('*', { count: 'exact', head: true })
+        .eq('coach_id', session.user.id)
+        .gte('starts_at', new Date().toISOString());
+
+      if (appointmentsError) {
+        console.log('[Coach Dashboard] Appointments count error:', {
+          code: appointmentsError.code,
+          message: appointmentsError.message,
+          details: appointmentsError.details,
+          hint: appointmentsError.hint,
+        });
+        // safe fallback — dashboard still renders
         appointmentsCount = 0;
+      } else {
+        console.log("[Coach Dashboard] Upcoming appointments count:", count);
+        appointmentsCount = count ?? 0;
       }
 
       setStats({
