@@ -26,7 +26,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bcctColors, bcctTypography } from '@/styles/bcctTheme';
 
-const TOTAL_STEPS = 11;
+const TOTAL_STEPS = 10;
 
 const BRAND_COLORS = [
   '#000000',
@@ -341,8 +341,8 @@ export default function CoachOnboardingScreen() {
     animateToStep(6);
   };
 
-  const handleStep7BizNext = async () => {
-    console.log('[CoachOnboarding] Step 7 (Bedrijfsgegevens) next pressed', { businessName, kvk, btwNumber, iban });
+  const handleStep6BizNext = async () => {
+    console.log('[CoachOnboarding] Step 6 (Bedrijfsgegevens) next pressed', { businessName, kvk, btwNumber, iban });
     if (!businessName.trim()) {
       setStepBizError('Bedrijfsnaam is verplicht.');
       return;
@@ -359,7 +359,7 @@ export default function CoachOnboardingScreen() {
       console.log('[CoachOnboarding] Saving bedrijfsgegevens:', payload);
       const { error } = await supabase.from('profiles').update(payload).eq('id', currentSession.user.id);
       if (error) throw error;
-      animateToStep(8);
+      animateToStep(7);
     } catch (err: any) {
       console.error('[CoachOnboarding] Bedrijfsgegevens save error:', err.message);
       setStepBizError(err.message || 'Opslaan mislukt. Probeer opnieuw.');
@@ -368,8 +368,8 @@ export default function CoachOnboardingScreen() {
     }
   };
 
-  const handleStep8AddrNext = async () => {
-    console.log('[CoachOnboarding] Step 8 (Adres) next pressed', { address, postalCode, city, country });
+  const handleStep7AddrNext = async () => {
+    console.log('[CoachOnboarding] Step 7 (Adres) next pressed', { address, postalCode, city, country });
     setStepAddrError('');
     setStepAddrSaving(true);
     try {
@@ -385,7 +385,7 @@ export default function CoachOnboardingScreen() {
         const { error } = await supabase.from('profiles').update(payload).eq('id', currentSession.user.id);
         if (error) throw error;
       }
-      animateToStep(9);
+      animateToStep(8);
     } catch (err: any) {
       console.error('[CoachOnboarding] Adres save error:', err.message);
       setStepAddrError(err.message || 'Opslaan mislukt. Probeer opnieuw.');
@@ -394,8 +394,8 @@ export default function CoachOnboardingScreen() {
     }
   };
 
-  const handleStep9BrandNext = async () => {
-    console.log('[CoachOnboarding] Step 9 (Huisstijl) next pressed', { brandLogoUrl, primaryColor, invoiceFooter });
+  const handleStep8BrandNext = async () => {
+    console.log('[CoachOnboarding] Step 8 (Huisstijl) next pressed', { brandLogoUrl, primaryColor, invoiceFooter });
     setStepBrandError('');
     setStepBrandSaving(true);
     try {
@@ -407,7 +407,7 @@ export default function CoachOnboardingScreen() {
       console.log('[CoachOnboarding] Saving huisstijl:', payload);
       const { error } = await supabase.from('profiles').update(payload).eq('id', currentSession.user.id);
       if (error) throw error;
-      animateToStep(10);
+      animateToStep(9);
     } catch (err: any) {
       console.error('[CoachOnboarding] Huisstijl save error:', err.message);
       setStepBrandError(err.message || 'Opslaan mislukt. Probeer opnieuw.');
@@ -596,7 +596,7 @@ export default function CoachOnboardingScreen() {
       if (error) throw error;
 
       console.log('[CoachOnboarding] Profile saved successfully, advancing to Bedrijfsgegevens step');
-      animateToStep(7);
+      animateToStep(6);
     } catch (err: any) {
       console.error('[CoachOnboarding] Save error:', err.message);
       setSaveError(err.message || 'Er is een fout opgetreden. Probeer opnieuw.');
@@ -654,10 +654,7 @@ export default function CoachOnboardingScreen() {
     }
   };
 
-  const handleStripeLater = async () => {
-    console.log('[CoachOnboarding] Later instellen pressed — skipping Stripe step');
-    router.push('/paywall');
-  };
+
 
   // ── Loading guard ──
 
@@ -679,19 +676,23 @@ export default function CoachOnboardingScreen() {
     outputRange: ['0%', '100%'],
   });
 
+  const isCompletionScreen = step === 10;
+
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
-      {/* Progress header */}
-      <View style={styles.progressHeader}>
-        <View style={styles.progressLabelRow}>
-          <Text style={[styles.progressLabel, { color: bcctColors.textSecondary }]}>{stepLabel}</Text>
+      {/* Progress header — hidden on final completion screen */}
+      {!isCompletionScreen && (
+        <View style={styles.progressHeader}>
+          <View style={styles.progressLabelRow}>
+            <Text style={[styles.progressLabel, { color: bcctColors.textSecondary }]}>{stepLabel}</Text>
+          </View>
+          <View style={[styles.progressTrack, { backgroundColor: bcctColors.borderGray }]}>
+            <Animated.View
+              style={[styles.progressFill, { width: progressWidth, backgroundColor: bcctColors.primaryOrange }]}
+            />
+          </View>
         </View>
-        <View style={[styles.progressTrack, { backgroundColor: bcctColors.borderGray }]}>
-          <Animated.View
-            style={[styles.progressFill, { width: progressWidth, backgroundColor: bcctColors.primaryOrange }]}
-          />
-        </View>
-      </View>
+      )}
 
       <KeyboardAvoidingView
         style={styles.flex}
@@ -1144,56 +1145,9 @@ export default function CoachOnboardingScreen() {
             )}
 
             {/* ══════════════════════════════════════
-                STEP 7 — Afronden
+                STEP 7 — Bedrijfsgegevens
             ══════════════════════════════════════ */}
             {step === 6 && (
-              <View style={[styles.stepContent, styles.finishStep]}>
-                <View style={styles.checkmarkWrap}>
-                  <Ionicons name="checkmark-circle" size={96} color={bcctColors.success} />
-                </View>
-
-                <Text style={[styles.finishTitle, { color: colors.text }]}>Je account is klaar!</Text>
-                <Text style={styles.finishEmoji}>🎉</Text>
-                <Text style={[styles.stepSubtitle, { color: bcctColors.textSecondary, textAlign: 'center' }]}>
-                  Welkom bij BCCT Coaching. Je kunt nu beginnen met coachen.
-                </Text>
-
-                {!!saveError && (
-                  <View style={styles.saveErrorBox}>
-                    <Text style={styles.saveErrorText}>{saveError}</Text>
-                  </View>
-                )}
-
-                <TouchableOpacity
-                  style={[styles.primaryButtonContainer, saving && styles.buttonDisabled]}
-                  onPress={handleFinish}
-                  disabled={saving}
-                  activeOpacity={0.9}
-                >
-                  <LinearGradient
-                    colors={saving
-                      ? [bcctColors.primaryOrangeDisabled, bcctColors.primaryOrangeDisabled]
-                      : [bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={styles.primaryButton}
-                  >
-                    {saving ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <Text style={styles.primaryButtonText}>Volgende</Text>
-                    )}
-                  </LinearGradient>
-                </TouchableOpacity>
-
-                <BackButton onPress={handleBack} />
-              </View>
-            )}
-
-            {/* ══════════════════════════════════════
-                STEP 8 — Bedrijfsgegevens (NEW)
-            ══════════════════════════════════════ */}
-            {step === 7 && (
               <View style={styles.stepContent}>
                 <Text style={[styles.stepTitle, { color: colors.text }]}>Bedrijfsgegevens</Text>
                 <Text style={[styles.stepSubtitle, { color: bcctColors.textSecondary }]}>
@@ -1259,16 +1213,16 @@ export default function CoachOnboardingScreen() {
                   </View>
                 </View>
 
-                <PrimaryButton label="Volgende" onPress={handleStep7BizNext} disabled={stepBizSaving} />
-                <SkipLink onPress={() => { console.log('[CoachOnboarding] Skip bedrijfsgegevens pressed'); animateToStep(8); }} />
+                <PrimaryButton label="Volgende" onPress={handleStep6BizNext} disabled={stepBizSaving} />
+                <SkipLink onPress={() => { console.log('[CoachOnboarding] Skip bedrijfsgegevens pressed'); animateToStep(7); }} />
                 <BackButton onPress={handleBack} />
               </View>
             )}
 
             {/* ══════════════════════════════════════
-                STEP 9 — Adres (NEW)
+                STEP 8 — Adres
             ══════════════════════════════════════ */}
-            {step === 8 && (
+            {step === 7 && (
               <View style={styles.stepContent}>
                 <Text style={[styles.stepTitle, { color: colors.text }]}>Adres</Text>
                 <Text style={[styles.stepSubtitle, { color: bcctColors.textSecondary }]}>
@@ -1334,16 +1288,16 @@ export default function CoachOnboardingScreen() {
 
                 {!!stepAddrError && <Text style={[styles.fieldError, { marginBottom: 12 }]}>{stepAddrError}</Text>}
 
-                <PrimaryButton label="Volgende" onPress={handleStep8AddrNext} disabled={stepAddrSaving} />
-                <SkipLink onPress={() => { console.log('[CoachOnboarding] Skip adres pressed'); animateToStep(9); }} />
+                <PrimaryButton label="Volgende" onPress={handleStep7AddrNext} disabled={stepAddrSaving} />
+                <SkipLink onPress={() => { console.log('[CoachOnboarding] Skip adres pressed'); animateToStep(8); }} />
                 <BackButton onPress={handleBack} />
               </View>
             )}
 
             {/* ══════════════════════════════════════
-                STEP 10 — Huisstijl (NEW)
+                STEP 9 — Huisstijl
             ══════════════════════════════════════ */}
-            {step === 9 && (
+            {step === 8 && (
               <View style={styles.stepContent}>
                 <Text style={[styles.stepTitle, { color: colors.text }]}>Huisstijl</Text>
                 <Text style={[styles.stepSubtitle, { color: bcctColors.textSecondary }]}>
@@ -1438,17 +1392,17 @@ export default function CoachOnboardingScreen() {
                 {!!stepBrandError && <Text style={[styles.fieldError, { marginTop: 8, marginBottom: 4 }]}>{stepBrandError}</Text>}
 
                 <View style={{ marginTop: 32 }}>
-                  <PrimaryButton label="Volgende" onPress={handleStep9BrandNext} disabled={stepBrandSaving || brandLogoUploading} />
-                  <SkipLink onPress={() => { console.log('[CoachOnboarding] Skip huisstijl pressed'); animateToStep(10); }} />
+                  <PrimaryButton label="Volgende" onPress={handleStep8BrandNext} disabled={stepBrandSaving || brandLogoUploading} />
+                  <SkipLink onPress={() => { console.log('[CoachOnboarding] Skip huisstijl pressed'); animateToStep(9); }} />
                   <BackButton onPress={handleBack} />
                 </View>
               </View>
             )}
 
             {/* ══════════════════════════════════════
-                STEP 11 — Stripe Connect
+                STEP 10 — Stripe Connect
             ══════════════════════════════════════ */}
-            {step === 10 && (
+            {step === 9 && (
               <View style={[styles.stepContent, styles.stripeStep]}>
                 <View style={[styles.stripeIconWrap, { backgroundColor: bcctColors.primaryOrange + '18' }]}>
                   <Ionicons name="card-outline" size={56} color={bcctColors.primaryOrange} />
@@ -1499,9 +1453,39 @@ export default function CoachOnboardingScreen() {
                   </LinearGradient>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.skipLink} onPress={handleStripeLater} activeOpacity={0.7}>
+                <TouchableOpacity
+                  style={styles.skipLink}
+                  onPress={() => { console.log('[CoachOnboarding] Later instellen pressed — advancing to completion'); animateToStep(10); }}
+                  activeOpacity={0.7}
+                >
                   <Text style={[styles.skipText, { color: bcctColors.textSecondary }]}>Later instellen</Text>
                 </TouchableOpacity>
+                <BackButton onPress={handleBack} />
+              </View>
+            )}
+
+            {/* ══════════════════════════════════════
+                STEP 10 (index 10) — Alles staat klaar
+            ══════════════════════════════════════ */}
+            {step === 10 && (
+              <View style={[styles.stepContent, styles.finishStep]}>
+                <View style={[styles.stripeIconWrap, { backgroundColor: bcctColors.primaryOrange + '18', marginBottom: 24 }]}>
+                  <Ionicons name="rocket-outline" size={56} color={bcctColors.primaryOrange} />
+                </View>
+
+                <Text style={[styles.finishTitle, { color: colors.text }]}>Alles staat klaar</Text>
+                <Text style={styles.finishEmoji}>🚀</Text>
+                <Text style={[styles.stepSubtitle, { color: bcctColors.textSecondary, textAlign: 'center' }]}>
+                  Je kunt nu starten met coachen en betalingen ontvangen.
+                </Text>
+
+                <PrimaryButton
+                  label="Naar dashboard"
+                  onPress={() => {
+                    console.log('[CoachOnboarding] Naar dashboard pressed');
+                    router.replace('/(tabs)');
+                  }}
+                />
               </View>
             )}
 
