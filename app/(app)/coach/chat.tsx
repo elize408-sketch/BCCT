@@ -3,7 +3,6 @@ import {
   View,
   Text,
   FlatList,
-  ScrollView,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
@@ -12,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { MessageCircle } from 'lucide-react-native';
+import { MessageCircle, Plus } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bcctColors } from '@/styles/bcctTheme';
@@ -285,9 +284,22 @@ export default function CoachChatListScreen() {
     );
   }
 
+  const handleNewChat = () => {
+    console.log('[CoachChat] "+" button pressed — opening new chat picker');
+    router.push('/(app)/coach/new-chat' as any);
+  };
+
   const listHeader = (
     <View style={styles.listHeader}>
       <Text style={styles.screenTitle}>Chat</Text>
+      <TouchableOpacity
+        style={styles.newChatButton}
+        onPress={handleNewChat}
+        activeOpacity={0.7}
+        hitSlop={8}
+      >
+        <Plus size={22} color={bcctColors.primaryOrange} strokeWidth={2.5} />
+      </TouchableOpacity>
     </View>
   );
 
@@ -340,6 +352,9 @@ const styles = StyleSheet.create({
 
   // ── Conversation list ──────────────────────────────────────────────────────
   listHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 12,
@@ -349,6 +364,14 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '700',
     color: bcctColors.textPrimary,
+  },
+  newChatButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: bcctColors.primaryOrange + '18',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   row: {
     flexDirection: 'row',
