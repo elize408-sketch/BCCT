@@ -140,6 +140,7 @@ export default function CoachLayout() {
       <Tabs.Screen name="modules" options={{ href: null }} />
       <Tabs.Screen name="settings" options={{ href: null }} />
       <Tabs.Screen name="facturatie" options={{ href: null }} />
+      <Tabs.Screen name="chat-detail" options={{ href: null }} />
     </Tabs>
   );
 }

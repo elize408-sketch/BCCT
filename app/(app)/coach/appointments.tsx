@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -22,6 +22,8 @@ import { bcctColors, bcctTypography } from "@/styles/bcctTheme";
 import { useRouter } from "expo-router";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+type ViewMode = "dag" | "week" | "maand";
 
 interface Appointment {
   id: string;
@@ -46,9 +48,16 @@ interface ClientOption {
 // ─── Dutch locale helpers ─────────────────────────────────────────────────────
 
 const DUTCH_DAYS = ["Zondag", "Maandag", "Dinsdag", "Woensdag", "Donderdag", "Vrijdag", "Zaterdag"];
+const DUTCH_DAYS_SHORT = ["Zo", "Ma", "Di", "Wo", "Do", "Vr", "Za"];
+// Week starts Monday: index 0=Ma,1=Di,...,6=Zo
+const WEEK_DAYS_SHORT = ["Ma", "Di", "Wo", "Do", "Vr", "Za", "Zo"];
 const DUTCH_MONTHS = [
   "januari", "februari", "maart", "april", "mei", "juni",
   "juli", "augustus", "september", "oktober", "november", "december",
+];
+const DUTCH_MONTHS_SHORT = [
+  "Jan", "Feb", "Mrt", "Apr", "Mei", "Jun",
+  "Jul", "Aug", "Sep", "Okt", "Nov", "Dec",
 ];
 
 function formatDutchDate(date: Date): string {
@@ -88,6 +97,33 @@ function endOfDay(date: Date): Date {
   return d;
 }
 
+/** Returns Monday of the week containing `date` */
+function startOfWeek(date: Date): Date {
+  const d = new Date(date);
+  const day = d.getDay(); // 0=Sun
+  const diff = day === 0 ? -6 : 1 - day; // shift to Monday
+  d.setDate(d.getDate() + diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/** Returns Sunday of the week containing `date` */
+function endOfWeek(date: Date): Date {
+  const mon = startOfWeek(date);
+  const sun = new Date(mon);
+  sun.setDate(mon.getDate() + 6);
+  sun.setHours(23, 59, 59, 999);
+  return sun;
+}
+
+function startOfMonth(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
+}
+
+function endOfMonth(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
+}
+
 // ─── Card shadow ──────────────────────────────────────────────────────────────
 
 const CARD_SHADOW = {
@@ -104,15 +140,56 @@ function avatarInitial(name: string): string {
   return name ? name.charAt(0).toUpperCase() : "?";
 }
 
+// ─── Enrich appointments with client names ────────────────────────────────────
+
+async function enrichWithClients(appts: Appointment[]): Promise<Appointment[]> {
+  const clientIds = appts.map((a) => a.client_id).filter(Boolean) as string[];
+  let clientMap: Record<string, { name: string; avatar: string | null }> = {};
+  if (clientIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, full_name, avatar_url")
+      .in("id", clientIds);
+    if (profiles) {
+      profiles.forEach((p: any) => {
+        clientMap[p.id] = { name: p.full_name || "Onbekend", avatar: p.avatar_url ?? null };
+      });
+    }
+  }
+  return appts.map((a) => ({
+    ...a,
+    clientName: a.client_id ? (clientMap[a.client_id]?.name ?? "Onbekend") : undefined,
+    clientAvatar: a.client_id ? (clientMap[a.client_id]?.avatar ?? null) : null,
+  }));
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function CoachAppointmentsScreen() {
   const { user } = useAuth();
   const router = useRouter();
 
+  // ── View mode ─────────────────────────────────────────────────────────────
+  const [viewMode, setViewMode] = useState<ViewMode>("dag");
+
+  // ── Shared selected date ──────────────────────────────────────────────────
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+
+  // ── Day view state ────────────────────────────────────────────────────────
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // ── Week view state ───────────────────────────────────────────────────────
+  const [weekAppointments, setWeekAppointments] = useState<Appointment[]>([]);
+  const [weekLoading, setWeekLoading] = useState(false);
+  const [weekAnchor, setWeekAnchor] = useState<Date>(new Date()); // any day in the week
+
+  // ── Month view state ──────────────────────────────────────────────────────
+  const [monthAppointments, setMonthAppointments] = useState<Appointment[]>([]);
+  const [monthLoading, setMonthLoading] = useState(false);
+  const [monthAnchor, setMonthAnchor] = useState<Date>(new Date()); // any day in the month
+
+  // ── Clients ───────────────────────────────────────────────────────────────
   const [clients, setClients] = useState<ClientOption[]>([]);
 
   // Create / Edit modal
@@ -140,11 +217,11 @@ export default function CoachAppointmentsScreen() {
   // Client selector sheet
   const [clientSelectorVisible, setClientSelectorVisible] = useState(false);
 
-  // ── Fetch appointments for selected date ──────────────────────────────────
+  // ── Fetch: Day ────────────────────────────────────────────────────────────
 
   const fetchAppointments = useCallback(async () => {
     if (!user?.id) return;
-    console.log("[Appointments] Fetching appointments for date:", selectedDate.toDateString());
+    console.log("[Appointments] Fetching day appointments for:", selectedDate.toDateString());
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -156,45 +233,87 @@ export default function CoachAppointmentsScreen() {
         .order("start_time", { ascending: true });
 
       if (error) {
-        console.error("[Appointments] Fetch error:", error);
+        console.error("[Appointments] Day fetch error:", error);
         Alert.alert("Fout", "Kon afspraken niet laden.");
         setLoading(false);
         return;
       }
 
-      console.log("[Appointments] Fetched", data?.length ?? 0, "appointments");
-
-      // Enrich with client names
-      const appts: Appointment[] = data ?? [];
-      const clientIds = appts.map((a) => a.client_id).filter(Boolean) as string[];
-
-      let clientMap: Record<string, { name: string; avatar: string | null }> = {};
-      if (clientIds.length > 0) {
-        const { data: profiles } = await supabase
-          .from("profiles")
-          .select("id, full_name, avatar_url")
-          .in("id", clientIds);
-        if (profiles) {
-          profiles.forEach((p: any) => {
-            clientMap[p.id] = { name: p.full_name || "Onbekend", avatar: p.avatar_url ?? null };
-          });
-        }
-      }
-
-      const enriched = appts.map((a) => ({
-        ...a,
-        clientName: a.client_id ? (clientMap[a.client_id]?.name ?? "Onbekend") : undefined,
-        clientAvatar: a.client_id ? (clientMap[a.client_id]?.avatar ?? null) : null,
-      }));
-
+      console.log("[Appointments] Day: fetched", data?.length ?? 0, "appointments");
+      const enriched = await enrichWithClients(data ?? []);
       setAppointments(enriched);
     } catch (err: any) {
-      console.error("[Appointments] Unexpected error:", err);
+      console.error("[Appointments] Day unexpected error:", err);
       Alert.alert("Fout", "Er is een onverwachte fout opgetreden.");
     } finally {
       setLoading(false);
     }
   }, [user?.id, selectedDate]);
+
+  // ── Fetch: Week ───────────────────────────────────────────────────────────
+
+  const fetchWeekAppointments = useCallback(async () => {
+    if (!user?.id) return;
+    const mon = startOfWeek(weekAnchor);
+    const sun = endOfWeek(weekAnchor);
+    console.log("[Appointments] Fetching week appointments:", mon.toDateString(), "–", sun.toDateString());
+    setWeekLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("appointments")
+        .select("*")
+        .eq("coach_id", user.id)
+        .gte("start_time", mon.toISOString())
+        .lte("start_time", sun.toISOString())
+        .order("start_time", { ascending: true });
+
+      if (error) {
+        console.error("[Appointments] Week fetch error:", error);
+        setWeekLoading(false);
+        return;
+      }
+
+      console.log("[Appointments] Week: fetched", data?.length ?? 0, "appointments");
+      const enriched = await enrichWithClients(data ?? []);
+      setWeekAppointments(enriched);
+    } catch (err: any) {
+      console.error("[Appointments] Week unexpected error:", err);
+    } finally {
+      setWeekLoading(false);
+    }
+  }, [user?.id, weekAnchor]);
+
+  // ── Fetch: Month ──────────────────────────────────────────────────────────
+
+  const fetchMonthAppointments = useCallback(async () => {
+    if (!user?.id) return;
+    const start = startOfMonth(monthAnchor);
+    const end = endOfMonth(monthAnchor);
+    console.log("[Appointments] Fetching month appointments:", start.toDateString(), "–", end.toDateString());
+    setMonthLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("appointments")
+        .select("id, start_time, end_time, title, client_id, coach_id, notes, status, created_at")
+        .eq("coach_id", user.id)
+        .gte("start_time", start.toISOString())
+        .lte("start_time", end.toISOString())
+        .order("start_time", { ascending: true });
+
+      if (error) {
+        console.error("[Appointments] Month fetch error:", error);
+        setMonthLoading(false);
+        return;
+      }
+
+      console.log("[Appointments] Month: fetched", data?.length ?? 0, "appointments");
+      setMonthAppointments(data ?? []);
+    } catch (err: any) {
+      console.error("[Appointments] Month unexpected error:", err);
+    } finally {
+      setMonthLoading(false);
+    }
+  }, [user?.id, monthAnchor]);
 
   // ── Fetch coach's clients ─────────────────────────────────────────────────
 
@@ -246,10 +365,18 @@ export default function CoachAppointmentsScreen() {
   }, [fetchAppointments]);
 
   useEffect(() => {
+    if (viewMode === "week") fetchWeekAppointments();
+  }, [viewMode, fetchWeekAppointments]);
+
+  useEffect(() => {
+    if (viewMode === "maand") fetchMonthAppointments();
+  }, [viewMode, fetchMonthAppointments]);
+
+  useEffect(() => {
     fetchClients();
   }, [fetchClients]);
 
-  // ── Date navigation ───────────────────────────────────────────────────────
+  // ── Day navigation ────────────────────────────────────────────────────────
 
   const goToPrevDay = () => {
     console.log("[Appointments] Navigate to previous day");
@@ -270,12 +397,50 @@ export default function CoachAppointmentsScreen() {
     setSelectedDate(new Date());
   };
 
+  // ── Week navigation ───────────────────────────────────────────────────────
+
+  const goToPrevWeek = () => {
+    console.log("[Appointments] Navigate to previous week");
+    const d = new Date(weekAnchor);
+    d.setDate(d.getDate() - 7);
+    setWeekAnchor(d);
+  };
+
+  const goToNextWeek = () => {
+    console.log("[Appointments] Navigate to next week");
+    const d = new Date(weekAnchor);
+    d.setDate(d.getDate() + 7);
+    setWeekAnchor(d);
+  };
+
+  const goToThisWeek = () => {
+    console.log("[Appointments] Navigate to this week");
+    setWeekAnchor(new Date());
+  };
+
+  // ── Month navigation ──────────────────────────────────────────────────────
+
+  const goToPrevMonth = () => {
+    console.log("[Appointments] Navigate to previous month");
+    const d = new Date(monthAnchor);
+    d.setMonth(d.getMonth() - 1);
+    setMonthAnchor(d);
+  };
+
+  const goToNextMonth = () => {
+    console.log("[Appointments] Navigate to next month");
+    const d = new Date(monthAnchor);
+    d.setMonth(d.getMonth() + 1);
+    setMonthAnchor(d);
+  };
+
   // ── Open create modal ─────────────────────────────────────────────────────
 
-  const openCreate = () => {
-    console.log("[Appointments] Open create appointment modal");
+  const openCreate = (prefillDate?: Date) => {
+    const base = prefillDate ?? selectedDate;
+    console.log("[Appointments] Open create appointment modal for:", base.toDateString());
     const now = new Date();
-    const start = new Date(selectedDate);
+    const start = new Date(base);
     start.setHours(now.getHours(), 0, 0, 0);
     const end = new Date(start);
     end.setHours(start.getHours() + 1);
@@ -283,7 +448,7 @@ export default function CoachAppointmentsScreen() {
     setEditingAppointment(null);
     setFormTitle("");
     setFormClientId(null);
-    setFormDate(new Date(selectedDate));
+    setFormDate(new Date(base));
     setFormStartTime(start);
     setFormEndTime(end);
     setFormNotes("");
@@ -314,7 +479,6 @@ export default function CoachAppointmentsScreen() {
     }
     if (!user?.id) return;
 
-    // Combine date + time
     const startDt = new Date(formDate);
     startDt.setHours(formStartTime.getHours(), formStartTime.getMinutes(), 0, 0);
     const endDt = new Date(formDate);
@@ -355,6 +519,8 @@ export default function CoachAppointmentsScreen() {
       setCreateVisible(false);
       setEditingAppointment(null);
       fetchAppointments();
+      if (viewMode === "week") fetchWeekAppointments();
+      if (viewMode === "maand") fetchMonthAppointments();
     } catch (err: any) {
       console.error("[Appointments] Save error:", err);
       Alert.alert("Fout", "Kon afspraak niet opslaan. Probeer opnieuw.");
@@ -386,6 +552,8 @@ export default function CoachAppointmentsScreen() {
               console.log("[Appointments] Appointment deleted:", appt.id);
               setDetailVisible(false);
               fetchAppointments();
+              if (viewMode === "week") fetchWeekAppointments();
+              if (viewMode === "maand") fetchMonthAppointments();
             } catch (err: any) {
               console.error("[Appointments] Delete error:", err);
               Alert.alert("Fout", "Kon afspraak niet verwijderen.");
@@ -416,7 +584,7 @@ export default function CoachAppointmentsScreen() {
     }
   };
 
-  // ── Selected client name ──────────────────────────────────────────────────
+  // ── Derived ───────────────────────────────────────────────────────────────
 
   const selectedClientName = formClientId
     ? (clients.find((c) => c.id === formClientId)?.full_name ?? "Onbekend")
@@ -424,6 +592,74 @@ export default function CoachAppointmentsScreen() {
 
   const isToday = isSameDay(selectedDate, new Date());
   const dateLabel = formatDutchDate(selectedDate);
+
+  // Week derived
+  const weekMonday = useMemo(() => startOfWeek(weekAnchor), [weekAnchor]);
+  const weekDays = useMemo(() => {
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(weekMonday);
+      d.setDate(weekMonday.getDate() + i);
+      return d;
+    });
+  }, [weekMonday]);
+
+  const isCurrentWeek = useMemo(() => {
+    const now = new Date();
+    const thisMonday = startOfWeek(now);
+    return weekMonday.getTime() === thisMonday.getTime();
+  }, [weekMonday]);
+
+  const weekLabel = useMemo(() => {
+    const sun = weekDays[6];
+    const monStr = `${weekDays[0].getDate()} ${DUTCH_MONTHS_SHORT[weekDays[0].getMonth()]}`;
+    const sunStr = `${sun.getDate()} ${DUTCH_MONTHS_SHORT[sun.getMonth()]}`;
+    return `${monStr} – ${sunStr}`;
+  }, [weekDays]);
+
+  // Group week appointments by day
+  const weekGrouped = useMemo(() => {
+    const groups: Record<string, Appointment[]> = {};
+    weekDays.forEach((d) => {
+      const key = d.toDateString();
+      groups[key] = weekAppointments.filter((a) => isSameDay(new Date(a.start_time), d));
+    });
+    return groups;
+  }, [weekDays, weekAppointments]);
+
+  // Month derived
+  const monthLabel = useMemo(() => {
+    const cap = DUTCH_MONTHS[monthAnchor.getMonth()];
+    return `${cap.charAt(0).toUpperCase()}${cap.slice(1)} ${monthAnchor.getFullYear()}`;
+  }, [monthAnchor]);
+
+  const isCurrentMonth = useMemo(() => {
+    const now = new Date();
+    return monthAnchor.getFullYear() === now.getFullYear() && monthAnchor.getMonth() === now.getMonth();
+  }, [monthAnchor]);
+
+  // Build calendar grid (6 rows × 7 cols, Mon-first)
+  const calendarGrid = useMemo(() => {
+    const firstDay = new Date(monthAnchor.getFullYear(), monthAnchor.getMonth(), 1);
+    // getDay(): 0=Sun,1=Mon,...,6=Sat → convert to Mon-first: Mon=0,...,Sun=6
+    const firstDow = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
+    const daysInMonth = new Date(monthAnchor.getFullYear(), monthAnchor.getMonth() + 1, 0).getDate();
+    const cells: (Date | null)[] = [];
+    for (let i = 0; i < firstDow; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) {
+      cells.push(new Date(monthAnchor.getFullYear(), monthAnchor.getMonth(), d));
+    }
+    while (cells.length % 7 !== 0) cells.push(null);
+    const rows: (Date | null)[][] = [];
+    for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
+    return rows;
+  }, [monthAnchor]);
+
+  // Days that have appointments in the month view
+  const monthDaysWithAppts = useMemo(() => {
+    const set = new Set<string>();
+    monthAppointments.forEach((a) => set.add(new Date(a.start_time).toDateString()));
+    return set;
+  }, [monthAppointments]);
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -444,91 +680,332 @@ export default function CoachAppointmentsScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* ── Date navigation bar ── */}
-      <View style={styles.dateBar}>
-        <TouchableOpacity style={styles.arrowBtn} onPress={goToPrevDay} activeOpacity={0.7}>
-          <Ionicons name="chevron-back" size={20} color={bcctColors.textPrimary} />
-        </TouchableOpacity>
-
-        <View style={styles.dateLabelWrap}>
-          <Text style={styles.dateLabel}>{dateLabel}</Text>
-        </View>
-
-        <TouchableOpacity style={styles.arrowBtn} onPress={goToNextDay} activeOpacity={0.7}>
-          <Ionicons name="chevron-forward" size={20} color={bcctColors.textPrimary} />
-        </TouchableOpacity>
-
-        {!isToday && (
-          <TouchableOpacity style={styles.todayBtn} onPress={goToToday} activeOpacity={0.8}>
-            <Text style={styles.todayBtnText}>Vandaag</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* ── Appointment list ── */}
-      {loading ? (
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
-        </View>
-      ) : appointments.length === 0 ? (
-        <View style={styles.emptyWrap}>
-          <View style={styles.emptyIconCircle}>
-            <Ionicons name="calendar-outline" size={40} color={bcctColors.primaryOrange} />
-          </View>
-          <Text style={styles.emptyTitle}>Geen afspraken</Text>
-          <Text style={styles.emptySubtitle}>Plan je eerste afspraak</Text>
-          <TouchableOpacity
-            style={styles.emptyCtaBtn}
-            onPress={() => {
-              console.log("[Appointments] Nieuwe afspraak (empty state) pressed");
-              openCreate();
-            }}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.emptyCtaText}>Nieuwe afspraak</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.listContent}>
-          {appointments.map((appt) => {
-            const timeRange = formatTimeRange(appt.start_time, appt.end_time);
-            const clientLabel = appt.clientName ?? "Geen cliënt";
-            const notesPreview = appt.notes ? appt.notes.slice(0, 60) : "";
-            const initial = avatarInitial(clientLabel);
-
+      {/* ── View switcher ── */}
+      <View style={styles.viewSwitcherWrap}>
+        <View style={styles.viewSwitcher}>
+          {(["dag", "week", "maand"] as ViewMode[]).map((mode) => {
+            const isActive = viewMode === mode;
+            const label = mode.charAt(0).toUpperCase() + mode.slice(1);
             return (
               <TouchableOpacity
-                key={appt.id}
-                style={[styles.apptCard, CARD_SHADOW]}
-                onPress={() => openDetail(appt)}
-                activeOpacity={0.85}
+                key={mode}
+                style={[styles.switcherTab, isActive && styles.switcherTabActive]}
+                onPress={() => {
+                  console.log("[Appointments] View mode switched to:", mode);
+                  setViewMode(mode);
+                }}
+                activeOpacity={0.8}
               >
-                <View style={styles.apptTimeCol}>
-                  <Text style={styles.apptTime}>{timeRange}</Text>
-                  <View style={styles.apptDot} />
-                </View>
-                <View style={styles.apptBody}>
-                  <View style={styles.apptAvatarRow}>
-                    <View style={styles.apptAvatar}>
-                      <Text style={styles.apptAvatarText}>{initial}</Text>
-                    </View>
-                    <View style={styles.apptMeta}>
-                      <Text style={styles.apptTitle}>{appt.title}</Text>
-                      <Text style={styles.apptClient}>{clientLabel}</Text>
-                    </View>
-                  </View>
-                  {notesPreview.length > 0 && (
-                    <Text style={styles.apptNotes} numberOfLines={2}>
-                      {notesPreview}
-                    </Text>
-                  )}
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={bcctColors.textSecondary} />
+                <Text style={[styles.switcherTabText, isActive && styles.switcherTabTextActive]}>
+                  {label}
+                </Text>
               </TouchableOpacity>
             );
           })}
-          <View style={{ height: 120 }} />
-        </ScrollView>
+        </View>
+      </View>
+
+      {/* ── DAG VIEW ── */}
+      {viewMode === "dag" && (
+        <>
+          <View style={styles.dateBar}>
+            <TouchableOpacity style={styles.arrowBtn} onPress={goToPrevDay} activeOpacity={0.7}>
+              <Ionicons name="chevron-back" size={20} color={bcctColors.textPrimary} />
+            </TouchableOpacity>
+            <View style={styles.dateLabelWrap}>
+              <Text style={styles.dateLabel}>{dateLabel}</Text>
+            </View>
+            <TouchableOpacity style={styles.arrowBtn} onPress={goToNextDay} activeOpacity={0.7}>
+              <Ionicons name="chevron-forward" size={20} color={bcctColors.textPrimary} />
+            </TouchableOpacity>
+            {!isToday && (
+              <TouchableOpacity style={styles.todayBtn} onPress={goToToday} activeOpacity={0.8}>
+                <Text style={styles.todayBtnText}>Vandaag</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {loading ? (
+            <View style={styles.loadingWrap}>
+              <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
+            </View>
+          ) : appointments.length === 0 ? (
+            <View style={styles.emptyWrap}>
+              <View style={styles.emptyIconCircle}>
+                <Ionicons name="calendar-outline" size={40} color={bcctColors.primaryOrange} />
+              </View>
+              <Text style={styles.emptyTitle}>Geen afspraken</Text>
+              <Text style={styles.emptySubtitle}>Plan je eerste afspraak</Text>
+              <TouchableOpacity
+                style={styles.emptyCtaBtn}
+                onPress={() => {
+                  console.log("[Appointments] Nieuwe afspraak (empty state) pressed");
+                  openCreate();
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.emptyCtaText}>Nieuwe afspraak</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.listContent}>
+              {appointments.map((appt) => {
+                const timeRange = formatTimeRange(appt.start_time, appt.end_time);
+                const clientLabel = appt.clientName ?? "Geen cliënt";
+                const notesPreview = appt.notes ? appt.notes.slice(0, 60) : "";
+                const initial = avatarInitial(clientLabel);
+
+                return (
+                  <TouchableOpacity
+                    key={appt.id}
+                    style={[styles.apptCard, CARD_SHADOW]}
+                    onPress={() => openDetail(appt)}
+                    activeOpacity={0.85}
+                  >
+                    <View style={styles.apptTimeCol}>
+                      <Text style={styles.apptTime}>{timeRange}</Text>
+                      <View style={styles.apptDot} />
+                    </View>
+                    <View style={styles.apptBody}>
+                      <View style={styles.apptAvatarRow}>
+                        <View style={styles.apptAvatar}>
+                          <Text style={styles.apptAvatarText}>{initial}</Text>
+                        </View>
+                        <View style={styles.apptMeta}>
+                          <Text style={styles.apptTitle}>{appt.title}</Text>
+                          <Text style={styles.apptClient}>{clientLabel}</Text>
+                        </View>
+                      </View>
+                      {notesPreview.length > 0 && (
+                        <Text style={styles.apptNotes} numberOfLines={2}>
+                          {notesPreview}
+                        </Text>
+                      )}
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={bcctColors.textSecondary} />
+                  </TouchableOpacity>
+                );
+              })}
+              <View style={{ height: 120 }} />
+            </ScrollView>
+          )}
+        </>
+      )}
+
+      {/* ── WEEK VIEW ── */}
+      {viewMode === "week" && (
+        <>
+          {/* Week navigation bar */}
+          <View style={styles.dateBar}>
+            <TouchableOpacity style={styles.arrowBtn} onPress={goToPrevWeek} activeOpacity={0.7}>
+              <Ionicons name="chevron-back" size={20} color={bcctColors.textPrimary} />
+            </TouchableOpacity>
+            <View style={styles.dateLabelWrap}>
+              <Text style={styles.dateLabel}>{weekLabel}</Text>
+            </View>
+            <TouchableOpacity style={styles.arrowBtn} onPress={goToNextWeek} activeOpacity={0.7}>
+              <Ionicons name="chevron-forward" size={20} color={bcctColors.textPrimary} />
+            </TouchableOpacity>
+            {!isCurrentWeek && (
+              <TouchableOpacity style={styles.todayBtn} onPress={goToThisWeek} activeOpacity={0.8}>
+                <Text style={styles.todayBtnText}>Deze week</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Day strip */}
+          <View style={styles.weekStrip}>
+            {weekDays.map((day, idx) => {
+              const key = day.toDateString();
+              const hasAppts = (weekGrouped[key] ?? []).length > 0;
+              const isDayToday = isSameDay(day, new Date());
+              const isSelected = isSameDay(day, selectedDate);
+
+              return (
+                <TouchableOpacity
+                  key={idx}
+                  style={[
+                    styles.weekDayCol,
+                    isDayToday && styles.weekDayColToday,
+                    isSelected && styles.weekDayColSelected,
+                  ]}
+                  onPress={() => {
+                    console.log("[Appointments] Week strip day tapped:", day.toDateString());
+                    setSelectedDate(new Date(day));
+                    setViewMode("dag");
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.weekDayAbbr, (isDayToday || isSelected) && styles.weekDayAbbrActive]}>
+                    {WEEK_DAYS_SHORT[idx]}
+                  </Text>
+                  <Text style={[styles.weekDayNum, (isDayToday || isSelected) && styles.weekDayNumActive]}>
+                    {day.getDate()}
+                  </Text>
+                  {hasAppts ? (
+                    <View style={[styles.weekDot, (isDayToday || isSelected) && styles.weekDotActive]} />
+                  ) : (
+                    <View style={styles.weekDotPlaceholder} />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Week appointment list */}
+          {weekLoading ? (
+            <View style={styles.loadingWrap}>
+              <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
+            </View>
+          ) : (
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.listContent}>
+              {weekDays.map((day, idx) => {
+                const key = day.toDateString();
+                const dayAppts = weekGrouped[key] ?? [];
+                const isDayToday = isSameDay(day, new Date());
+                const dayName = DUTCH_DAYS[day.getDay()];
+                const dayStr = `${dayName} ${day.getDate()} ${DUTCH_MONTHS_SHORT[day.getMonth()]}`;
+
+                return (
+                  <View key={idx} style={styles.weekDayGroup}>
+                    <View style={styles.weekDayGroupHeader}>
+                      <Text style={[styles.weekDayGroupLabel, isDayToday && styles.weekDayGroupLabelToday]}>
+                        {dayStr}
+                      </Text>
+                      {isDayToday && <View style={styles.todayBadge}><Text style={styles.todayBadgeText}>Vandaag</Text></View>}
+                    </View>
+                    {dayAppts.length === 0 ? (
+                      <Text style={styles.weekDayEmpty}>Geen afspraken</Text>
+                    ) : (
+                      dayAppts.map((appt) => {
+                        const timeRange = formatTimeRange(appt.start_time, appt.end_time);
+                        const clientLabel = appt.clientName ?? "Geen cliënt";
+                        const initial = avatarInitial(clientLabel);
+                        return (
+                          <TouchableOpacity
+                            key={appt.id}
+                            style={[styles.apptCard, CARD_SHADOW]}
+                            onPress={() => openDetail(appt)}
+                            activeOpacity={0.85}
+                          >
+                            <View style={styles.apptTimeCol}>
+                              <Text style={styles.apptTime}>{timeRange}</Text>
+                              <View style={styles.apptDot} />
+                            </View>
+                            <View style={styles.apptBody}>
+                              <View style={styles.apptAvatarRow}>
+                                <View style={styles.apptAvatar}>
+                                  <Text style={styles.apptAvatarText}>{initial}</Text>
+                                </View>
+                                <View style={styles.apptMeta}>
+                                  <Text style={styles.apptTitle}>{appt.title}</Text>
+                                  <Text style={styles.apptClient}>{clientLabel}</Text>
+                                </View>
+                              </View>
+                            </View>
+                            <Ionicons name="chevron-forward" size={16} color={bcctColors.textSecondary} />
+                          </TouchableOpacity>
+                        );
+                      })
+                    )}
+                  </View>
+                );
+              })}
+              <View style={{ height: 120 }} />
+            </ScrollView>
+          )}
+        </>
+      )}
+
+      {/* ── MAAND VIEW ── */}
+      {viewMode === "maand" && (
+        <>
+          {/* Month navigation bar */}
+          <View style={styles.dateBar}>
+            <TouchableOpacity style={styles.arrowBtn} onPress={goToPrevMonth} activeOpacity={0.7}>
+              <Ionicons name="chevron-back" size={20} color={bcctColors.textPrimary} />
+            </TouchableOpacity>
+            <View style={styles.dateLabelWrap}>
+              <Text style={styles.dateLabel}>{monthLabel}</Text>
+            </View>
+            <TouchableOpacity style={styles.arrowBtn} onPress={goToNextMonth} activeOpacity={0.7}>
+              <Ionicons name="chevron-forward" size={20} color={bcctColors.textPrimary} />
+            </TouchableOpacity>
+            {!isCurrentMonth && (
+              <TouchableOpacity
+                style={styles.todayBtn}
+                onPress={() => {
+                  console.log("[Appointments] Navigate to this month");
+                  setMonthAnchor(new Date());
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.todayBtnText}>Deze maand</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {monthLoading ? (
+            <View style={styles.loadingWrap}>
+              <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
+            </View>
+          ) : (
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.calendarScrollContent}>
+              {/* Day-of-week header */}
+              <View style={styles.calHeaderRow}>
+                {WEEK_DAYS_SHORT.map((d) => (
+                  <View key={d} style={styles.calHeaderCell}>
+                    <Text style={styles.calHeaderText}>{d}</Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* Calendar grid */}
+              {calendarGrid.map((row, rowIdx) => (
+                <View key={rowIdx} style={styles.calRow}>
+                  {row.map((day, colIdx) => {
+                    if (!day) {
+                      return <View key={colIdx} style={styles.calCell} />;
+                    }
+                    const isDayToday = isSameDay(day, new Date());
+                    const isSelected = isSameDay(day, selectedDate);
+                    const hasAppts = monthDaysWithAppts.has(day.toDateString());
+
+                    return (
+                      <TouchableOpacity
+                        key={colIdx}
+                        style={styles.calCell}
+                        onPress={() => {
+                          console.log("[Appointments] Month calendar day tapped:", day.toDateString());
+                          setSelectedDate(new Date(day));
+                          setViewMode("dag");
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <View style={[
+                          styles.calDayInner,
+                          isDayToday && styles.calDayToday,
+                          isSelected && !isDayToday && styles.calDaySelected,
+                        ]}>
+                          <Text style={[
+                            styles.calDayNum,
+                            isDayToday && styles.calDayNumToday,
+                            isSelected && !isDayToday && styles.calDayNumSelected,
+                          ]}>
+                            {day.getDate()}
+                          </Text>
+                        </View>
+                        {hasAppts && <View style={styles.calDot} />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ))}
+
+              <View style={{ height: 120 }} />
+            </ScrollView>
+          )}
+        </>
       )}
 
       {/* ── Create / Edit Modal ── */}
@@ -795,12 +1272,8 @@ export default function CoachAppointmentsScreen() {
             </TouchableOpacity>
           </View>
           <ScrollView>
-            {/* No client option */}
             <TouchableOpacity
-              style={[
-                styles.clientRow,
-                !formClientId && styles.clientRowSelected,
-              ]}
+              style={[styles.clientRow, !formClientId && styles.clientRowSelected]}
               onPress={() => {
                 console.log("[Appointments] Client deselected (geen cliënt)");
                 setFormClientId(null);
@@ -879,7 +1352,6 @@ export default function CoachAppointmentsScreen() {
             </View>
 
             <ScrollView style={styles.modalScroll}>
-              {/* Client avatar + name */}
               <View style={styles.detailClientRow}>
                 <View style={styles.detailAvatar}>
                   <Text style={styles.detailAvatarText}>
@@ -894,7 +1366,6 @@ export default function CoachAppointmentsScreen() {
                 </View>
               </View>
 
-              {/* Date & time */}
               <View style={styles.detailRow}>
                 <Ionicons name="calendar-outline" size={18} color={bcctColors.primaryOrange} />
                 <Text style={styles.detailRowText}>
@@ -908,13 +1379,11 @@ export default function CoachAppointmentsScreen() {
                 </Text>
               </View>
 
-              {/* Title */}
               <View style={styles.detailSection}>
                 <Text style={styles.detailSectionLabel}>Titel</Text>
                 <Text style={styles.detailSectionValue}>{detailAppointment.title}</Text>
               </View>
 
-              {/* Notes */}
               {detailAppointment.notes ? (
                 <View style={styles.detailSection}>
                   <Text style={styles.detailSectionLabel}>Notities</Text>
@@ -922,7 +1391,6 @@ export default function CoachAppointmentsScreen() {
                 </View>
               ) : null}
 
-              {/* Action buttons */}
               <View style={styles.detailActions}>
                 <TouchableOpacity
                   style={styles.detailActionBtn}
@@ -1002,7 +1470,42 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
 
-  // Date bar
+  // View switcher
+  viewSwitcherWrap: {
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+  },
+  viewSwitcher: {
+    flexDirection: "row",
+    backgroundColor: "#F0F0F5",
+    borderRadius: 12,
+    padding: 3,
+  },
+  switcherTab: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  switcherTabActive: {
+    backgroundColor: bcctColors.primaryOrange,
+    shadowColor: bcctColors.primaryOrange,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  switcherTabText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: bcctColors.textSecondary,
+  },
+  switcherTabTextActive: {
+    color: "#FFFFFF",
+  },
+
+  // Date bar (shared by all views)
   dateBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -1091,7 +1594,7 @@ const styles = StyleSheet.create({
     color: "#fff",
   },
 
-  // Appointment list
+  // Appointment list (shared card style)
   listContent: {
     paddingHorizontal: 16,
     paddingTop: 16,
@@ -1161,6 +1664,163 @@ const styles = StyleSheet.create({
     color: bcctColors.textSecondary,
     marginTop: 6,
     lineHeight: 17,
+  },
+
+  // ── Week view ──────────────────────────────────────────────────────────────
+  weekStrip: {
+    flexDirection: "row",
+    backgroundColor: bcctColors.cardBackground,
+    borderBottomWidth: 1,
+    borderBottomColor: bcctColors.borderGray,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+  },
+  weekDayCol: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 6,
+    borderRadius: 10,
+    gap: 2,
+  },
+  weekDayColToday: {
+    backgroundColor: `${bcctColors.primaryOrange}18`,
+  },
+  weekDayColSelected: {
+    backgroundColor: `${bcctColors.primaryOrange}28`,
+  },
+  weekDayAbbr: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: bcctColors.textSecondary,
+    textTransform: "uppercase",
+  },
+  weekDayAbbrActive: {
+    color: bcctColors.primaryOrange,
+  },
+  weekDayNum: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: bcctColors.textPrimary,
+  },
+  weekDayNumActive: {
+    color: bcctColors.primaryOrange,
+  },
+  weekDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: bcctColors.primaryOrange,
+    marginTop: 2,
+  },
+  weekDotActive: {
+    backgroundColor: bcctColors.primaryOrangeDark,
+  },
+  weekDotPlaceholder: {
+    width: 5,
+    height: 5,
+    marginTop: 2,
+  },
+  weekDayGroup: {
+    marginBottom: 16,
+  },
+  weekDayGroupHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 8,
+  },
+  weekDayGroupLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: bcctColors.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  weekDayGroupLabelToday: {
+    color: bcctColors.primaryOrange,
+  },
+  todayBadge: {
+    backgroundColor: `${bcctColors.primaryOrange}18`,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  todayBadgeText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: bcctColors.primaryOrange,
+  },
+  weekDayEmpty: {
+    fontSize: 13,
+    color: bcctColors.textSecondary,
+    fontStyle: "italic",
+    paddingLeft: 4,
+    marginBottom: 4,
+  },
+
+  // ── Month / calendar view ──────────────────────────────────────────────────
+  calendarScrollContent: {
+    paddingHorizontal: 12,
+    paddingTop: 12,
+  },
+  calHeaderRow: {
+    flexDirection: "row",
+    marginBottom: 4,
+  },
+  calHeaderCell: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 6,
+  },
+  calHeaderText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: bcctColors.textSecondary,
+    textTransform: "uppercase",
+  },
+  calRow: {
+    flexDirection: "row",
+    marginBottom: 2,
+  },
+  calCell: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 4,
+    minHeight: 52,
+    justifyContent: "flex-start",
+  },
+  calDayInner: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  calDayToday: {
+    backgroundColor: bcctColors.primaryOrange,
+  },
+  calDaySelected: {
+    backgroundColor: `${bcctColors.primaryOrange}28`,
+  },
+  calDayNum: {
+    fontSize: 15,
+    fontWeight: "500",
+    color: bcctColors.textPrimary,
+  },
+  calDayNumToday: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+  },
+  calDayNumSelected: {
+    color: bcctColors.primaryOrange,
+    fontWeight: "700",
+  },
+  calDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: bcctColors.primaryOrange,
+    marginTop: 2,
   },
 
   // Modal shared
