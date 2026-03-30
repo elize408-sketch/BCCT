@@ -38,7 +38,8 @@ const BRAND_COLORS = [
   '#f5a623',
   '#2ecc71',
 ];
-const SUPABASE_URL = Constants.expoConfig?.extra?.supabaseUrl as string;
+const SUPABASE_URL = (Constants.expoConfig?.extra?.supabaseUrl as string) ?? '';
+const SUPABASE_ANON_KEY = (Constants.expoConfig?.extra?.supabaseAnonKey as string) ?? '';
 const STRIPE_CONNECT_CREATE_ENDPOINT = `${SUPABASE_URL}/functions/v1/stripe-connect-create`;
 
 const COACHING_TYPES = [
@@ -617,19 +618,20 @@ export default function CoachOnboardingScreen() {
         return;
       }
 
-      console.log('[CoachOnboarding] POST stripe-connect-create');
+      console.log('[CoachOnboarding] POST stripe-connect-create for user:', currentSession.user.id);
       const response = await fetch(STRIPE_CONNECT_CREATE_ENDPOINT, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${currentSession.access_token}`,
+          'apikey': SUPABASE_ANON_KEY,
         },
       });
 
       if (!response.ok) {
         const errText = await response.text();
         console.error('[CoachOnboarding] stripe-connect-create error:', response.status, errText);
-        setStripeError(`Fout (${response.status}): ${errText || 'Onbekende fout'}`);
+        setStripeError('Er is iets misgegaan. Probeer het opnieuw.');
         return;
       }
 
@@ -638,14 +640,15 @@ export default function CoachOnboardingScreen() {
 
       if (data.onboarding_url) {
         console.log('[CoachOnboarding] Opening Stripe onboarding URL:', data.onboarding_url);
-        await Linking.openURL(data.onboarding_url);
         setStripeUrlOpened(true);
+        await Linking.openURL(data.onboarding_url);
       } else {
-        setStripeError('Geen onboarding URL ontvangen. Probeer opnieuw.');
+        console.error('[CoachOnboarding] stripe-connect-create: no onboarding_url in response', data);
+        setStripeError('Er is iets misgegaan. Probeer het opnieuw.');
       }
     } catch (err: any) {
       console.error('[CoachOnboarding] Stripe connect error:', err.message);
-      setStripeError('Netwerkfout. Controleer je verbinding en probeer opnieuw.');
+      setStripeError('Er is iets misgegaan. Probeer het opnieuw.');
     } finally {
       setStripeLoading(false);
     }
@@ -1453,7 +1456,7 @@ export default function CoachOnboardingScreen() {
 
                 <Text style={[styles.finishTitle, { color: colors.text }]}>Koppel je Stripe account</Text>
                 <Text style={[styles.stepSubtitle, { color: bcctColors.textSecondary, textAlign: 'center' }]}>
-                  Om betalingen te ontvangen van cliënten, koppel je eenmalig je Stripe account. Dit duurt slechts een paar minuten.
+                  Ontvang betalingen van cliënten en stuur eenvoudig betaallinks of facturen.
                 </Text>
 
                 {!!stripeError && (
@@ -1466,7 +1469,7 @@ export default function CoachOnboardingScreen() {
                   <View style={[styles.stripeInfoBox, { backgroundColor: bcctColors.success + '18' }]}>
                     <Ionicons name="information-circle-outline" size={18} color={bcctColors.success} />
                     <Text style={[styles.stripeInfoText, { color: bcctColors.success }]}>
-                      Je wordt teruggestuurd na het voltooien van Stripe.
+                      Je wordt doorgestuurd naar Stripe om je account af te ronden.
                     </Text>
                   </View>
                 )}
