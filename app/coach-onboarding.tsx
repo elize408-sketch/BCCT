@@ -26,7 +26,18 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bcctColors, bcctTypography } from '@/styles/bcctTheme';
 
-const TOTAL_STEPS = 8;
+const TOTAL_STEPS = 11;
+
+const BRAND_COLORS = [
+  '#000000',
+  '#1a1a2e',
+  '#16213e',
+  '#0f3460',
+  '#533483',
+  '#e94560',
+  '#f5a623',
+  '#2ecc71',
+];
 const SUPABASE_URL = Constants.expoConfig?.extra?.supabaseUrl as string;
 const STRIPE_CONNECT_CREATE_ENDPOINT = `${SUPABASE_URL}/functions/v1/stripe-connect-create`;
 
@@ -151,7 +162,33 @@ export default function CoachOnboardingScreen() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
 
-  // Step 8 — Stripe Connect
+  // Step 7 (new) — Bedrijfsgegevens
+  const [businessName, setBusinessName] = useState('');
+  const [kvk, setKvk] = useState('');
+  const [btwNumber, setBtwNumber] = useState('');
+  const [iban, setIban] = useState('');
+  const [stepBizError, setStepBizError] = useState('');
+  const [stepBizSaving, setStepBizSaving] = useState(false);
+
+  // Step 8 (new) — Adres
+  const [address, setAddress] = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [city, setCity] = useState('');
+  const [country, setCountry] = useState('NL');
+  const [stepAddrSaving, setStepAddrSaving] = useState(false);
+  const [stepAddrError, setStepAddrError] = useState('');
+
+  // Step 9 (new) — Huisstijl
+  const [brandLogoLocalUri, setBrandLogoLocalUri] = useState<string | null>(null);
+  const [brandLogoUrl, setBrandLogoUrl] = useState<string | null>(null);
+  const [brandLogoUploading, setBrandLogoUploading] = useState(false);
+  const [brandLogoError, setBrandLogoError] = useState('');
+  const [primaryColor, setPrimaryColor] = useState<string>('#0f3460');
+  const [invoiceFooter, setInvoiceFooter] = useState('');
+  const [stepBrandSaving, setStepBrandSaving] = useState(false);
+  const [stepBrandError, setStepBrandError] = useState('');
+
+  // Step 11 — Stripe Connect
   const [stripeLoading, setStripeLoading] = useState(false);
   const [stripeError, setStripeError] = useState('');
   const [stripeUrlOpened, setStripeUrlOpened] = useState(false);
@@ -191,6 +228,18 @@ export default function CoachOnboardingScreen() {
           setRevenueModel(profile.revenue_model ?? '');
           setActiveClientRange(profile.active_client_range ?? '');
           setPrimaryGoals(profile.primary_goals ?? []);
+          // New fields
+          if (profile.business_name) setBusinessName(profile.business_name);
+          if (profile.kvk) setKvk(profile.kvk);
+          if (profile.btw_number) setBtwNumber(profile.btw_number);
+          if (profile.iban) setIban(profile.iban);
+          if (profile.address) setAddress(profile.address);
+          if (profile.postal_code) setPostalCode(profile.postal_code);
+          if (profile.city) setCity(profile.city);
+          if (profile.country) setCountry(profile.country);
+          if (profile.logo_url) { setBrandLogoUrl(profile.logo_url); setBrandLogoLocalUri(profile.logo_url); }
+          if (profile.primary_color) setPrimaryColor(profile.primary_color);
+          if (profile.invoice_footer) setInvoiceFooter(profile.invoice_footer);
           console.log('[CoachOnboarding] Profile prefilled successfully');
         }
       } catch (err) {
@@ -289,6 +338,116 @@ export default function CoachOnboardingScreen() {
     }
     setStep6Error('');
     animateToStep(6);
+  };
+
+  const handleStep7BizNext = async () => {
+    console.log('[CoachOnboarding] Step 7 (Bedrijfsgegevens) next pressed', { businessName, kvk, btwNumber, iban });
+    if (!businessName.trim()) {
+      setStepBizError('Bedrijfsnaam is verplicht.');
+      return;
+    }
+    setStepBizError('');
+    setStepBizSaving(true);
+    try {
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      if (!currentSession) throw new Error('Geen sessie');
+      const payload: Record<string, string> = { business_name: businessName.trim() };
+      if (kvk.trim()) payload.kvk = kvk.trim();
+      if (btwNumber.trim()) payload.btw_number = btwNumber.trim();
+      if (iban.trim()) payload.iban = iban.trim();
+      console.log('[CoachOnboarding] Saving bedrijfsgegevens:', payload);
+      const { error } = await supabase.from('profiles').update(payload).eq('id', currentSession.user.id);
+      if (error) throw error;
+      animateToStep(8);
+    } catch (err: any) {
+      console.error('[CoachOnboarding] Bedrijfsgegevens save error:', err.message);
+      setStepBizError(err.message || 'Opslaan mislukt. Probeer opnieuw.');
+    } finally {
+      setStepBizSaving(false);
+    }
+  };
+
+  const handleStep8AddrNext = async () => {
+    console.log('[CoachOnboarding] Step 8 (Adres) next pressed', { address, postalCode, city, country });
+    setStepAddrError('');
+    setStepAddrSaving(true);
+    try {
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      if (!currentSession) throw new Error('Geen sessie');
+      const payload: Record<string, string> = {};
+      if (address.trim()) payload.address = address.trim();
+      if (postalCode.trim()) payload.postal_code = postalCode.trim();
+      if (city.trim()) payload.city = city.trim();
+      if (country.trim()) payload.country = country.trim();
+      console.log('[CoachOnboarding] Saving adres:', payload);
+      if (Object.keys(payload).length > 0) {
+        const { error } = await supabase.from('profiles').update(payload).eq('id', currentSession.user.id);
+        if (error) throw error;
+      }
+      animateToStep(9);
+    } catch (err: any) {
+      console.error('[CoachOnboarding] Adres save error:', err.message);
+      setStepAddrError(err.message || 'Opslaan mislukt. Probeer opnieuw.');
+    } finally {
+      setStepAddrSaving(false);
+    }
+  };
+
+  const handleStep9BrandNext = async () => {
+    console.log('[CoachOnboarding] Step 9 (Huisstijl) next pressed', { brandLogoUrl, primaryColor, invoiceFooter });
+    setStepBrandError('');
+    setStepBrandSaving(true);
+    try {
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      if (!currentSession) throw new Error('Geen sessie');
+      const payload: Record<string, string> = { primary_color: primaryColor };
+      if (brandLogoUrl) payload.logo_url = brandLogoUrl;
+      if (invoiceFooter.trim()) payload.invoice_footer = invoiceFooter.trim();
+      console.log('[CoachOnboarding] Saving huisstijl:', payload);
+      const { error } = await supabase.from('profiles').update(payload).eq('id', currentSession.user.id);
+      if (error) throw error;
+      animateToStep(10);
+    } catch (err: any) {
+      console.error('[CoachOnboarding] Huisstijl save error:', err.message);
+      setStepBrandError(err.message || 'Opslaan mislukt. Probeer opnieuw.');
+    } finally {
+      setStepBrandSaving(false);
+    }
+  };
+
+  const pickBrandLogo = async () => {
+    console.log('[CoachOnboarding] Pick brand logo pressed');
+    setBrandLogoError('');
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        setBrandLogoError('Geef toegang tot je fotobibliotheek om een logo te kiezen.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      setBrandLogoLocalUri(asset.uri);
+      setBrandLogoUploading(true);
+      console.log('[CoachOnboarding] Uploading brand logo:', asset.uri);
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      const userId = currentSession?.user?.id;
+      if (!userId) throw new Error('Geen sessie');
+      const url = await uploadImageToStorage(asset.uri, 'company-logos', `${userId}/brand-logo.jpg`);
+      setBrandLogoUrl(url);
+      console.log('[CoachOnboarding] Brand logo uploaded:', url);
+    } catch (err: any) {
+      console.error('[CoachOnboarding] Brand logo upload error:', err.message);
+      setBrandLogoError('Logo kon niet worden geüpload. Probeer opnieuw.');
+      setBrandLogoLocalUri(null);
+    } finally {
+      setBrandLogoUploading(false);
+    }
   };
 
   const handleBack = () => {
@@ -435,7 +594,7 @@ export default function CoachOnboardingScreen() {
 
       if (error) throw error;
 
-      console.log('[CoachOnboarding] Profile saved successfully, advancing to Stripe step');
+      console.log('[CoachOnboarding] Profile saved successfully, advancing to Bedrijfsgegevens step');
       animateToStep(7);
     } catch (err: any) {
       console.error('[CoachOnboarding] Save error:', err.message);
@@ -509,7 +668,7 @@ export default function CoachOnboardingScreen() {
 
   // ── Derived values for display ──
 
-  const stepLabel = step < 7 ? `Stap ${step + 1} van 7` : 'Stap 7 van 7';
+  const stepLabel = `Stap ${Math.min(step + 1, TOTAL_STEPS)} van ${TOTAL_STEPS}`;
   const andersSelected = selectedTypes.includes('Anders, namelijk…');
 
   const progressWidth = progressAnim.interpolate({
@@ -1029,9 +1188,264 @@ export default function CoachOnboardingScreen() {
             )}
 
             {/* ══════════════════════════════════════
-                STEP 8 — Stripe Connect
+                STEP 8 — Bedrijfsgegevens (NEW)
             ══════════════════════════════════════ */}
             {step === 7 && (
+              <View style={styles.stepContent}>
+                <Text style={[styles.stepTitle, { color: colors.text }]}>Bedrijfsgegevens</Text>
+                <Text style={[styles.stepSubtitle, { color: bcctColors.textSecondary }]}>
+                  Deze gegevens worden gebruikt op facturen en in je profiel.
+                </Text>
+
+                <View style={styles.form}>
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.label, { color: colors.text }]}>
+                      Bedrijfsnaam <Text style={{ color: bcctColors.error }}>*</Text>
+                    </Text>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: stepBizError ? bcctColors.error : colors.border }]}
+                      placeholder="Bijv. Coaching by Patricia"
+                      placeholderTextColor={bcctColors.textSecondary}
+                      value={businessName}
+                      onChangeText={v => { setBusinessName(v); setStepBizError(''); }}
+                      autoCapitalize="words"
+                      returnKeyType="next"
+                    />
+                    {!!stepBizError && <Text style={styles.fieldError}>{stepBizError}</Text>}
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.label, { color: colors.text }]}>KVK-nummer</Text>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                      placeholder="12345678"
+                      placeholderTextColor={bcctColors.textSecondary}
+                      value={kvk}
+                      onChangeText={setKvk}
+                      keyboardType="numeric"
+                      returnKeyType="next"
+                    />
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.label, { color: colors.text }]}>BTW-nummer</Text>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                      placeholder="NL000000000B01"
+                      placeholderTextColor={bcctColors.textSecondary}
+                      value={btwNumber}
+                      onChangeText={setBtwNumber}
+                      autoCapitalize="characters"
+                      autoCorrect={false}
+                      returnKeyType="next"
+                    />
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.label, { color: colors.text }]}>IBAN</Text>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                      placeholder="NL00 BANK 0000 0000 00"
+                      placeholderTextColor={bcctColors.textSecondary}
+                      value={iban}
+                      onChangeText={setIban}
+                      autoCapitalize="characters"
+                      autoCorrect={false}
+                      returnKeyType="done"
+                    />
+                  </View>
+                </View>
+
+                <PrimaryButton label="Volgende" onPress={handleStep7BizNext} disabled={stepBizSaving} />
+                <SkipLink onPress={() => { console.log('[CoachOnboarding] Skip bedrijfsgegevens pressed'); animateToStep(8); }} />
+                <BackButton onPress={handleBack} />
+              </View>
+            )}
+
+            {/* ══════════════════════════════════════
+                STEP 9 — Adres (NEW)
+            ══════════════════════════════════════ */}
+            {step === 8 && (
+              <View style={styles.stepContent}>
+                <Text style={[styles.stepTitle, { color: colors.text }]}>Adres</Text>
+                <Text style={[styles.stepSubtitle, { color: bcctColors.textSecondary }]}>
+                  Optioneel — verschijnt op facturen als bedrijfsadres.
+                </Text>
+
+                <View style={styles.form}>
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.label, { color: colors.text }]}>Straat + huisnummer</Text>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                      placeholder="Bijv. Keizersgracht 123"
+                      placeholderTextColor={bcctColors.textSecondary}
+                      value={address}
+                      onChangeText={setAddress}
+                      autoCapitalize="words"
+                      returnKeyType="next"
+                    />
+                  </View>
+
+                  <View style={styles.addrRow}>
+                    <View style={[styles.inputGroup, { flex: 1 }]}>
+                      <Text style={[styles.label, { color: colors.text }]}>Postcode</Text>
+                      <TextInput
+                        style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                        placeholder="1234 AB"
+                        placeholderTextColor={bcctColors.textSecondary}
+                        value={postalCode}
+                        onChangeText={setPostalCode}
+                        autoCapitalize="characters"
+                        autoCorrect={false}
+                        returnKeyType="next"
+                      />
+                    </View>
+                    <View style={[styles.inputGroup, { flex: 2 }]}>
+                      <Text style={[styles.label, { color: colors.text }]}>Stad</Text>
+                      <TextInput
+                        style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                        placeholder="Amsterdam"
+                        placeholderTextColor={bcctColors.textSecondary}
+                        value={city}
+                        onChangeText={setCity}
+                        autoCapitalize="words"
+                        returnKeyType="next"
+                      />
+                    </View>
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.label, { color: colors.text }]}>Land</Text>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                      placeholder="NL"
+                      placeholderTextColor={bcctColors.textSecondary}
+                      value={country}
+                      onChangeText={setCountry}
+                      autoCapitalize="characters"
+                      autoCorrect={false}
+                      returnKeyType="done"
+                    />
+                  </View>
+                </View>
+
+                {!!stepAddrError && <Text style={[styles.fieldError, { marginBottom: 12 }]}>{stepAddrError}</Text>}
+
+                <PrimaryButton label="Volgende" onPress={handleStep8AddrNext} disabled={stepAddrSaving} />
+                <SkipLink onPress={() => { console.log('[CoachOnboarding] Skip adres pressed'); animateToStep(9); }} />
+                <BackButton onPress={handleBack} />
+              </View>
+            )}
+
+            {/* ══════════════════════════════════════
+                STEP 10 — Huisstijl (NEW)
+            ══════════════════════════════════════ */}
+            {step === 9 && (
+              <View style={styles.stepContent}>
+                <Text style={[styles.stepTitle, { color: colors.text }]}>Huisstijl</Text>
+                <Text style={[styles.stepSubtitle, { color: bcctColors.textSecondary }]}>
+                  Personaliseer je facturen en profiel met jouw branding.
+                </Text>
+
+                {/* Logo upload */}
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.label, { color: colors.text }]}>Logo</Text>
+                  <View style={styles.brandLogoRow}>
+                    <TouchableOpacity
+                      style={[styles.brandLogoBox, { borderColor: brandLogoLocalUri ? bcctColors.primaryOrange : colors.border, backgroundColor: colors.card }]}
+                      onPress={pickBrandLogo}
+                      disabled={brandLogoUploading}
+                      activeOpacity={0.8}
+                    >
+                      {brandLogoLocalUri ? (
+                        <Image source={resolveImageSource(brandLogoLocalUri)} style={styles.brandLogoImage} />
+                      ) : (
+                        <Ionicons name="image-outline" size={32} color={bcctColors.textSecondary} />
+                      )}
+                      {brandLogoUploading && (
+                        <View style={[styles.imageOverlay, { borderRadius: 12 }]}>
+                          <ActivityIndicator color="#fff" />
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.uploadButton, { borderColor: bcctColors.primaryOrange }]}
+                      onPress={pickBrandLogo}
+                      disabled={brandLogoUploading}
+                      activeOpacity={0.8}
+                    >
+                      {brandLogoUploading ? (
+                        <ActivityIndicator size="small" color={bcctColors.primaryOrange} />
+                      ) : (
+                        <Text style={[styles.uploadButtonText, { color: bcctColors.primaryOrange }]}>
+                          Logo uploaden
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                  {!!brandLogoError && <Text style={styles.fieldError}>{brandLogoError}</Text>}
+                </View>
+
+                {/* Color picker */}
+                <View style={[styles.inputGroup, { marginTop: 24 }]}>
+                  <Text style={[styles.label, { color: colors.text }]}>Primaire kleur</Text>
+                  <View style={styles.colorSwatchRow}>
+                    {BRAND_COLORS.map(color => {
+                      const isSelected = primaryColor === color;
+                      return (
+                        <TouchableOpacity
+                          key={color}
+                          style={[
+                            styles.colorSwatch,
+                            { backgroundColor: color },
+                            isSelected && styles.colorSwatchSelected,
+                          ]}
+                          onPress={() => {
+                            console.log('[CoachOnboarding] Primary color selected:', color);
+                            setPrimaryColor(color);
+                          }}
+                          activeOpacity={0.8}
+                        >
+                          {isSelected && (
+                            <Ionicons name="checkmark" size={16} color="#fff" />
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  <View style={[styles.colorPreviewBar, { backgroundColor: primaryColor }]} />
+                </View>
+
+                {/* Invoice footer */}
+                <View style={[styles.inputGroup, { marginTop: 24 }]}>
+                  <Text style={[styles.label, { color: colors.text }]}>Factuurvoetnoot</Text>
+                  <TextInput
+                    style={[styles.input, styles.textArea, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                    placeholder="Bijv. Bedankt voor uw vertrouwen. Betaling binnen 14 dagen."
+                    placeholderTextColor={bcctColors.textSecondary}
+                    value={invoiceFooter}
+                    onChangeText={setInvoiceFooter}
+                    multiline
+                    numberOfLines={3}
+                    autoCapitalize="sentences"
+                    returnKeyType="default"
+                  />
+                </View>
+
+                {!!stepBrandError && <Text style={[styles.fieldError, { marginTop: 8, marginBottom: 4 }]}>{stepBrandError}</Text>}
+
+                <View style={{ marginTop: 32 }}>
+                  <PrimaryButton label="Volgende" onPress={handleStep9BrandNext} disabled={stepBrandSaving || brandLogoUploading} />
+                  <SkipLink onPress={() => { console.log('[CoachOnboarding] Skip huisstijl pressed'); animateToStep(10); }} />
+                  <BackButton onPress={handleBack} />
+                </View>
+              </View>
+            )}
+
+            {/* ══════════════════════════════════════
+                STEP 11 — Stripe Connect
+            ══════════════════════════════════════ */}
+            {step === 10 && (
               <View style={[styles.stepContent, styles.stripeStep]}>
                 <View style={[styles.stripeIconWrap, { backgroundColor: bcctColors.primaryOrange + '18' }]}>
                   <Ionicons name="card-outline" size={56} color={bcctColors.primaryOrange} />
@@ -1401,6 +1815,69 @@ const styles = StyleSheet.create({
   },
   backText: {
     ...bcctTypography.small,
+  },
+
+  // Address row
+  addrRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+
+  // Brand logo
+  brandLogoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  brandLogoBox: {
+    width: 88,
+    height: 88,
+    borderRadius: 12,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  brandLogoImage: {
+    width: 88,
+    height: 88,
+    resizeMode: 'contain',
+  },
+
+  // Color picker
+  colorSwatchRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 10,
+  },
+  colorSwatch: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  colorSwatchSelected: {
+    borderWidth: 3,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  colorPreviewBar: {
+    height: 6,
+    borderRadius: 3,
+    marginTop: 14,
+  },
+
+  // Multiline text area
+  textArea: {
+    minHeight: 88,
+    paddingTop: 14,
+    textAlignVertical: 'top',
   },
 
   // Stripe step
