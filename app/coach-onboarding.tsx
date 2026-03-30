@@ -327,8 +327,8 @@ export default function CoachOnboardingScreen() {
 
       if (error) throw error;
 
-      console.log('[CoachOnboarding] Profile saved successfully, navigating to dashboard');
-      router.replace('/(tabs)');
+      console.log('[CoachOnboarding] Profile saved successfully, navigating to coach dashboard');
+      router.replace('/(app)/coach');
     } catch (err: any) {
       console.error('[CoachOnboarding] Save error:', err.message);
       setSaveError(err.message || 'Er is een fout opgetreden. Probeer opnieuw.');

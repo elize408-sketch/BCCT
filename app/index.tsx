@@ -61,8 +61,8 @@ export default function IndexScreen() {
           setChecking(false);
           return;
         }
-        console.log('[IndexScreen] Coach onboarding complete, redirecting to tabs');
-        setTimeout(() => router.replace('/(tabs)'), 100);
+        console.log('[IndexScreen] Coach onboarding complete, redirecting to coach dashboard');
+        setTimeout(() => router.replace('/(app)/coach'), 100);
         setChecking(false);
         return;
       }
