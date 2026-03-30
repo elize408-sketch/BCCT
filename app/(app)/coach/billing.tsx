@@ -1,48 +1,972 @@
 
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  ActivityIndicator,
+  Linking,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
+import Modal from 'react-native-modal';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTheme } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { bcctColors } from '@/styles/bcctTheme';
+import Constants from 'expo-constants';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
+import { bcctColors, bcctTypography } from '@/styles/bcctTheme';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface Client {
+  id: string;
+  full_name: string;
+  email: string;
+}
+
+interface FormErrors {
+  client?: string;
+  amount?: string;
+  clientEmail?: string;
+  description?: string;
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const SUPABASE_URL = Constants.expoConfig?.extra?.supabaseUrl as string;
+const SUPABASE_ANON_KEY = Constants.expoConfig?.extra?.supabaseAnonKey as string;
+const CHECKOUT_ENDPOINT = `${SUPABASE_URL}/functions/v1/billing-checkout-session`;
+
+// ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function CoachBillingScreen() {
-  return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Facturatie</Text>
-      </View>
-      <View style={styles.content}>
-        <View style={styles.iconWrap}>
-          <Ionicons name="card-outline" size={48} color={bcctColors.primaryOrange} />
+  const { colors } = useTheme();
+  const { user } = useAuth();
+
+  const [loadingProfile, setLoadingProfile] = useState(true);
+  const [stripeAccountId, setStripeAccountId] = useState<string | null>(null);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [loadingClients, setLoadingClients] = useState(false);
+
+  // Form state
+  const [formVisible, setFormVisible] = useState(false);
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [clientPickerVisible, setClientPickerVisible] = useState(false);
+  const [amount, setAmount] = useState('');
+  const [description, setDescription] = useState('');
+  const [clientEmail, setClientEmail] = useState('');
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [successVisible, setSuccessVisible] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // ─── Data loading ──────────────────────────────────────────────────────────
+
+  const loadProfile = useCallback(async () => {
+    if (!user) return;
+    console.log('[Billing] Loading coach profile for user:', user.id);
+    setLoadingProfile(true);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('stripe_account_id')
+        .eq('id', user.id)
+        .single();
+
+      if (error) {
+        console.error('[Billing] Error loading profile:', error);
+      } else {
+        console.log('[Billing] Profile loaded, stripe_account_id:', data?.stripe_account_id ?? 'none');
+        setStripeAccountId(data?.stripe_account_id ?? null);
+      }
+    } catch (err) {
+      console.error('[Billing] Unexpected error loading profile:', err);
+    } finally {
+      setLoadingProfile(false);
+    }
+  }, [user]);
+
+  const loadClients = useCallback(async () => {
+    if (!user) return;
+    console.log('[Billing] Loading clients for coach:', user.id);
+    setLoadingClients(true);
+    try {
+      const { data: coachClients, error: ccError } = await supabase
+        .from('coach_clients')
+        .select('client_id')
+        .eq('coach_id', user.id);
+
+      if (ccError) {
+        console.error('[Billing] Error fetching coach_clients:', ccError);
+        setLoadingClients(false);
+        return;
+      }
+
+      if (!coachClients || coachClients.length === 0) {
+        console.log('[Billing] No clients found');
+        setClients([]);
+        setLoadingClients(false);
+        return;
+      }
+
+      const clientIds = coachClients.map((c) => c.client_id);
+      const { data: profiles, error: pError } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .in('id', clientIds);
+
+      if (pError) {
+        console.error('[Billing] Error fetching profiles:', pError);
+      } else {
+        console.log('[Billing] Clients loaded:', profiles?.length ?? 0);
+        setClients(profiles ?? []);
+      }
+    } catch (err) {
+      console.error('[Billing] Unexpected error loading clients:', err);
+    } finally {
+      setLoadingClients(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    loadProfile();
+    loadClients();
+  }, [loadProfile, loadClients]);
+
+  // ─── Form helpers ──────────────────────────────────────────────────────────
+
+  const openForm = () => {
+    console.log('[Billing] Opening Factuur maken form');
+    setSelectedClient(null);
+    setAmount('');
+    setDescription('');
+    setClientEmail('');
+    setErrors({});
+    setSubmitError(null);
+    setFormVisible(true);
+  };
+
+  const closeForm = () => {
+    console.log('[Billing] Closing Factuur maken form');
+    setFormVisible(false);
+  };
+
+  const handleSelectClient = (client: Client) => {
+    console.log('[Billing] Client selected:', client.id, client.full_name);
+    setSelectedClient(client);
+    setClientEmail(client.email);
+    setClientPickerVisible(false);
+    setErrors((prev) => ({ ...prev, client: undefined, clientEmail: undefined }));
+  };
+
+  const validate = (): boolean => {
+    const newErrors: FormErrors = {};
+    if (!selectedClient) newErrors.client = 'Selecteer een cliënt';
+    const parsedAmount = parseFloat(amount);
+    if (!amount || isNaN(parsedAmount) || parsedAmount <= 0) {
+      newErrors.amount = 'Voer een geldig bedrag in (> 0)';
+    }
+    if (!clientEmail || !clientEmail.includes('@')) {
+      newErrors.clientEmail = 'Voer een geldig e-mailadres in';
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = async () => {
+    console.log('[Billing] Factuur sturen pressed');
+    if (!validate()) {
+      console.log('[Billing] Validation failed:', errors);
+      return;
+    }
+
+    const coachId = user!.id;
+    const parsedAmount = parseFloat(amount);
+    const payload = {
+      coachId,
+      amount: parsedAmount,
+      clientEmail: clientEmail.trim(),
+      description: description.trim() || 'Coaching sessie',
+    };
+
+    console.log('[Billing] POST billing-checkout-session:', payload);
+    setSubmitting(true);
+    setSubmitError(null);
+
+    try {
+      const response = await fetch(CHECKOUT_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error('[Billing] Checkout session error:', response.status, errText);
+        setSubmitError(`Fout (${response.status}): ${errText || 'Onbekende fout'}`);
+        return;
+      }
+
+      const data = await response.json();
+      console.log('[Billing] Checkout session response:', data);
+
+      if (data.url) {
+        console.log('[Billing] Opening Stripe Checkout URL:', data.url);
+        setFormVisible(false);
+        setSuccessVisible(true);
+        await Linking.openURL(data.url);
+      } else {
+        console.error('[Billing] No URL in response:', data);
+        setSubmitError('Geen betaallink ontvangen. Probeer opnieuw.');
+      }
+    } catch (err: any) {
+      console.error('[Billing] Network error:', err);
+      setSubmitError('Netwerkfout. Controleer je verbinding en probeer opnieuw.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // ─── Render ────────────────────────────────────────────────────────────────
+
+  if (loadingProfile) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+        <View style={styles.header}>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Facturatie</Text>
         </View>
-        <Text style={styles.title}>Facturatie</Text>
-        <Text style={styles.subtitle}>Beheer je facturen en betalingen.{'\n'}Binnenkort beschikbaar.</Text>
-      </View>
-    </SafeAreaView>
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const hasStripe = !!stripeAccountId;
+
+  const selectedClientName = selectedClient ? selectedClient.full_name : null;
+  const selectedClientEmail = selectedClient ? selectedClient.email : null;
+
+  return (
+    <>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+        <View style={[styles.header, { borderBottomColor: colors.border }]}>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Facturatie</Text>
+        </View>
+
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          {hasStripe ? (
+            <>
+              {/* Stats / intro card */}
+              <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={styles.infoCardIcon}>
+                  <Ionicons name="card-outline" size={28} color={bcctColors.primaryOrange} />
+                </View>
+                <View style={styles.infoCardText}>
+                  <Text style={[styles.infoCardTitle, { color: colors.text }]}>Stripe gekoppeld</Text>
+                  <Text style={[styles.infoCardSub, { color: bcctColors.textSecondary }]}>
+                    Stuur betaallinks rechtstreeks naar je cliënten.
+                  </Text>
+                </View>
+                <View style={styles.connectedBadge}>
+                  <Ionicons name="checkmark-circle" size={20} color={bcctColors.success} />
+                </View>
+              </View>
+
+              {/* CTA */}
+              <TouchableOpacity
+                style={styles.ctaButtonContainer}
+                onPress={openForm}
+                activeOpacity={0.9}
+              >
+                <LinearGradient
+                  colors={[bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.ctaButton}
+                >
+                  <Ionicons name="receipt-outline" size={22} color="#fff" />
+                  <Text style={styles.ctaButtonText}>Factuur maken</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </>
+          ) : (
+            /* No Stripe empty state */
+            <View style={styles.emptyState}>
+              <View style={[styles.emptyIconWrap, { backgroundColor: bcctColors.primaryOrange + '18' }]}>
+                <Ionicons name="card-outline" size={48} color={bcctColors.primaryOrange} />
+              </View>
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>Stripe nog niet gekoppeld</Text>
+              <Text style={[styles.emptySub, { color: bcctColors.textSecondary }]}>
+                Koppel eerst je Stripe account om betalingen te ontvangen.
+              </Text>
+              <TouchableOpacity
+                style={styles.stripeButtonContainer}
+                activeOpacity={0.9}
+                onPress={() => console.log('[Billing] Stripe koppelen pressed')}
+              >
+                <LinearGradient
+                  colors={[bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.stripeButton}
+                >
+                  <Ionicons name="link-outline" size={20} color="#fff" />
+                  <Text style={styles.stripeButtonText}>Stripe koppelen</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          <View style={{ height: 100 }} />
+        </ScrollView>
+      </SafeAreaView>
+
+      {/* ── Factuur maken modal ─────────────────────────────────────────────── */}
+      <Modal
+        isVisible={formVisible}
+        onBackdropPress={closeForm}
+        onBackButtonPress={closeForm}
+        animationIn="slideInUp"
+        animationOut="slideOutDown"
+        backdropOpacity={0.45}
+        style={styles.bottomModal}
+        avoidKeyboard
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalWrapper}
+        >
+          <View style={[styles.modalSheet, { backgroundColor: colors.card }]}>
+            {/* Handle */}
+            <View style={[styles.handle, { backgroundColor: colors.border }]} />
+
+            {/* Header */}
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Factuur maken</Text>
+              <TouchableOpacity onPress={closeForm} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close-circle" size={28} color={bcctColors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {/* Client selector */}
+              <View style={styles.fieldGroup}>
+                <Text style={[styles.fieldLabel, { color: colors.text }]}>Cliënt</Text>
+                <TouchableOpacity
+                  style={[
+                    styles.pickerButton,
+                    { backgroundColor: colors.background, borderColor: errors.client ? bcctColors.error : colors.border },
+                  ]}
+                  onPress={() => {
+                    console.log('[Billing] Client picker opened');
+                    setClientPickerVisible(true);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  {selectedClientName ? (
+                    <View style={styles.pickerSelected}>
+                      <View style={[styles.pickerAvatar, { backgroundColor: bcctColors.primaryOrange + '20' }]}>
+                        <Ionicons name="person" size={16} color={bcctColors.primaryOrange} />
+                      </View>
+                      <View>
+                        <Text style={[styles.pickerSelectedName, { color: colors.text }]}>{selectedClientName}</Text>
+                        <Text style={[styles.pickerSelectedEmail, { color: bcctColors.textSecondary }]}>{selectedClientEmail}</Text>
+                      </View>
+                    </View>
+                  ) : (
+                    <Text style={[styles.pickerPlaceholder, { color: bcctColors.textSecondary }]}>
+                      {loadingClients ? 'Cliënten laden...' : 'Selecteer een cliënt'}
+                    </Text>
+                  )}
+                  <Ionicons name="chevron-down" size={18} color={bcctColors.textSecondary} />
+                </TouchableOpacity>
+                {errors.client ? <Text style={styles.errorText}>{errors.client}</Text> : null}
+              </View>
+
+              {/* Amount */}
+              <View style={styles.fieldGroup}>
+                <Text style={[styles.fieldLabel, { color: colors.text }]}>Bedrag (€)</Text>
+                <View style={[
+                  styles.inputRow,
+                  { backgroundColor: colors.background, borderColor: errors.amount ? bcctColors.error : colors.border },
+                ]}>
+                  <Text style={[styles.currencySymbol, { color: bcctColors.textSecondary }]}>€</Text>
+                  <TextInput
+                    style={[styles.input, { color: colors.text }]}
+                    placeholder="75.00"
+                    placeholderTextColor={bcctColors.textSecondary}
+                    keyboardType="decimal-pad"
+                    value={amount}
+                    onChangeText={(v) => {
+                      setAmount(v);
+                      setErrors((prev) => ({ ...prev, amount: undefined }));
+                    }}
+                  />
+                </View>
+                {errors.amount ? <Text style={styles.errorText}>{errors.amount}</Text> : null}
+              </View>
+
+              {/* Description */}
+              <View style={styles.fieldGroup}>
+                <Text style={[styles.fieldLabel, { color: colors.text }]}>Omschrijving</Text>
+                <TextInput
+                  style={[
+                    styles.inputField,
+                    { backgroundColor: colors.background, borderColor: colors.border, color: colors.text },
+                  ]}
+                  placeholder="Coaching sessie"
+                  placeholderTextColor={bcctColors.textSecondary}
+                  value={description}
+                  onChangeText={setDescription}
+                  returnKeyType="next"
+                />
+              </View>
+
+              {/* Client email */}
+              <View style={styles.fieldGroup}>
+                <Text style={[styles.fieldLabel, { color: colors.text }]}>E-mail cliënt</Text>
+                <TextInput
+                  style={[
+                    styles.inputField,
+                    {
+                      backgroundColor: colors.background,
+                      borderColor: errors.clientEmail ? bcctColors.error : colors.border,
+                      color: colors.text,
+                    },
+                  ]}
+                  placeholder="cliënt@email.com"
+                  placeholderTextColor={bcctColors.textSecondary}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  value={clientEmail}
+                  onChangeText={(v) => {
+                    setClientEmail(v);
+                    setErrors((prev) => ({ ...prev, clientEmail: undefined }));
+                  }}
+                />
+                {errors.clientEmail ? <Text style={styles.errorText}>{errors.clientEmail}</Text> : null}
+              </View>
+
+              {/* Submit error */}
+              {submitError ? (
+                <View style={styles.submitErrorBox}>
+                  <Ionicons name="alert-circle-outline" size={18} color={bcctColors.error} />
+                  <Text style={styles.submitErrorText}>{submitError}</Text>
+                </View>
+              ) : null}
+
+              {/* Actions */}
+              <View style={styles.actionsRow}>
+                <TouchableOpacity
+                  style={[styles.cancelButton, { borderColor: colors.border }]}
+                  onPress={closeForm}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.cancelButtonText, { color: bcctColors.textSecondary }]}>Annuleren</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.submitButtonContainer, submitting && styles.submitButtonDisabled]}
+                  onPress={handleSubmit}
+                  disabled={submitting}
+                  activeOpacity={0.9}
+                >
+                  <LinearGradient
+                    colors={submitting
+                      ? [bcctColors.primaryOrangeDisabled, bcctColors.primaryOrangeDisabled]
+                      : [bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.submitButton}
+                  >
+                    {submitting ? (
+                      <>
+                        <ActivityIndicator size="small" color="#fff" />
+                        <Text style={styles.submitButtonText}>Bezig...</Text>
+                      </>
+                    ) : (
+                      <>
+                        <Ionicons name="send-outline" size={18} color="#fff" />
+                        <Text style={styles.submitButtonText}>Factuur sturen</Text>
+                      </>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+
+              <View style={{ height: 24 }} />
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ── Client picker modal ─────────────────────────────────────────────── */}
+      <Modal
+        isVisible={clientPickerVisible}
+        onBackdropPress={() => setClientPickerVisible(false)}
+        onBackButtonPress={() => setClientPickerVisible(false)}
+        animationIn="slideInUp"
+        animationOut="slideOutDown"
+        backdropOpacity={0.45}
+        style={styles.bottomModal}
+      >
+        <View style={[styles.pickerSheet, { backgroundColor: colors.card }]}>
+          <View style={[styles.handle, { backgroundColor: colors.border }]} />
+          <View style={styles.pickerSheetHeader}>
+            <Text style={[styles.pickerSheetTitle, { color: colors.text }]}>Selecteer cliënt</Text>
+            <TouchableOpacity onPress={() => setClientPickerVisible(false)}>
+              <Ionicons name="close-circle" size={28} color={bcctColors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          {loadingClients ? (
+            <View style={styles.pickerLoading}>
+              <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
+            </View>
+          ) : clients.length === 0 ? (
+            <View style={styles.pickerEmpty}>
+              <Ionicons name="people-outline" size={40} color={bcctColors.textSecondary} />
+              <Text style={[styles.pickerEmptyText, { color: bcctColors.textSecondary }]}>
+                Geen cliënten gevonden
+              </Text>
+            </View>
+          ) : (
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {clients.map((client) => {
+                const isSelected = selectedClient?.id === client.id;
+                return (
+                  <TouchableOpacity
+                    key={client.id}
+                    style={[
+                      styles.clientRow,
+                      { borderColor: colors.border },
+                      isSelected && { backgroundColor: bcctColors.primaryOrange + '12' },
+                    ]}
+                    onPress={() => handleSelectClient(client)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.clientRowAvatar, { backgroundColor: bcctColors.primaryOrange + '20' }]}>
+                      <Ionicons name="person" size={20} color={bcctColors.primaryOrange} />
+                    </View>
+                    <View style={styles.clientRowInfo}>
+                      <Text style={[styles.clientRowName, { color: colors.text }]}>{client.full_name}</Text>
+                      <Text style={[styles.clientRowEmail, { color: bcctColors.textSecondary }]}>{client.email}</Text>
+                    </View>
+                    {isSelected && (
+                      <Ionicons name="checkmark-circle" size={22} color={bcctColors.primaryOrange} />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+              <View style={{ height: 24 }} />
+            </ScrollView>
+          )}
+        </View>
+      </Modal>
+
+      {/* ── Success modal ───────────────────────────────────────────────────── */}
+      <Modal
+        isVisible={successVisible}
+        onBackdropPress={() => setSuccessVisible(false)}
+        onBackButtonPress={() => setSuccessVisible(false)}
+        animationIn="fadeIn"
+        animationOut="fadeOut"
+        backdropOpacity={0.5}
+      >
+        <View style={[styles.successModal, { backgroundColor: colors.card }]}>
+          <View style={[styles.successIconWrap, { backgroundColor: bcctColors.success + '18' }]}>
+            <Ionicons name="checkmark-circle" size={56} color={bcctColors.success} />
+          </View>
+          <Text style={[styles.successTitle, { color: colors.text }]}>Betaallink verstuurd!</Text>
+          <Text style={[styles.successSub, { color: bcctColors.textSecondary }]}>
+            De Stripe Checkout pagina is geopend. De cliënt ontvangt een betaalbevestiging per e-mail.
+          </Text>
+          <TouchableOpacity
+            style={[styles.successButton, { backgroundColor: bcctColors.primaryOrange }]}
+            onPress={() => setSuccessVisible(false)}
+          >
+            <Text style={styles.successButtonText}>Sluiten</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+    </>
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: bcctColors.lightBackground },
+  container: {
+    flex: 1,
+  },
+  centered: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   header: {
     paddingHorizontal: 20,
     paddingTop: 8,
     paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: bcctColors.borderGray,
     backgroundColor: '#FFFFFF',
   },
-  headerTitle: { fontSize: 22, fontWeight: '700', color: bcctColors.textPrimary },
-  content: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
-  iconWrap: {
+  headerTitle: {
+    ...bcctTypography.h2,
+  },
+  scrollContent: {
+    padding: 20,
+  },
+
+  // Info card
+  infoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  infoCardIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: bcctColors.primaryOrange + '18',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  infoCardText: {
+    flex: 1,
+  },
+  infoCardTitle: {
+    ...bcctTypography.bodyMedium,
+    marginBottom: 2,
+  },
+  infoCardSub: {
+    ...bcctTypography.small,
+  },
+  connectedBadge: {
+    padding: 4,
+  },
+
+  // CTA
+  ctaButtonContainer: {
+    borderRadius: 18,
+    overflow: 'hidden',
+  },
+  ctaButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+  },
+  ctaButtonText: {
+    color: '#fff',
+    ...bcctTypography.button,
+    fontSize: 17,
+  },
+
+  // Empty state
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 60,
+    gap: 16,
+  },
+  emptyIconWrap: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  emptyTitle: {
+    ...bcctTypography.h3,
+    textAlign: 'center',
+  },
+  emptySub: {
+    ...bcctTypography.body,
+    textAlign: 'center',
+    maxWidth: 280,
+  },
+  stripeButtonContainer: {
+    borderRadius: 18,
+    overflow: 'hidden',
+    marginTop: 8,
+    width: '100%',
+  },
+  stripeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+  },
+  stripeButtonText: {
+    color: '#fff',
+    ...bcctTypography.button,
+  },
+
+  // Bottom modal
+  bottomModal: {
+    margin: 0,
+    justifyContent: 'flex-end',
+  },
+  modalWrapper: {
+    width: '100%',
+  },
+  modalSheet: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    maxHeight: '92%',
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  modalTitle: {
+    ...bcctTypography.h3,
+  },
+
+  // Form fields
+  fieldGroup: {
+    marginBottom: 20,
+  },
+  fieldLabel: {
+    ...bcctTypography.label,
+    marginBottom: 8,
+  },
+  pickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    minHeight: 52,
+  },
+  pickerSelected: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  pickerAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pickerSelectedName: {
+    ...bcctTypography.bodyMedium,
+  },
+  pickerSelectedEmail: {
+    ...bcctTypography.small,
+  },
+  pickerPlaceholder: {
+    ...bcctTypography.body,
+    flex: 1,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    height: 52,
+  },
+  currencySymbol: {
+    ...bcctTypography.bodyMedium,
+    marginRight: 6,
+  },
+  input: {
+    flex: 1,
+    ...bcctTypography.body,
+    paddingVertical: 0,
+  },
+  inputField: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    height: 52,
+    ...bcctTypography.body,
+  },
+  errorText: {
+    color: bcctColors.error,
+    ...bcctTypography.small,
+    marginTop: 4,
+  },
+  submitErrorBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: bcctColors.error + '12',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 16,
+  },
+  submitErrorText: {
+    color: bcctColors.error,
+    ...bcctTypography.small,
+    flex: 1,
+  },
+
+  // Actions
+  actionsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  cancelButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelButtonText: {
+    ...bcctTypography.button,
+  },
+  submitButtonContainer: {
+    flex: 2,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  submitButtonDisabled: {
+    opacity: 0.7,
+  },
+  submitButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+  },
+  submitButtonText: {
+    color: '#fff',
+    ...bcctTypography.button,
+  },
+
+  // Client picker sheet
+  pickerSheet: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    maxHeight: '70%',
+  },
+  pickerSheetHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  pickerSheetTitle: {
+    ...bcctTypography.h3,
+  },
+  pickerLoading: {
+    paddingVertical: 40,
+    alignItems: 'center',
+  },
+  pickerEmpty: {
+    paddingVertical: 40,
+    alignItems: 'center',
+    gap: 12,
+  },
+  pickerEmptyText: {
+    ...bcctTypography.body,
+  },
+  clientRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    gap: 12,
+    borderRadius: 8,
+    paddingHorizontal: 4,
+  },
+  clientRowAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  clientRowInfo: {
+    flex: 1,
+  },
+  clientRowName: {
+    ...bcctTypography.bodyMedium,
+  },
+  clientRowEmail: {
+    ...bcctTypography.small,
+  },
+
+  // Success modal
+  successModal: {
+    borderRadius: 24,
+    padding: 28,
+    alignItems: 'center',
+    marginHorizontal: 24,
+  },
+  successIconWrap: {
     width: 88,
     height: 88,
     borderRadius: 44,
-    backgroundColor: '#FFF3E8',
-    alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
+    alignItems: 'center',
+    marginBottom: 16,
   },
-  title: { fontSize: 20, fontWeight: '700', color: bcctColors.textPrimary, marginBottom: 8, textAlign: 'center' },
-  subtitle: { fontSize: 15, color: bcctColors.textSecondary, textAlign: 'center', lineHeight: 22 },
+  successTitle: {
+    ...bcctTypography.h3,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  successSub: {
+    ...bcctTypography.body,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  successButton: {
+    borderRadius: 14,
+    paddingHorizontal: 40,
+    paddingVertical: 14,
+  },
+  successButtonText: {
+    color: '#fff',
+    ...bcctTypography.button,
+  },
 });
