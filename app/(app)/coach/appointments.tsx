@@ -19,7 +19,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { bcctColors, bcctTypography } from "@/styles/bcctTheme";
-import { useRouter, useRootNavigationState } from "expo-router";
+import { useRouter } from "expo-router";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -167,7 +167,6 @@ async function enrichWithClients(appts: Appointment[]): Promise<Appointment[]> {
 
 export default function CoachAppointmentsScreen() {
   const { user, loading: authLoading } = useAuth();
-  const navState = useRootNavigationState();
   const router = useRouter();
 
   // ── View mode ─────────────────────────────────────────────────────────────
@@ -664,11 +663,12 @@ export default function CoachAppointmentsScreen() {
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
-  // Defer rendering until the navigation container is mounted.
-  // Without this guard, useRouter() can throw "Cannot read property 'route' of null"
-  // when the tab is rendered before the navigator context is ready.
-  if (!navState?.key) {
-    return <View style={styles.container} />;
+  if (authLoading) {
+    return (
+      <View style={[styles.container, styles.loadingWrap]}>
+        <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
+      </View>
+    );
   }
 
   return (
