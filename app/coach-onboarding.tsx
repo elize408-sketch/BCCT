@@ -189,10 +189,8 @@ export default function CoachOnboardingScreen() {
   const [stepBrandSaving, setStepBrandSaving] = useState(false);
   const [stepBrandError, setStepBrandError] = useState('');
 
-  // Step 11 — Stripe Connect
-  const [stripeLoading, setStripeLoading] = useState(false);
-  const [stripeError, setStripeError] = useState('');
-  const [stripeUrlOpened, setStripeUrlOpened] = useState(false);
+  // Step 10 — Stripe Connect
+  const [stripeError] = useState('');
 
   // Session guard + prefill on mount
   useEffect(() => {
@@ -605,51 +603,12 @@ export default function CoachOnboardingScreen() {
     }
   };
 
-  const handleStripeConnect = async () => {
-    console.log('[CoachOnboarding] Stripe koppelen pressed');
-    setStripeError('');
-    setStripeLoading(true);
-
-    try {
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
-      if (!currentSession) {
-        setStripeError('Geen actieve sessie. Log opnieuw in.');
-        return;
-      }
-
-      console.log('[CoachOnboarding] POST stripe-connect-create for user:', currentSession.user.id);
-      const response = await fetch(STRIPE_CONNECT_CREATE_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${currentSession.access_token}`,
-          'apikey': SUPABASE_ANON_KEY,
-        },
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        console.error('[CoachOnboarding] stripe-connect-create error:', response.status, data);
-        setStripeError(data.error || 'Er is iets misgegaan. Probeer het opnieuw.');
-        return;
-      }
-
-      console.log('[CoachOnboarding] stripe-connect-create response — navigating to WebView');
-      router.push({
-        pathname: '/stripe-onboarding-webview',
-        params: {
-          clientSecret: data.client_secret,
-          publishableKey: data.publishable_key,
-          stripeAccountId: data.stripe_account_id,
-          returnTo: 'onboarding',
-        },
-      });
-    } catch (err: any) {
-      console.error('[CoachOnboarding] Stripe connect error:', err.message);
-      setStripeError('Er is iets misgegaan. Probeer het opnieuw.');
-    } finally {
-      setStripeLoading(false);
-    }
+  const handleStripeConnect = () => {
+    console.log('[CoachOnboarding] Stripe koppelen pressed — navigating to Stripe Connect screen');
+    router.push({
+      pathname: '/stripe-onboarding-webview',
+      params: { returnTo: 'onboarding' },
+    });
   };
 
 
