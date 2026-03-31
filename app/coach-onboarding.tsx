@@ -191,6 +191,7 @@ export default function CoachOnboardingScreen() {
 
   // Step 10 — Stripe Connect
   const [stripeError] = useState('');
+  const [stripeLoading, setStripeLoading] = useState(false);
 
   // Session guard + prefill on mount
   useEffect(() => {
@@ -603,12 +604,17 @@ export default function CoachOnboardingScreen() {
     }
   };
 
-  const handleStripeConnect = () => {
+  const handleStripeConnect = async () => {
     console.log('[CoachOnboarding] Stripe koppelen pressed — navigating to Stripe Connect screen');
-    router.push({
-      pathname: '/stripe-onboarding-webview',
-      params: { returnTo: 'onboarding' },
-    });
+    setStripeLoading(true);
+    try {
+      router.push({
+        pathname: '/stripe-onboarding-webview',
+        params: { returnTo: 'onboarding' },
+      });
+    } finally {
+      setStripeLoading(false);
+    }
   };
 
 
