@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Share,
+  Image,
 } from "react-native";
 import Modal from "react-native-modal";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -23,7 +24,8 @@ import { LinearGradient } from "expo-linear-gradient";
 interface Client {
   id: string;
   full_name: string;
-  email: string;
+  phone: string | null;
+  avatar_url: string | null;
   active_theme?: string;
 }
 
@@ -35,6 +37,45 @@ interface ClientInvite {
   used_by: string | null;
   expires_at: string | null;
   is_active: boolean;
+}
+
+function ClientCard({ client, colors, onPress }: { client: Client; colors: any; onPress: () => void }) {
+  const displayName = client.full_name && client.full_name.trim() ? client.full_name : 'Cliënt';
+  const initials = displayName.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
+  const phoneText = client.phone ? client.phone : null;
+
+  return (
+    <TouchableOpacity
+      style={[styles.clientCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      <View style={[styles.clientAvatar, { backgroundColor: bcctColors.primaryOrange + '20' }]}>
+        {client.avatar_url ? (
+          <Image source={{ uri: client.avatar_url }} style={styles.clientAvatarImage} />
+        ) : (
+          <Text style={styles.clientAvatarInitials}>{initials}</Text>
+        )}
+      </View>
+      <View style={styles.clientInfo}>
+        <Text style={[styles.clientName, { color: colors.text }]}>{displayName}</Text>
+        {phoneText && (
+          <Text style={[styles.clientEmail, { color: bcctColors.textSecondary }]}>{phoneText}</Text>
+        )}
+        {client.active_theme && (
+          <View style={styles.themeBadge}>
+            <Text style={styles.themeBadgeText}>{client.active_theme}</Text>
+          </View>
+        )}
+      </View>
+      <IconSymbol
+        ios_icon_name="chevron.right"
+        android_material_icon_name="chevron-right"
+        size={20}
+        color={bcctColors.textSecondary}
+      />
+    </TouchableOpacity>
+  );
 }
 
 export default function CoachClientsScreen() {
@@ -103,12 +144,16 @@ export default function CoachClientsScreen() {
       }
 
       const clientIds = coachClients.map(cc => cc.client_id);
-      console.log("[Coach Clients] Active client ids:", clientIds);
+      console.log('[Clients] authenticated coach id:', user.id);
+      console.log('[Clients] coach_clients rows found:', coachClients);
+      console.log('[Clients] client_ids:', clientIds);
 
       const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
-        .select('id, full_name, email')
+        .select('id, full_name, phone, avatar_url, onboarding_completed, role, created_at')
         .in('id', clientIds);
+
+      console.log('[Clients] profiles fetched:', profiles);
 
       if (profilesError) {
         console.error("[Coach Clients] Error fetching profiles:", profilesError);
@@ -355,37 +400,14 @@ export default function CoachClientsScreen() {
               <View style={styles.clientsList}>
                 {clients.map((client) => (
                   <React.Fragment key={client.id}>
-                  <TouchableOpacity
-                    style={[styles.clientCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-                    onPress={() => router.push(`/(app)/coach/client-detail?id=${client.id}` as any)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={[styles.clientAvatar, { backgroundColor: bcctColors.primaryOrange + "20" }]}>
-                      <IconSymbol
-                        ios_icon_name="person.fill"
-                        android_material_icon_name="person"
-                        size={24}
-                        color={bcctColors.primaryOrange}
-                      />
-                    </View>
-                    <View style={styles.clientInfo}>
-                      <Text style={[styles.clientName, { color: colors.text }]}>{client.full_name}</Text>
-                      <Text style={[styles.clientEmail, { color: bcctColors.textSecondary }]}>
-                        {client.email}
-                      </Text>
-                      {client.active_theme && (
-                        <View style={styles.themeBadge}>
-                          <Text style={styles.themeBadgeText}>{client.active_theme}</Text>
-                        </View>
-                      )}
-                    </View>
-                    <IconSymbol
-                      ios_icon_name="chevron.right"
-                      android_material_icon_name="chevron-right"
-                      size={20}
-                      color={bcctColors.textSecondary}
-                    />
-                  </TouchableOpacity>
+                  <ClientCard
+                    client={client}
+                    colors={colors}
+                    onPress={() => {
+                      console.log('[Clients] Client card pressed:', client.id, client.full_name || 'Cliënt');
+                      router.push(`/(app)/coach/client-detail?id=${client.id}` as any);
+                    }}
+                  />
                   </React.Fragment>
                 ))}
               </View>
@@ -626,6 +648,17 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     justifyContent: "center",
     alignItems: "center",
+    overflow: "hidden",
+  },
+  clientAvatarImage: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+  },
+  clientAvatarInitials: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: bcctColors.primaryOrange,
   },
   clientInfo: {
     flex: 1,
