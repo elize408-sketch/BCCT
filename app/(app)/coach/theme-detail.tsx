@@ -280,47 +280,86 @@ export default function ThemeDetailScreen() {
     setAssignModalVisible(false);
     setAssigning(true);
     try {
+      // Step 1 — Get the current session
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) {
-        console.error("[Theme Detail] No session for assign-module");
-        showModal("Fout", "Kon module niet toewijzen. Probeer het opnieuw.");
+        showModal('Fout', 'Je bent niet ingelogd');
         return;
       }
+      const userId = session.user.id;
 
-      // Check for duplicate assignment
-      console.log("[Theme Detail] Checking for existing assignment", { client_id: client.client_id, template_id: id });
+      // Step 2 — Resolve or create a program_templates row
+      console.log("[Theme Detail] Checking for existing program_template", { coach_id: userId, title: theme?.name });
+      const { data: existingTemplate } = await supabase
+        .from('program_templates')
+        .select('id')
+        .eq('coach_id', userId)
+        .eq('title', theme!.name)
+        .maybeSingle();
+
+      let templateId: string;
+      if (existingTemplate) {
+        console.log("[Theme Detail] Found existing program_template", existingTemplate.id);
+        templateId = existingTemplate.id;
+      } else {
+        console.log("[Theme Detail] Creating new program_template for theme", theme!.name);
+        const { data: newTemplate, error: templateError } = await supabase
+          .from('program_templates')
+          .insert({
+            coach_id: userId,
+            org_id: null,
+            title: theme!.name,
+            description: theme!.description || '',
+            is_published: true,
+            created_at: new Date().toISOString(),
+          })
+          .select('id')
+          .single();
+
+        if (templateError || !newTemplate) {
+          console.error("[Theme Detail] Error creating program_template", templateError);
+          showModal('Fout', 'Kon module niet voorbereiden voor toewijzing.');
+          return;
+        }
+        console.log("[Theme Detail] Created program_template", newTemplate.id);
+        templateId = newTemplate.id;
+      }
+
+      // Step 3 — Check for duplicate assignment
+      console.log("[Theme Detail] Checking for existing assignment", { client_id: client.client_id, template_id: templateId });
       const { data: existing } = await supabase
-        .from("client_programs")
-        .select("id")
-        .eq("client_id", client.client_id)
-        .eq("template_id", id)
+        .from('client_programs')
+        .select('id')
+        .eq('client_id', client.client_id)
+        .eq('template_id', templateId)
         .maybeSingle();
 
       if (existing) {
         console.warn("[Theme Detail] Module already assigned to", client.full_name);
-        showModal("Al toegewezen", `Deze module is al toegewezen aan ${client.full_name}`);
+        showModal('Al toegewezen', `Deze module is al toegewezen aan ${client.full_name}`);
         return;
       }
 
-      console.log("[Theme Detail] Inserting client_programs row");
+      // Step 4 — Insert into client_programs
+      console.log("[Theme Detail] Inserting client_programs row", { client_id: client.client_id, template_id: templateId });
       const { error: insertError } = await supabase
-        .from("client_programs")
+        .from('client_programs')
         .insert({
           client_id: client.client_id,
-          template_id: id,
-          assigned_by: session.user.id,
+          template_id: templateId,
+          assigned_by: userId,
           assigned_at: new Date().toISOString(),
           current_week: 1,
         });
 
       if (insertError) {
-        console.error("[Theme Detail] Insert error", insertError);
-        showModal("Fout", "Kon module niet toewijzen. Probeer het opnieuw.");
+        console.error('[Theme Detail] Error assigning module', insertError);
+        showModal('Fout', 'Kon module niet toewijzen. Probeer het opnieuw.');
         return;
       }
 
       console.log("[Theme Detail] Module assigned successfully to", client.full_name);
-      showModal("Toegewezen ✓", `Module toegewezen aan ${client.full_name}`);
+      showModal('Toegewezen ✓', `Module toegewezen aan ${client.full_name}`);
     } catch (error: any) {
       console.error("[Theme Detail] assign-module exception", error);
       showModal("Fout", "Kon module niet toewijzen. Probeer het opnieuw.");
