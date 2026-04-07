@@ -72,19 +72,7 @@ export default function CoachLayout() {
       />
       <Tabs.Screen
         name="clients"
-        options={{
-          title: "Cliënten",
-          tabBarIcon: ({ color, focused }) => (
-            <View style={[styles.iconContainer, focused && styles.iconFocused]}>
-              <IconSymbol
-                ios_icon_name="person.2.fill"
-                android_material_icon_name="group"
-                size={24}
-                color={focused ? "#FFFFFF" : color}
-              />
-            </View>
-          ),
-        }}
+        options={{ href: null }}
       />
       <Tabs.Screen
         name="chat"
