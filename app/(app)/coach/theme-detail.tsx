@@ -229,7 +229,7 @@ export default function ThemeDetailScreen() {
       console.log("[Theme Detail] Fetching coach_clients for user", userId);
       const { data: coachClients, error: ccError } = await supabase
         .from("coach_clients")
-        .select("id, client_id")
+        .select("client_id")
         .eq("coach_id", userId)
         .eq("status", "active");
 
@@ -258,18 +258,15 @@ export default function ThemeDetailScreen() {
         return;
       }
 
-      const merged = coachClients.map(cc => {
-        const profile = profiles?.find(p => p.id === cc.client_id);
-        return {
-          id: cc.id,
-          client_id: cc.client_id,
-          full_name: profile?.full_name ?? "Onbekend",
-          avatar_url: profile?.avatar_url ?? null,
-        };
-      });
+      const clients = (profiles ?? []).map(profile => ({
+        id: profile.id,
+        client_id: profile.id,
+        full_name: profile.full_name ?? "Onbekend",
+        avatar_url: profile.avatar_url ?? null,
+      }));
 
-      console.log("[Theme Detail] Clients loaded", merged);
-      setClients(merged);
+      console.log("[Theme Detail] Clients loaded", clients);
+      setClients(clients);
     } catch (error: any) {
       console.error("[Theme Detail] Error fetching clients", error);
       setClientsError(true);
