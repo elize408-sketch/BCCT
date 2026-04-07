@@ -21,7 +21,6 @@ import { useTheme } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import Constants from 'expo-constants';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bcctColors, bcctTypography } from '@/styles/bcctTheme';
@@ -38,9 +37,6 @@ const BRAND_COLORS = [
   '#f5a623',
   '#2ecc71',
 ];
-const SUPABASE_URL = (Constants.expoConfig?.extra?.supabaseUrl as string) ?? '';
-const SUPABASE_ANON_KEY = (Constants.expoConfig?.extra?.supabaseAnonKey as string) ?? '';
-const STRIPE_CONNECT_CREATE_ENDPOINT = `${SUPABASE_URL}/functions/v1/stripe-connect-create`;
 
 const COACHING_TYPES = [
   'Burn-out coaching',

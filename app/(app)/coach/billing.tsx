@@ -66,7 +66,6 @@ function resolveImageSource(source: string | number | ImageSourcePropType | unde
 const SUPABASE_URL = Constants.expoConfig?.extra?.supabaseUrl as string;
 const SUPABASE_ANON_KEY = Constants.expoConfig?.extra?.supabaseAnonKey as string;
 const CHECKOUT_ENDPOINT = `${SUPABASE_URL}/functions/v1/billing-checkout-session`;
-const STRIPE_CREATE_ENDPOINT = `${SUPABASE_URL}/functions/v1/stripe-connect-create`;
 const STRIPE_STATUS_ENDPOINT = `${SUPABASE_URL}/functions/v1/stripe-connect-status`;
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
@@ -77,8 +76,8 @@ export default function CoachBillingScreen() {
 
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [profile, setProfile] = useState<CoachProfile | null>(null);
-  const [stripeConnectLoading, setStripeConnectLoading] = useState(false);
-  const [stripeConnectError, setStripeConnectError] = useState<string | null>(null);
+  const [stripeConnectLoading] = useState(false);
+  const [stripeConnectError] = useState<string | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [loadingClients, setLoadingClients] = useState(false);
 
@@ -177,50 +176,12 @@ export default function CoachBillingScreen() {
 
   // ─── Stripe Connect handler ────────────────────────────────────────────────
 
-  const handleCreateStripeAccount = async () => {
-    console.log('[Billing] Stripe koppelen/doorgaan pressed');
-    setStripeConnectError(null);
-    setStripeConnectLoading(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        setStripeConnectError('Geen actieve sessie. Log opnieuw in.');
-        return;
-      }
-
-      console.log('[Billing] POST stripe-connect-create');
-      const res = await fetch(STRIPE_CREATE_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-          'apikey': SUPABASE_ANON_KEY,
-        },
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        console.error('[Billing] stripe-connect-create error:', res.status, data);
-        setStripeConnectError(data.error || `Fout (${res.status})`);
-        return;
-      }
-
-      console.log('[Billing] stripe-connect-create response — navigating to WebView');
-      router.push({
-        pathname: '/stripe-onboarding-webview',
-        params: {
-          clientSecret: data.client_secret,
-          publishableKey: data.publishable_key,
-          stripeAccountId: data.stripe_account_id,
-          returnTo: 'billing',
-        },
-      });
-    } catch (e: any) {
-      console.error('[Billing] stripe-connect-create network error:', e.message);
-      setStripeConnectError('Er is iets misgegaan. Probeer opnieuw.');
-    } finally {
-      setStripeConnectLoading(false);
-    }
+  const handleCreateStripeAccount = () => {
+    console.log('[Billing] Stripe koppelen/doorgaan pressed — navigating to onboarding WebView');
+    router.push({
+      pathname: '/stripe-onboarding-webview',
+      params: { returnTo: 'billing' },
+    });
   };
 
   // ─── Form helpers ──────────────────────────────────────────────────────────
