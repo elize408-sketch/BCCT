@@ -4,11 +4,11 @@
     "slug": "bcct-coaching",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/app-icon-cws.png",
+    "icon": "./assets/images/5.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/app-icon-cws.png",
+      "image": "./assets/images/5.png",
       "resizeMode": "contain",
       "backgroundColor": "#6366f1"
     },
@@ -21,7 +21,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/app-icon-cws.png",
+        "foregroundImage": "./assets/images/5.png",
         "backgroundColor": "#6366f1"
       },
       "edgeToEdgeEnabled": true,
