@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { bcctColors } from '@/styles/bcctTheme';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/utils/api';
+import { supabase } from '@/lib/supabase';
 
 const ORANGE = '#F97316';
 
@@ -94,18 +95,75 @@ export default function AppointmentFormScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  // Fetch clients
+  // Fetch active linked clients via two-step Supabase query
   useEffect(() => {
-    console.log('[AppointmentForm] Fetching clients list');
-    apiGet<Client[]>('/api/clients')
-      .then((data) => {
-        console.log('[AppointmentForm] Fetched', data?.length ?? 0, 'clients');
-        setClients(Array.isArray(data) ? data : []);
-      })
-      .catch((err) => {
-        console.error('[AppointmentForm] Error fetching clients:', err);
-      })
-      .finally(() => setClientsLoading(false));
+    const fetchClients = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          console.error('[NewAppointment] No authenticated user');
+          setClientsLoading(false);
+          return;
+        }
+
+        const coachProfileId = user.id;
+        console.log('[NewAppointment] coach id:', coachProfileId);
+
+        // Step 1: get active client IDs for this coach
+        const { data: coachClients, error: coachClientsError } = await supabase
+          .from('coach_clients')
+          .select('client_id')
+          .eq('coach_id', coachProfileId)
+          .eq('status', 'active');
+
+        if (coachClientsError) {
+          console.error('[NewAppointment] Error fetching coach_clients:', coachClientsError);
+          setClientsLoading(false);
+          return;
+        }
+
+        console.log('[NewAppointment] coach_clients rows:', coachClients?.length ?? 0);
+
+        if (!coachClients || coachClients.length === 0) {
+          console.log('[NewAppointment] No active clients found');
+          setClients([]);
+          setClientsLoading(false);
+          return;
+        }
+
+        const clientIds = coachClients.map((r) => r.client_id);
+        console.log('[NewAppointment] client_ids:', clientIds);
+
+        // Step 2: fetch profiles for those IDs
+        const { data: profiles, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, full_name, avatar_url, phone, role')
+          .in('id', clientIds);
+
+        if (profilesError) {
+          console.error('[NewAppointment] Error fetching profiles:', profilesError);
+          setClientsLoading(false);
+          return;
+        }
+
+        console.log('[NewAppointment] profiles fetched:', profiles);
+
+        const options = (profiles ?? []).map((p) => ({
+          id: p.id,
+          name: p.full_name || 'Cliënt',
+          avatar_url: p.avatar_url ?? null,
+        }));
+
+        console.log('[NewAppointment] dropdown options:', options);
+        setClients(options);
+      } catch (err) {
+        console.error('[NewAppointment] Unexpected error fetching clients:', err);
+      } finally {
+        setClientsLoading(false);
+      }
+    };
+
+    fetchClients();
   }, []);
 
   // Fetch appointment for edit mode
@@ -310,7 +368,7 @@ export default function AppointmentFormScreen() {
         {showClientPicker && (
           <View style={styles.clientDropdown}>
             {clients.length === 0 ? (
-              <Text style={styles.dropdownEmpty}>Geen cliënten gevonden</Text>
+              <Text style={styles.dropdownEmpty}>Geen gekoppelde cliënten</Text>
             ) : (
               clients.map((client) => {
                 const isSelected = client.id === selectedClientId;
