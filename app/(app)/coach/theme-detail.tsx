@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
   TextInput,
   Switch,
+  FlatList,
+  Image,
 } from "react-native";
 import Modal from "react-native-modal";
 import { useTheme } from "@react-navigation/native";
@@ -18,6 +20,8 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { bcctColors, bcctTypography } from "@/styles/bcctTheme";
 import { LinearGradient } from "expo-linear-gradient";
+
+const COACH_API_BASE = `${supabase.supabaseUrl}/functions/v1/coach-api`;
 
 interface ThemeItem {
   id: string;
@@ -30,6 +34,20 @@ interface Theme {
   id: string;
   name: string;
   description: string;
+}
+
+interface Client {
+  id: string;
+  client_id: string;
+  full_name: string;
+  avatar_url: string | null;
+}
+
+function getInitials(name: string): string {
+  const parts = String(name || "").trim().split(" ");
+  if (parts.length === 0 || !parts[0]) return "?";
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
 }
 
 export default function ThemeDetailScreen() {
@@ -45,6 +63,12 @@ export default function ThemeDetailScreen() {
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [newItemLabel, setNewItemLabel] = useState("");
   const [creating, setCreating] = useState(false);
+
+  // Assign flow state
+  const [assignModalVisible, setAssignModalVisible] = useState(false);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [clientsLoading, setClientsLoading] = useState(false);
+  const [assigning, setAssigning] = useState(false);
 
   const showModal = (title: string, message: string) => {
     setModalTitle(title);
@@ -187,6 +211,83 @@ export default function ThemeDetailScreen() {
     }
   };
 
+  const openAssignModal = async () => {
+    console.log("[Theme Detail] Opening assign modal for theme", id);
+    setAssignModalVisible(true);
+    setClientsLoading(true);
+    setClients([]);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.error("[Theme Detail] No session found for assign");
+        setClientsLoading(false);
+        return;
+      }
+      const url = `${COACH_API_BASE}/api/coach/clients`;
+      console.log("[Theme Detail] Fetching clients from", url);
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        console.error("[Theme Detail] Error fetching clients", response.status, text);
+        setClientsLoading(false);
+        return;
+      }
+      const data: Client[] = await response.json();
+      console.log("[Theme Detail] Clients loaded", data);
+      setClients(data);
+    } catch (error: any) {
+      console.error("[Theme Detail] Error fetching clients", error);
+    } finally {
+      setClientsLoading(false);
+    }
+  };
+
+  const handleAssignToClient = async (client: Client) => {
+    console.log("[Theme Detail] Assigning theme", id, "to client", client.client_id, client.full_name);
+    setAssignModalVisible(false);
+    setAssigning(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.error("[Theme Detail] No session for assign-module");
+        showModal("Fout", "Kon module niet toewijzen. Probeer het opnieuw.");
+        return;
+      }
+      const url = `${COACH_API_BASE}/api/coach/assign-module`;
+      console.log("[Theme Detail] POST assign-module", url, { client_id: client.client_id, template_id: id });
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ client_id: client.client_id, template_id: id }),
+      });
+      if (response.status === 201 || response.status === 200) {
+        console.log("[Theme Detail] Module assigned successfully to", client.full_name);
+        showModal("Toegewezen ✓", `Module toegewezen aan ${client.full_name}`);
+      } else if (response.status === 409) {
+        console.warn("[Theme Detail] Module already assigned to", client.full_name);
+        showModal("Al toegewezen", `Deze module is al toegewezen aan ${client.full_name}`);
+      } else {
+        const text = await response.text();
+        console.error("[Theme Detail] assign-module error", response.status, text);
+        showModal("Fout", "Kon module niet toewijzen. Probeer het opnieuw.");
+      }
+    } catch (error: any) {
+      console.error("[Theme Detail] assign-module exception", error);
+      showModal("Fout", "Kon module niet toewijzen. Probeer het opnieuw.");
+    } finally {
+      setAssigning(false);
+    }
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={["top"]}>
@@ -213,7 +314,10 @@ export default function ThemeDetailScreen() {
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.backButton}
-            onPress={() => router.back()}
+            onPress={() => {
+              console.log("[Theme Detail] Back button pressed");
+              router.back();
+            }}
           >
             <IconSymbol
               ios_icon_name="chevron.left"
@@ -223,17 +327,33 @@ export default function ThemeDetailScreen() {
             />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: colors.text }]}>{theme.name}</Text>
-          <TouchableOpacity
-            style={styles.addButton}
-            onPress={() => setCreateModalVisible(true)}
-          >
-            <IconSymbol
-              ios_icon_name="plus"
-              android_material_icon_name="add"
-              size={24}
-              color={bcctColors.primaryOrange}
-            />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.headerActionButton}
+              onPress={openAssignModal}
+            >
+              <IconSymbol
+                ios_icon_name="person.badge.plus"
+                android_material_icon_name="person_add"
+                size={24}
+                color={bcctColors.primaryOrange}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.headerActionButton}
+              onPress={() => {
+                console.log("[Theme Detail] Add question button pressed");
+                setCreateModalVisible(true);
+              }}
+            >
+              <IconSymbol
+                ios_icon_name="plus"
+                android_material_icon_name="add"
+                size={24}
+                color={bcctColors.primaryOrange}
+              />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -310,8 +430,96 @@ export default function ThemeDetailScreen() {
           {/* Bottom padding for tab bar */}
           <View style={{ height: 100 }} />
         </ScrollView>
+
+        {assigning ? (
+          <View style={styles.assigningOverlay}>
+            <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
+          </View>
+        ) : null}
       </SafeAreaView>
 
+      {/* Assign to client modal */}
+      <Modal
+        isVisible={assignModalVisible}
+        onBackdropPress={() => setAssignModalVisible(false)}
+        onBackButtonPress={() => setAssignModalVisible(false)}
+        animationIn="slideInUp"
+        animationOut="slideOutDown"
+        backdropOpacity={0.5}
+        style={styles.bottomModal}
+      >
+        <View style={[styles.assignModalContainer, { backgroundColor: colors.card }]}>
+          <View style={[styles.modalHandle, { backgroundColor: colors.border }]} />
+          <Text style={[styles.assignModalTitle, { color: colors.text }]}>
+            Toewijzen aan cliënt
+          </Text>
+
+          {clientsLoading ? (
+            <View style={styles.clientsLoadingContainer}>
+              <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
+            </View>
+          ) : clients.length === 0 ? (
+            <View style={styles.clientsEmptyContainer}>
+              <Text style={[styles.clientsEmptyText, { color: bcctColors.textSecondary }]}>
+                Je hebt nog geen gekoppelde cliënten om deze module aan toe te wijzen.
+              </Text>
+              <TouchableOpacity
+                style={[styles.goToClientsButton, { borderColor: bcctColors.primaryOrange }]}
+                onPress={() => {
+                  console.log("[Theme Detail] Navigate to clients pressed");
+                  setAssignModalVisible(false);
+                  router.push("/(app)/coach/clients");
+                }}
+              >
+                <Text style={[styles.goToClientsText, { color: bcctColors.primaryOrange }]}>
+                  Ga naar cliënten
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <FlatList
+              data={clients}
+              keyExtractor={(item) => item.id}
+              style={styles.clientsList}
+              renderItem={({ item }) => {
+                const initials = getInitials(item.full_name);
+                return (
+                  <TouchableOpacity
+                    style={[styles.clientRow, { borderBottomColor: colors.border }]}
+                    onPress={() => handleAssignToClient(item)}
+                  >
+                    {item.avatar_url ? (
+                      <Image
+                        source={{ uri: item.avatar_url }}
+                        style={styles.clientAvatar}
+                      />
+                    ) : (
+                      <View style={styles.clientAvatarPlaceholder}>
+                        <Text style={styles.clientAvatarInitials}>{initials}</Text>
+                      </View>
+                    )}
+                    <Text style={[styles.clientName, { color: colors.text }]}>
+                      {item.full_name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          )}
+
+          <TouchableOpacity
+            style={[styles.cancelAssignButton, { borderColor: colors.border }]}
+            onPress={() => {
+              console.log("[Theme Detail] Assign modal cancelled");
+              setAssignModalVisible(false);
+            }}
+          >
+            <Text style={[styles.cancelAssignText, { color: colors.text }]}>Annuleren</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
+      {/* Create question modal */}
       <Modal
         isVisible={createModalVisible}
         onBackdropPress={() => setCreateModalVisible(false)}
@@ -358,6 +566,7 @@ export default function ThemeDetailScreen() {
         </View>
       </Modal>
 
+      {/* Info / feedback modal */}
       <Modal
         isVisible={modalVisible}
         onBackdropPress={() => setModalVisible(false)}
@@ -416,6 +625,18 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: "center",
   },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  headerActionButton: {
+    width: 40,
+    height: 40,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  // kept for backward compat (unused but avoids any stale ref issues)
   addButton: {
     width: 40,
     height: 40,
@@ -490,6 +711,108 @@ const styles = StyleSheet.create({
   deleteButton: {
     padding: 8,
   },
+  assigningOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.15)",
+  },
+  // Assign modal
+  bottomModal: {
+    justifyContent: "flex-end",
+    margin: 0,
+  },
+  assignModalContainer: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 20,
+    paddingBottom: 40,
+    maxHeight: "80%",
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  assignModalTitle: {
+    ...bcctTypography.h3,
+    textAlign: "center",
+    marginBottom: 8,
+    paddingHorizontal: 20,
+  },
+  clientsLoadingContainer: {
+    paddingVertical: 48,
+    alignItems: "center",
+  },
+  clientsEmptyContainer: {
+    paddingVertical: 32,
+    paddingHorizontal: 24,
+    alignItems: "center",
+    gap: 16,
+  },
+  clientsEmptyText: {
+    ...bcctTypography.body,
+    textAlign: "center",
+  },
+  goToClientsButton: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  goToClientsText: {
+    ...bcctTypography.button,
+  },
+  clientsList: {
+    flexGrow: 0,
+  },
+  clientRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+  },
+  clientAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
+  clientAvatarPlaceholder: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: bcctColors.primaryOrange + "20",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  clientAvatarInitials: {
+    ...bcctTypography.bodyMedium,
+    color: bcctColors.primaryOrange,
+  },
+  clientName: {
+    ...bcctTypography.bodyMedium,
+    flex: 1,
+  },
+  cancelAssignButton: {
+    marginHorizontal: 20,
+    marginTop: 12,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  cancelAssignText: {
+    ...bcctTypography.button,
+  },
+  // Create question modal
   modalContent: {
     borderRadius: 20,
     padding: 24,
