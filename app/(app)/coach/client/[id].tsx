@@ -217,36 +217,45 @@ export default function ClientDetailScreen() {
       const coachId = user.id;
       setCoachProfileId(coachId);
 
-      console.log("[ClientDetail] route param client id:", clientId);
-      console.log("[ClientDetail] auth user id:", user?.id);
-      console.log("[ClientDetail] coach profile id used for query:", coachId);
+      console.log("[ClientDetail] coach profile id:", coachId);
+      console.log("[ClientDetail] client id from params:", clientId);
 
-      // Verify active link — use maybeSingle() so a missing row returns null instead of an error
-      const { data: linkData, error: linkError } = await supabase
+      // Verify active link — use .limit(1) so a missing row returns [] instead of an error
+      const { data: accessRows, error: accessError } = await supabase
         .from("coach_clients")
-        .select("id, created_at, status")
+        .select("coach_id")
         .eq("coach_id", coachId)
         .eq("client_id", clientId)
         .eq("status", "active")
-        .maybeSingle();
+        .limit(1);
 
-      console.log("[ClientDetail] coach_clients access check result:", linkData, linkError);
-      console.log("[ClientDetail] hasAccess:", !!linkData);
+      console.log("[ClientDetail] access check result count:", accessRows?.length ?? 0);
+      const hasAccess = !accessError && accessRows && accessRows.length > 0;
+      console.log("[ClientDetail] access granted:", hasAccess);
 
-      if (linkError) {
-        console.error("[ClientDetail] access check query error:", linkError.message);
+      if (accessError) {
+        console.error("[ClientDetail] access check query error:", accessError.message);
         setAccessDenied(true);
         setLoading(false);
         return;
       }
 
-      if (!linkData) {
+      if (!hasAccess) {
         console.warn("[ClientDetail] no active coach_clients row found — access denied");
         setAccessDenied(true);
         setLoading(false);
         return;
       }
-      setLink(linkData);
+
+      // Fetch the link metadata (created_at, status) for display
+      const { data: linkRows } = await supabase
+        .from("coach_clients")
+        .select("created_at, status")
+        .eq("coach_id", coachId)
+        .eq("client_id", clientId)
+        .limit(1);
+      const linkRow = linkRows?.[0] ?? null;
+      setLink(linkRow ? { id: clientId, created_at: linkRow.created_at, status: linkRow.status } : null);
 
       // Fetch profile
       const { data: profileData } = await supabase
