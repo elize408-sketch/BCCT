@@ -21,7 +21,6 @@ import { supabase } from "@/lib/supabase";
 import { bcctColors, bcctTypography } from "@/styles/bcctTheme";
 import { LinearGradient } from "expo-linear-gradient";
 
-const COACH_API_BASE = `${supabase.supabaseUrl}/functions/v1/coach-api`;
 
 interface ThemeItem {
   id: string;
@@ -68,6 +67,7 @@ export default function ThemeDetailScreen() {
   const [assignModalVisible, setAssignModalVisible] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
   const [clientsLoading, setClientsLoading] = useState(false);
+  const [clientsError, setClientsError] = useState(false);
   const [assigning, setAssigning] = useState(false);
 
   const showModal = (title: string, message: string) => {
@@ -215,34 +215,64 @@ export default function ThemeDetailScreen() {
     console.log("[Theme Detail] Opening assign modal for theme", id);
     setAssignModalVisible(true);
     setClientsLoading(true);
+    setClientsError(false);
     setClients([]);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
+      if (!session?.user) {
         console.error("[Theme Detail] No session found for assign");
-        setClientsLoading(false);
+        setClientsError(true);
         return;
       }
-      const url = `${COACH_API_BASE}/api/coach/clients`;
-      console.log("[Theme Detail] Fetching clients from", url);
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-        },
+      const userId = session.user.id;
+
+      console.log("[Theme Detail] Fetching coach_clients for user", userId);
+      const { data: coachClients, error: ccError } = await supabase
+        .from("coach_clients")
+        .select("id, client_id")
+        .eq("coach_id", userId)
+        .eq("status", "active");
+
+      if (ccError) {
+        console.error("[Theme Detail] Error fetching coach_clients", ccError);
+        setClientsError(true);
+        return;
+      }
+
+      if (!coachClients || coachClients.length === 0) {
+        console.log("[Theme Detail] No active clients found");
+        setClients([]);
+        return;
+      }
+
+      const clientIds = coachClients.map(cc => cc.client_id);
+      console.log("[Theme Detail] Fetching profiles for client_ids", clientIds);
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id, full_name, avatar_url")
+        .in("id", clientIds);
+
+      if (profilesError) {
+        console.error("[Theme Detail] Error fetching profiles", profilesError);
+        setClientsError(true);
+        return;
+      }
+
+      const merged = coachClients.map(cc => {
+        const profile = profiles?.find(p => p.id === cc.client_id);
+        return {
+          id: cc.id,
+          client_id: cc.client_id,
+          full_name: profile?.full_name ?? "Onbekend",
+          avatar_url: profile?.avatar_url ?? null,
+        };
       });
-      if (!response.ok) {
-        const text = await response.text();
-        console.error("[Theme Detail] Error fetching clients", response.status, text);
-        setClientsLoading(false);
-        return;
-      }
-      const data: Client[] = await response.json();
-      console.log("[Theme Detail] Clients loaded", data);
-      setClients(data);
+
+      console.log("[Theme Detail] Clients loaded", merged);
+      setClients(merged);
     } catch (error: any) {
       console.error("[Theme Detail] Error fetching clients", error);
+      setClientsError(true);
     } finally {
       setClientsLoading(false);
     }
@@ -254,32 +284,46 @@ export default function ThemeDetailScreen() {
     setAssigning(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
+      if (!session?.user) {
         console.error("[Theme Detail] No session for assign-module");
         showModal("Fout", "Kon module niet toewijzen. Probeer het opnieuw.");
         return;
       }
-      const url = `${COACH_API_BASE}/api/coach/assign-module`;
-      console.log("[Theme Detail] POST assign-module", url, { client_id: client.client_id, template_id: id });
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ client_id: client.client_id, template_id: id }),
-      });
-      if (response.status === 201 || response.status === 200) {
-        console.log("[Theme Detail] Module assigned successfully to", client.full_name);
-        showModal("Toegewezen ✓", `Module toegewezen aan ${client.full_name}`);
-      } else if (response.status === 409) {
+
+      // Check for duplicate assignment
+      console.log("[Theme Detail] Checking for existing assignment", { client_id: client.client_id, template_id: id });
+      const { data: existing } = await supabase
+        .from("client_programs")
+        .select("id")
+        .eq("client_id", client.client_id)
+        .eq("template_id", id)
+        .maybeSingle();
+
+      if (existing) {
         console.warn("[Theme Detail] Module already assigned to", client.full_name);
         showModal("Al toegewezen", `Deze module is al toegewezen aan ${client.full_name}`);
-      } else {
-        const text = await response.text();
-        console.error("[Theme Detail] assign-module error", response.status, text);
-        showModal("Fout", "Kon module niet toewijzen. Probeer het opnieuw.");
+        return;
       }
+
+      console.log("[Theme Detail] Inserting client_programs row");
+      const { error: insertError } = await supabase
+        .from("client_programs")
+        .insert({
+          client_id: client.client_id,
+          template_id: id,
+          assigned_by: session.user.id,
+          assigned_at: new Date().toISOString(),
+          current_week: 1,
+        });
+
+      if (insertError) {
+        console.error("[Theme Detail] Insert error", insertError);
+        showModal("Fout", "Kon module niet toewijzen. Probeer het opnieuw.");
+        return;
+      }
+
+      console.log("[Theme Detail] Module assigned successfully to", client.full_name);
+      showModal("Toegewezen ✓", `Module toegewezen aan ${client.full_name}`);
     } catch (error: any) {
       console.error("[Theme Detail] assign-module exception", error);
       showModal("Fout", "Kon module niet toewijzen. Probeer het opnieuw.");
@@ -457,6 +501,23 @@ export default function ThemeDetailScreen() {
           {clientsLoading ? (
             <View style={styles.clientsLoadingContainer}>
               <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
+            </View>
+          ) : clientsError ? (
+            <View style={styles.clientsEmptyContainer}>
+              <Text style={[styles.clientsEmptyText, { color: bcctColors.error }]}>
+                Kon cliënten niet laden. Probeer het opnieuw.
+              </Text>
+              <TouchableOpacity
+                style={[styles.goToClientsButton, { borderColor: bcctColors.error }]}
+                onPress={() => {
+                  console.log("[Theme Detail] Retry fetch clients pressed");
+                  openAssignModal();
+                }}
+              >
+                <Text style={[styles.goToClientsText, { color: bcctColors.error }]}>
+                  Opnieuw proberen
+                </Text>
+              </TouchableOpacity>
             </View>
           ) : clients.length === 0 ? (
             <View style={styles.clientsEmptyContainer}>
