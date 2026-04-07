@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
+import type { WebViewNavigation, ShouldStartLoadRequest } from 'react-native-webview/lib/WebViewTypes';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
@@ -19,14 +20,23 @@ const SUPABASE_ANON_KEY = (Constants.expoConfig?.extra?.supabaseAnonKey as strin
 const STRIPE_STATUS_ENDPOINT = `${SUPABASE_URL}/functions/v1/stripe-connect-status`;
 const STRIPE_ACCOUNT_SESSION_ENDPOINT = `${SUPABASE_URL}/functions/v1/stripe-connect-create`;
 
+const IOS_USER_AGENT =
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+
+// URL fragments that indicate Stripe is redirecting back to the app
+const RETURN_URL_PATTERNS = ['stripe-return', 'stripe_return'];
+const REFRESH_URL_PATTERNS = ['stripe-refresh', 'stripe_refresh'];
+
 export default function StripeOnboardingWebView() {
   const { returnTo } = useLocalSearchParams<{ returnTo: string }>();
 
   const insets = useSafeAreaInsets();
   const [onboardingUrl, setOnboardingUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [webViewLoading, setWebViewLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);
+  const [fetchKey, setFetchKey] = useState(0);
   const hasNavigated = useRef(false);
 
   const navigateAway = useCallback(() => {
@@ -77,6 +87,46 @@ export default function StripeOnboardingWebView() {
     setCompleting(false);
     navigateAway();
   }, [syncStripeStatus, navigateAway]);
+
+  const handleRefresh = useCallback(() => {
+    console.log('[StripeConnect] Refresh URL detected — re-fetching onboarding URL');
+    hasNavigated.current = false;
+    setOnboardingUrl(null);
+    setError(null);
+    setFetchKey((k) => k + 1); // triggers the fetch useEffect to re-run
+  }, []);
+
+  // Intercept navigation requests so return/refresh deep-link URLs never
+  // actually load in the WebView (they're not real web pages and cause -1003).
+  const onShouldStartLoadWithRequest = useCallback(
+    (request: ShouldStartLoadRequest): boolean => {
+      const url = request.url;
+      console.log('[StripeConnect] onShouldStartLoadWithRequest:', url.substring(0, 80));
+
+      // Intercept return URL — onboarding finished
+      if (RETURN_URL_PATTERNS.some((p) => url.includes(p))) {
+        console.log('[StripeConnect] Return URL intercepted — completing onboarding');
+        handleOnboardingComplete();
+        return false; // prevent WebView from loading this URL
+      }
+
+      // Intercept refresh URL — link expired, need a new one
+      if (REFRESH_URL_PATTERNS.some((p) => url.includes(p))) {
+        console.log('[StripeConnect] Refresh URL intercepted — refreshing onboarding URL');
+        handleRefresh();
+        return false; // prevent WebView from loading this URL
+      }
+
+      // Allow all stripe.com domains explicitly
+      if (url.includes('stripe.com')) {
+        return true;
+      }
+
+      // Allow everything else by default
+      return true;
+    },
+    [handleOnboardingComplete, handleRefresh]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -140,7 +190,7 @@ export default function StripeOnboardingWebView() {
     return () => {
       cancelled = true;
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fetchKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -153,7 +203,7 @@ export default function StripeOnboardingWebView() {
         <View style={styles.closeButton} />
       </View>
 
-      {/* Loading state */}
+      {/* Initial loading state (fetching URL from backend) */}
       {loading && !error && (
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
@@ -174,33 +224,53 @@ export default function StripeOnboardingWebView() {
 
       {/* Stripe onboarding in WebView */}
       {!loading && !error && onboardingUrl && (
-        <WebView
-          source={{ uri: onboardingUrl }}
-          style={styles.webview}
-          onNavigationStateChange={(navState) => {
-            console.log('[StripeConnect] WebView navigating to:', navState.url.substring(0, 60));
-            if (
-              navState.url.includes('stripe-return') ||
-              navState.url.includes('stripe-refresh') ||
-              navState.url.includes('stripe_return') ||
-              navState.url.includes('stripe_refresh')
-            ) {
-              console.log('[StripeConnect] Detected return/refresh URL — completing onboarding');
-              handleOnboardingComplete();
-            }
-          }}
-          onError={(syntheticEvent) => {
-            const { nativeEvent } = syntheticEvent;
-            console.error('[StripeConnect] WebView error:', nativeEvent);
-            setError('De Stripe pagina kon niet worden geladen. Controleer je internetverbinding.');
-          }}
-          startInLoadingState
-          renderLoading={() => (
+        <View style={styles.webviewContainer}>
+          <WebView
+            source={{ uri: onboardingUrl }}
+            style={styles.webview}
+            // iOS compatibility
+            userAgent={IOS_USER_AGENT}
+            // Required props for Stripe to work inside a WebView
+            javaScriptEnabled={true}
+            domStorageEnabled={true}
+            sharedCookiesEnabled={true}
+            thirdPartyCookiesEnabled={true}
+            startInLoadingState={true}
+            allowsInlineMediaPlayback={true}
+            originWhitelist={['*']}
+            mixedContentMode="always"
+            // Navigation interception — must return false for return/refresh URLs
+            onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
+            // Loading indicator
+            onLoadStart={() => {
+              console.log('[StripeConnect] WebView load started');
+              setWebViewLoading(true);
+            }}
+            onLoadEnd={() => {
+              console.log('[StripeConnect] WebView load ended');
+              setWebViewLoading(false);
+            }}
+            // Navigation state logging (kept for debugging, interception handled above)
+            onNavigationStateChange={(navState: WebViewNavigation) => {
+              console.log('[StripeConnect] WebView navigating to:', navState.url.substring(0, 80));
+            }}
+            // Error logging
+            onError={(e) => {
+              console.log('Stripe WebView error:', e.nativeEvent);
+              setError('De Stripe pagina kon niet worden geladen. Controleer je internetverbinding.');
+            }}
+            onHttpError={(e) => {
+              console.log('Stripe HTTP error:', e.nativeEvent);
+            }}
+          />
+
+          {/* In-WebView loading overlay */}
+          {webViewLoading && (
             <View style={styles.webviewLoading}>
               <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
             </View>
           )}
-        />
+        </View>
       )}
 
       {/* Status sync overlay (after completion) */}
@@ -280,6 +350,9 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '600',
     fontSize: 15,
+  },
+  webviewContainer: {
+    flex: 1,
   },
   webview: {
     flex: 1,
