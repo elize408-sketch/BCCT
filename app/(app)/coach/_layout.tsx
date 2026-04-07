@@ -72,7 +72,7 @@ export default function CoachLayout() {
       />
       <Tabs.Screen
         name="clients"
-        options={{ href: null }}
+        options={{ href: null, tabBarButton: () => null }}
       />
       <Tabs.Screen
         name="chat"
