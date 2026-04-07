@@ -7,7 +7,7 @@ import {
   Text,
   TouchableOpacity,
 } from 'react-native';
-import { ConnectComponentsProvider, ConnectAccountOnboarding, loadConnectAndInitialize } from '@stripe/stripe-react-native';
+import { WebView } from 'react-native-webview';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
@@ -23,7 +23,7 @@ export default function StripeOnboardingWebView() {
   const { returnTo } = useLocalSearchParams<{ returnTo: string }>();
 
   const insets = useSafeAreaInsets();
-  const [connectInstance, setConnectInstance] = useState<any>(null);
+  const [onboardingUrl, setOnboardingUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);
@@ -54,6 +54,10 @@ export default function StripeOnboardingWebView() {
           apikey: SUPABASE_ANON_KEY,
         },
       });
+      if (!res.ok) {
+        console.warn('[StripeConnect] status sync non-ok:', res.status);
+        return;
+      }
       const data = await res.json();
       console.log('[StripeConnect] status synced:', data);
     } catch (e) {
@@ -66,8 +70,8 @@ export default function StripeOnboardingWebView() {
     navigateAway();
   }, [navigateAway]);
 
-  const handleExit = useCallback(async () => {
-    console.log('[StripeConnect] ConnectAccountOnboarding onExit called');
+  const handleOnboardingComplete = useCallback(async () => {
+    console.log('[StripeConnect] Onboarding complete — syncing status');
     setCompleting(true);
     await syncStripeStatus();
     setCompleting(false);
@@ -77,76 +81,53 @@ export default function StripeOnboardingWebView() {
   useEffect(() => {
     let cancelled = false;
 
-    const initStripeConnect = async () => {
+    const fetchOnboardingUrl = async () => {
       try {
         setLoading(true);
         setError(null);
-
-        const publishableKey = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '';
-        console.log('[Stripe] publishableKey exists:', !!publishableKey);
-
-        if (!publishableKey) {
-          throw new Error('Stripe publishable key is niet geconfigureerd.');
-        }
 
         const { data: { session } } = await supabase.auth.getSession();
         if (!session?.access_token) {
           throw new Error('Geen actieve sessie. Log opnieuw in.');
         }
 
-        const fetchClientSecret = async (): Promise<string> => {
-          console.log('[Stripe] Fetching client_secret from backend...');
-          const res = await fetch(STRIPE_ACCOUNT_SESSION_ENDPOINT, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${session.access_token}`,
-              apikey: SUPABASE_ANON_KEY,
-            },
-          });
-
-          if (!res.ok) {
-            const text = await res.text();
-            console.error('[Stripe] Backend error:', res.status, text);
-            throw new Error(`Backend fout (${res.status}): ${text}`);
-          }
-
-          const response = await res.json();
-          console.log('[Stripe] backend response received:', response);
-
-          if (!response.client_secret) {
-            console.error('[Stripe] No client_secret in response:', response);
-            throw new Error('Geen client_secret ontvangen van de server.');
-          }
-
-          console.log('[Stripe] client_secret exists');
-          return response.client_secret as string;
-        };
-
-        console.log('[Stripe] Calling loadConnectAndInitialize...');
-        const instance = await loadConnectAndInitialize({
-          publishableKey,
-          fetchClientSecret,
-          appearance: {
-            overlays: 'dialog',
-            variables: {
-              colorPrimary: '#F97316',
-              fontFamily: '-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
-              borderRadius: '8px',
-              spacingUnit: '4px',
-            },
+        console.log('[Stripe] Fetching onboarding URL from backend...');
+        const res = await fetch(STRIPE_ACCOUNT_SESSION_ENDPOINT, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+            apikey: SUPABASE_ANON_KEY,
           },
-          locale: 'nl-NL',
         });
 
-        console.log('[Stripe] loadConnectAndInitialize success');
+        if (!res.ok) {
+          const text = await res.text();
+          console.error('[Stripe] Backend error:', res.status, text);
+          throw new Error(`Backend fout (${res.status}): ${text}`);
+        }
+
+        const data = await res.json();
+        console.log('[Stripe] Backend response keys:', Object.keys(data));
+
+        const url: string | undefined =
+          data.onboarding_url ?? data.account_link_url ?? data.url;
+
+        if (!url) {
+          console.error('[Stripe] No onboarding URL in response:', data);
+          throw new Error(
+            'De server heeft geen onboarding URL teruggegeven. Neem contact op met support.'
+          );
+        }
+
+        console.log('[Stripe] Onboarding URL received:', url.substring(0, 50) + '...');
 
         if (!cancelled) {
-          setConnectInstance(instance);
+          setOnboardingUrl(url);
           setLoading(false);
         }
       } catch (err: any) {
-        console.error('[Stripe] loadConnectAndInitialize failed:', err?.message ?? err);
+        console.error('[Stripe] fetchOnboardingUrl failed:', err?.message ?? err);
         if (!cancelled) {
           setError(err?.message || 'Stripe kon niet worden gestart. Probeer het opnieuw.');
           setLoading(false);
@@ -154,7 +135,7 @@ export default function StripeOnboardingWebView() {
       }
     };
 
-    initStripeConnect();
+    fetchOnboardingUrl();
 
     return () => {
       cancelled = true;
@@ -191,16 +172,38 @@ export default function StripeOnboardingWebView() {
         </View>
       )}
 
-      {/* Stripe Connect Embedded Onboarding */}
-      {!loading && !error && connectInstance && (
-        <ConnectComponentsProvider connectInstance={connectInstance}>
-          <ConnectAccountOnboarding
-            onExit={handleExit}
-          />
-        </ConnectComponentsProvider>
+      {/* Stripe onboarding in WebView */}
+      {!loading && !error && onboardingUrl && (
+        <WebView
+          source={{ uri: onboardingUrl }}
+          style={styles.webview}
+          onNavigationStateChange={(navState) => {
+            console.log('[StripeConnect] WebView navigating to:', navState.url.substring(0, 60));
+            if (
+              navState.url.includes('stripe-return') ||
+              navState.url.includes('stripe-refresh') ||
+              navState.url.includes('stripe_return') ||
+              navState.url.includes('stripe_refresh')
+            ) {
+              console.log('[StripeConnect] Detected return/refresh URL — completing onboarding');
+              handleOnboardingComplete();
+            }
+          }}
+          onError={(syntheticEvent) => {
+            const { nativeEvent } = syntheticEvent;
+            console.error('[StripeConnect] WebView error:', nativeEvent);
+            setError('De Stripe pagina kon niet worden geladen. Controleer je internetverbinding.');
+          }}
+          startInLoadingState
+          renderLoading={() => (
+            <View style={styles.webviewLoading}>
+              <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
+            </View>
+          )}
+        />
       )}
 
-      {/* Status sync overlay (after EXIT) */}
+      {/* Status sync overlay (after completion) */}
       {completing && (
         <View style={styles.completingOverlay}>
           <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
@@ -277,6 +280,15 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '600',
     fontSize: 15,
+  },
+  webview: {
+    flex: 1,
+  },
+  webviewLoading: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
   },
   completingOverlay: {
     ...StyleSheet.absoluteFillObject,
