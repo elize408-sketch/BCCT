@@ -405,7 +405,7 @@ export default function CoachClientsScreen() {
                     colors={colors}
                     onPress={() => {
                       console.log('[Clients] Client card pressed:', client.id, client.full_name || 'Cliënt');
-                      router.push(`/(app)/coach/client-detail?id=${client.id}` as any);
+                      router.push(`/(app)/coach/client/${client.id}` as any);
                     }}
                   />
                   </React.Fragment>
