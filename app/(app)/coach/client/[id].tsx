@@ -202,6 +202,7 @@ export default function ClientDetailScreen() {
   const loadAll = useCallback(async () => {
     if (!clientId) return;
     setLoading(true);
+    setAccessDenied(false);
 
     try {
       // Get authenticated user
@@ -210,13 +211,15 @@ export default function ClientDetailScreen() {
       } = await supabase.auth.getUser();
       if (!user) {
         setAccessDenied(true);
+        setLoading(false);
         return;
       }
       const coachId = user.id;
       setCoachProfileId(coachId);
 
-      console.log("[ClientDetail] coach id:", coachId);
-      console.log("[ClientDetail] client id:", clientId);
+      console.log("[ClientDetail] route param client id:", clientId);
+      console.log("[ClientDetail] auth user id:", user?.id);
+      console.log("[ClientDetail] coach profile id used for query:", coachId);
 
       // Verify active link
       const { data: linkData, error: linkError } = await supabase
@@ -227,7 +230,8 @@ export default function ClientDetailScreen() {
         .eq("status", "active")
         .single();
 
-      console.log("[ClientDetail] link verified:", linkData);
+      console.log("[ClientDetail] coach_clients access check result:", linkData, linkError);
+      console.log("[ClientDetail] hasAccess:", !!linkData);
 
       if (linkError || !linkData) {
         setAccessDenied(true);
@@ -260,7 +264,22 @@ export default function ClientDetailScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId]);
 
-  useFocusEffect(loadAll);
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
+
+      const run = async () => {
+        if (!isActive) return;
+        await loadAll();
+      };
+
+      run();
+
+      return () => {
+        isActive = false;
+      };
+    }, [loadAll])
+  );
 
   // ── Section fetchers ────────────────────────────────────────────────────────
 
