@@ -189,6 +189,9 @@ export default function CoachAppointmentsScreen() {
   const [monthLoading, setMonthLoading] = useState(false);
   const [monthAnchor, setMonthAnchor] = useState<Date>(new Date()); // any day in the month
 
+  // ── Calendar connected ────────────────────────────────────────────────────
+  const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null);
+
   // ── Clients ───────────────────────────────────────────────────────────────
   const [clients, setClients] = useState<ClientOption[]>([]);
 
@@ -360,6 +363,24 @@ export default function CoachAppointmentsScreen() {
     }
   }, [user?.id]);
 
+  // ── Fetch calendar connection status ──────────────────────────────────────
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const fetchCalendarStatus = async () => {
+      console.log("[Appointments] Fetching calendar connection status for:", user.id);
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("calendar_connected, calendar_provider")
+        .eq("id", user.id)
+        .maybeSingle();
+      const connected = profile?.calendar_connected ?? false;
+      console.log("[Appointments] Calendar connected:", connected);
+      setCalendarConnected(connected);
+    };
+    fetchCalendarStatus();
+  }, [user?.id]);
+
   useEffect(() => {
     fetchAppointments();
   }, [fetchAppointments]);
@@ -432,6 +453,18 @@ export default function CoachAppointmentsScreen() {
     const d = new Date(monthAnchor);
     d.setMonth(d.getMonth() + 1);
     setMonthAnchor(d);
+  };
+
+  // ── Calendar connect ──────────────────────────────────────────────────────
+
+  const handleCalendarConnect = (provider: string | null) => {
+    const providerName = provider ?? 'je agenda';
+    console.log('[Appointments] Calendar connect pressed for:', providerName);
+    Alert.alert(
+      'Agenda koppelen',
+      `Koppeling met ${providerName} is nog niet beschikbaar. Dit wordt binnenkort toegevoegd.`,
+      [{ text: 'OK' }]
+    );
   };
 
   // ── Open create modal ─────────────────────────────────────────────────────
@@ -738,7 +771,10 @@ export default function CoachAppointmentsScreen() {
               <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
             </View>
           ) : appointments.length === 0 ? (
-            <View style={styles.emptyWrap}>
+            <ScrollView
+              contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, paddingVertical: 40 }}
+              showsVerticalScrollIndicator={false}
+            >
               <View style={styles.emptyIconCircle}>
                 <Ionicons name="calendar-outline" size={40} color={bcctColors.primaryOrange} />
               </View>
@@ -754,7 +790,39 @@ export default function CoachAppointmentsScreen() {
               >
                 <Text style={styles.emptyCtaText}>Nieuwe afspraak</Text>
               </TouchableOpacity>
-            </View>
+              {calendarConnected === false && (
+                <View style={styles.calendarCard}>
+                  <View style={styles.calendarCardHeader}>
+                    <View style={styles.calendarIconCircle}>
+                      <Ionicons name="calendar" size={22} color={bcctColors.primaryOrange} />
+                    </View>
+                    <Text style={styles.calendarCardTitle}>Agenda koppelen</Text>
+                  </View>
+                  <Text style={styles.calendarCardSubtitle}>
+                    Koppel je Google, Outlook of Apple Agenda om bestaande afspraken te synchroniseren.
+                  </Text>
+                  <View style={styles.calendarProviders}>
+                    {['Google', 'Outlook', 'Apple'].map((provider) => (
+                      <TouchableOpacity
+                        key={provider}
+                        style={styles.providerChip}
+                        onPress={() => handleCalendarConnect(provider)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.providerChipText}>{provider}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <TouchableOpacity
+                    style={styles.calendarCtaBtn}
+                    onPress={() => handleCalendarConnect(null)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.calendarCtaBtnText}>Agenda koppelen</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </ScrollView>
           ) : (
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.listContent}>
               {appointments.map((appt) => {
@@ -2073,5 +2141,78 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
     color: bcctColors.textPrimary,
+  },
+
+  // Calendar connect card
+  calendarCard: {
+    marginTop: 24,
+    width: "100%",
+    backgroundColor: bcctColors.cardBackground,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: bcctColors.borderGray,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+    gap: 12,
+  },
+  calendarCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  calendarIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: `${bcctColors.primaryOrange}18`,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  calendarCardTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: bcctColors.textPrimary,
+  },
+  calendarCardSubtitle: {
+    fontSize: 14,
+    color: bcctColors.textSecondary,
+    lineHeight: 20,
+  },
+  calendarProviders: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  providerChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: bcctColors.borderGray,
+    backgroundColor: bcctColors.lightBackground,
+  },
+  providerChipText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: bcctColors.textPrimary,
+  },
+  calendarCtaBtn: {
+    backgroundColor: bcctColors.primaryOrange,
+    borderRadius: 14,
+    paddingVertical: 13,
+    alignItems: "center",
+    shadowColor: bcctColors.primaryOrange,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  calendarCtaBtnText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "700",
   },
 });
