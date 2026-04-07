@@ -7,25 +7,26 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   slug: 'BCCT Coaching',
   version: '1.0.0',
   orientation: 'portrait',
-  icon: './assets/images/app-icon-cws.png',
+  icon: './assets/images/d688f5af-753b-4f2d-a8c5-5c083390ca24.png',
   userInterfaceStyle: 'automatic',
   newArchEnabled: true,
   splash: {
-    image: './assets/images/app-icon-cws.png',
+    image: './assets/images/d688f5af-753b-4f2d-a8c5-5c083390ca24.png',
     resizeMode: 'contain',
     backgroundColor: '#6366f1',
   },
   ios: {
     supportsTablet: true,
     bundleIdentifier: 'com.bcct.coaching',
+    icon: './assets/images/d688f5af-753b-4f2d-a8c5-5c083390ca24.png',
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
     },
   },
   android: {
     adaptiveIcon: {
-      foregroundImage: './assets/images/app-icon-cws.png',
-      backgroundColor: '#6366f1',
+      foregroundImage: './assets/images/d688f5af-753b-4f2d-a8c5-5c083390ca24.png',
+      backgroundColor: '#ffffff',
     },
     edgeToEdgeEnabled: true,
     package: 'com.bcct.coaching',
