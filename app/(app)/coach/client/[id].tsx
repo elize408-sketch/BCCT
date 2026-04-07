@@ -49,9 +49,11 @@ interface CheckinResponse {
 
 interface ClientProgram {
   id: string;
-  created_at: string;
-  status: string | null;
-  programs: { title: string; description: string | null } | null;
+  client_id: string;
+  template_id: string | null;
+  assigned_at: string | null;
+  current_week: number | null;
+  template: { id: string; name: string; description: string | null } | null;
 }
 
 interface ThemeAssignment {
@@ -323,28 +325,45 @@ export default function ClientDetailScreen() {
 
   const fetchPrograms = async (cid: string) => {
     try {
-      const { data, error } = await supabase
+      const { data: clientPrograms, error: programsError } = await supabase
         .from("client_programs")
-        .select("id, created_at, status, programs(title, description)")
-        .eq("client_id", cid)
-        .order("created_at", { ascending: false })
-        .limit(10);
+        .select("id, client_id, template_id, assigned_at, current_week")
+        .eq("client_id", cid);
 
-      if (error) {
-        if (isTableMissingError(error)) {
-          // Fallback to theme assignments
-          await fetchThemeAssignments(cid);
-          return;
-        }
-        console.error("[ClientDetail] client_programs error:", error.message);
-        await fetchThemeAssignments(cid);
+      if (programsError) {
+        if (isTableMissingError(programsError)) return;
+        console.error("[ClientDetail] client_programs error:", programsError.message);
         return;
       }
-      console.log("[ClientDetail] client_programs:", data?.length ?? 0);
-      setPrograms((data as ClientProgram[]) ?? []);
+
+      if (!clientPrograms || clientPrograms.length === 0) {
+        console.log("[ClientDetail] client_programs: 0");
+        setPrograms([]);
+        return;
+      }
+
+      const templateIds = clientPrograms
+        .map((p) => p.template_id)
+        .filter(Boolean) as string[];
+
+      let templates: { id: string; name: string; description: string | null }[] = [];
+      if (templateIds.length > 0) {
+        const { data: tplData } = await supabase
+          .from("program_templates")
+          .select("id, name, description")
+          .in("id", templateIds);
+        templates = tplData ?? [];
+      }
+
+      const homework: ClientProgram[] = clientPrograms.map((p) => ({
+        ...p,
+        template: templates.find((t) => t.id === p.template_id) ?? null,
+      }));
+
+      console.log("[ClientDetail] client_programs:", homework.length);
+      setPrograms(homework);
     } catch (e: any) {
       console.error("[ClientDetail] fetchPrograms exception:", e);
-      await fetchThemeAssignments(cid);
     }
   };
 
@@ -480,6 +499,7 @@ export default function ClientDetailScreen() {
 
   const homeworkItems = programs.length > 0 ? programs : themeAssignments;
   const hasPrograms = programs.length > 0;
+  // Derived per-item display helpers are computed inline below
 
   // ── Loading / access denied ─────────────────────────────────────────────────
 
@@ -611,10 +631,14 @@ export default function ClientDetailScreen() {
           ) : (
             homeworkItems.map((item) => {
               const title = hasPrograms
-                ? (item as ClientProgram).programs?.title ?? "Programma"
+                ? (item as ClientProgram).template?.name ?? "Programma"
                 : (item as ThemeAssignment).themes?.title ?? "Thema";
-              const statusText = item.status ?? "—";
-              const dateText = formatDate(item.created_at);
+              const dateText = hasPrograms
+                ? formatDate((item as ClientProgram).assigned_at)
+                : formatDate((item as ThemeAssignment).created_at);
+              const weekText = hasPrograms && (item as ClientProgram).current_week != null
+                ? `Week ${(item as ClientProgram).current_week}`
+                : null;
               return (
                 <View
                   key={item.id}
@@ -628,11 +652,13 @@ export default function ClientDetailScreen() {
                       {dateText}
                     </Text>
                   </View>
-                  <View style={[styles.badge, { backgroundColor: bcctColors.primaryOrange + "15" }]}>
-                    <Text style={[styles.badgeText, { color: bcctColors.primaryOrange }]}>
-                      {statusText}
-                    </Text>
-                  </View>
+                  {weekText ? (
+                    <View style={[styles.badge, { backgroundColor: bcctColors.primaryOrange + "15" }]}>
+                      <Text style={[styles.badgeText, { color: bcctColors.primaryOrange }]}>
+                        {weekText}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
               );
             })
