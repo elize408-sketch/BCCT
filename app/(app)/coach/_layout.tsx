@@ -126,6 +126,7 @@ export default function CoachLayout() {
       <Tabs.Screen name="theme-detail" options={{ href: null }} />
       <Tabs.Screen name="client-detail" options={{ href: null }} />
       <Tabs.Screen name="client" options={{ href: null }} />
+      <Tabs.Screen name="client/[id]" options={{ href: null }} />
       <Tabs.Screen name="modules" options={{ href: null }} />
       <Tabs.Screen name="settings" options={{ href: null }} />
       <Tabs.Screen name="facturatie" options={{ href: null }} />
