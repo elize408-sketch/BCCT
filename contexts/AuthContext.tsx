@@ -3,6 +3,50 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { supabase } from '@/lib/supabase';
 import type { User, Session } from '@supabase/supabase-js';
 
+/**
+ * Safely upsert a profile row, always preserving the existing role if one exists.
+ * Falls back to the provided defaultRole (or 'client') if no row exists yet.
+ */
+async function upsertProfileWithRole(
+  userId: string,
+  defaultRole: 'client' | 'coach',
+  fullName?: string,
+) {
+  console.log('[Auth] upsertProfileWithRole — userId:', userId, 'defaultRole:', defaultRole);
+
+  // Read existing row first so we never overwrite an already-set role
+  const { data: existing, error: fetchError } = await supabase
+    .from('profiles')
+    .select('role, onboarding_completed')
+    .eq('id', userId)
+    .single();
+
+  if (fetchError && fetchError.code !== 'PGRST116') {
+    // PGRST116 = row not found — that's fine, we'll create it
+    console.warn('[Auth] Could not fetch existing profile (non-fatal):', fetchError.message);
+  }
+
+  const role = existing?.role ?? defaultRole;
+  console.log('[Auth] upserting profile with role:', role);
+
+  const payload: Record<string, unknown> = {
+    id: userId,
+    role,
+    updated_at: new Date().toISOString(),
+  };
+  if (fullName) payload.full_name = fullName;
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .upsert(payload, { onConflict: 'id' });
+
+  if (error) {
+    console.error('[Auth] Profile upsert error:', error);
+  } else {
+    console.log('[Auth] profile upsert result: success', data);
+  }
+}
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
@@ -60,6 +104,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     console.log('[AuthContext] Sign in successful:', data.user?.id, 'with role:', role);
+
+    // Ensure profile exists with role preserved
+    if (data.user) {
+      await upsertProfileWithRole(data.user.id, role);
+    }
   };
 
   const signUpWithPassword = async (email: string, password: string, name?: string) => {
@@ -80,6 +129,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     console.log('[AuthContext] Sign up successful:', data.user?.id);
+
+    // Create initial profile with default role
+    if (data.user) {
+      await upsertProfileWithRole(data.user.id, 'client', name);
+    }
   };
 
   const signInWithGoogle = async () => {

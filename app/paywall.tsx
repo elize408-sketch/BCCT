@@ -52,19 +52,19 @@ const FEATURES = [
 ];
 
 async function markSubscriptionActive() {
-  console.log("[Paywall] Updating Supabase profile: subscription_status=active");
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.user?.id) {
     console.warn("[Paywall] No session found when marking subscription active");
     return;
   }
+  const updatePayload = {
+    onboarding_completed: true,
+    updated_at: new Date().toISOString(),
+  };
+  console.log("[Paywall] updating profile (no subscription_plan):", updatePayload);
   const { error } = await supabase
     .from("profiles")
-    .update({
-      subscription_status: "active",
-      subscription_plan: "pro",
-      onboarding_completed: true,
-    })
+    .update(updatePayload)
     .eq("id", session.user.id);
   if (error) {
     console.error("[Paywall] Failed to update profile:", error.message);

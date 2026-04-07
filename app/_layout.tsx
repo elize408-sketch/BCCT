@@ -12,7 +12,7 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { SubscriptionProvider, useSubscription } from "@/contexts/SubscriptionContext";
 import { TipsProvider } from "@/contexts/TipsContext";
 import { BCCTLightTheme, BCCTDarkTheme } from "@/styles/bcctTheme";
-import { isOnboardingDone } from "@/utils/tipsStorage";
+import { supabase } from "@/lib/supabase";
 
 // Prevent the splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
@@ -63,17 +63,28 @@ function OnboardingRedirect() {
     if (authLoading) return;
     if (!user) return;
 
-    // Only redirect to welcome onboarding from the main tabs area
+    // Only redirect from the main tabs area or root
     const isOnMainTabs = pathname.startsWith("/(tabs)") || pathname === "/";
     if (!isOnMainTabs) return;
 
-    console.log('[OnboardingRedirect] Checking if coach welcome onboarding is done for user:', user.id);
-    isOnboardingDone().then((done) => {
-      if (!done) {
-        console.log('[OnboardingRedirect] Onboarding not done, redirecting to coach-welcome-onboarding');
-        router.replace("/coach-welcome-onboarding");
-      }
-    });
+    console.log('[OnboardingRedirect] Checking onboarding_completed from DB for user:', user.id);
+    supabase
+      .from('profiles')
+      .select('role, onboarding_completed')
+      .eq('id', user.id)
+      .single()
+      .then(({ data: profile, error }) => {
+        if (error) {
+          console.warn('[OnboardingRedirect] Could not fetch profile (non-fatal):', error.message);
+          return;
+        }
+        console.log('[Routing] profile loaded:', profile);
+        console.log('[Routing] onboarding_completed:', profile?.onboarding_completed);
+        if (!profile?.onboarding_completed) {
+          console.log('[OnboardingRedirect] onboarding_completed=false, redirecting to coach-welcome-onboarding');
+          router.replace("/coach-welcome-onboarding");
+        }
+      });
   }, [user, authLoading, pathname, router]);
 
   return null;

@@ -1431,9 +1431,29 @@ export default function CoachOnboardingScreen() {
 
                 <PrimaryButton
                   label="Naar dashboard"
-                  onPress={() => {
-                    console.log('[CoachOnboarding] Naar dashboard pressed');
-                    router.replace('/(tabs)');
+                  onPress={async () => {
+                    console.log('[CoachOnboarding] Naar dashboard pressed — persisting onboarding_completed');
+                    try {
+                      const { data: { session: currentSession } } = await supabase.auth.getSession();
+                      if (currentSession?.user?.id) {
+                        const { error } = await supabase
+                          .from('profiles')
+                          .update({
+                            onboarding_completed: true,
+                            role: 'coach',
+                            updated_at: new Date().toISOString(),
+                          })
+                          .eq('id', currentSession.user.id);
+                        if (error) {
+                          console.error('[CoachOnboarding] Failed to mark onboarding_completed:', error.message);
+                        } else {
+                          console.log('[CoachOnboarding] onboarding_completed=true saved for user:', currentSession.user.id);
+                        }
+                      }
+                    } catch (err: any) {
+                      console.error('[CoachOnboarding] Error persisting onboarding_completed:', err.message);
+                    }
+                    router.replace('/(app)/coach');
                   }}
                 />
               </View>
