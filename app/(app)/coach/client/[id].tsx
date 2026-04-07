@@ -221,19 +221,27 @@ export default function ClientDetailScreen() {
       console.log("[ClientDetail] auth user id:", user?.id);
       console.log("[ClientDetail] coach profile id used for query:", coachId);
 
-      // Verify active link
+      // Verify active link — use maybeSingle() so a missing row returns null instead of an error
       const { data: linkData, error: linkError } = await supabase
         .from("coach_clients")
         .select("id, created_at, status")
         .eq("coach_id", coachId)
         .eq("client_id", clientId)
         .eq("status", "active")
-        .single();
+        .maybeSingle();
 
       console.log("[ClientDetail] coach_clients access check result:", linkData, linkError);
       console.log("[ClientDetail] hasAccess:", !!linkData);
 
-      if (linkError || !linkData) {
+      if (linkError) {
+        console.error("[ClientDetail] access check query error:", linkError.message);
+        setAccessDenied(true);
+        setLoading(false);
+        return;
+      }
+
+      if (!linkData) {
+        console.warn("[ClientDetail] no active coach_clients row found — access denied");
         setAccessDenied(true);
         setLoading(false);
         return;

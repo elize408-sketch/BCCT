@@ -46,9 +46,11 @@ function SubscriptionRedirect() {
       pathname === "/stripe-onboarding-webview";
     if (isExempt) return;
 
-    if (!isSubscribed) {
-      router.replace("/paywall");
-    }
+    // NOTE: subscription gate is intentionally disabled.
+    // Coaches with subscription_active=false / subscription_plan=null must still
+    // reach the app after completing onboarding. The paywall is shown inline
+    // on the dashboard instead of as a hard redirect here.
+    console.log('[SubscriptionRedirect] isSubscribed:', isSubscribed, '— gate disabled, not redirecting');
   }, [isSubscribed, loading, authLoading, pathname, user, router]);
 
   return null;
@@ -67,10 +69,10 @@ function OnboardingRedirect() {
     const isOnMainTabs = pathname.startsWith("/(tabs)") || pathname === "/";
     if (!isOnMainTabs) return;
 
-    console.log('[OnboardingRedirect] Checking onboarding_completed from DB for user:', user.id);
+    console.log('[Routing] auth user id:', user?.id);
     supabase
       .from('profiles')
-      .select('role, onboarding_completed')
+      .select('id, role, onboarding_completed, subscription_active, subscription_plan')
       .eq('id', user.id)
       .single()
       .then(({ data: profile, error }) => {
@@ -78,11 +80,16 @@ function OnboardingRedirect() {
           console.warn('[OnboardingRedirect] Could not fetch profile (non-fatal):', error.message);
           return;
         }
-        console.log('[Routing] profile loaded:', profile);
+        console.log('[Routing] profile id:', profile?.id);
+        console.log('[Routing] role:', profile?.role);
         console.log('[Routing] onboarding_completed:', profile?.onboarding_completed);
-        if (!profile?.onboarding_completed) {
-          console.log('[OnboardingRedirect] onboarding_completed=false, redirecting to coach-welcome-onboarding');
+        console.log('[Routing] subscription_active:', profile?.subscription_active);
+
+        if (!profile?.onboarding_completed || !profile?.role) {
+          console.log('[OnboardingRedirect] onboarding_completed=false or role missing, redirecting to coach-welcome-onboarding');
           router.replace("/coach-welcome-onboarding");
+        } else {
+          console.log('[Routing] decision: skipping onboarding, going to app');
         }
       });
   }, [user, authLoading, pathname, router]);
