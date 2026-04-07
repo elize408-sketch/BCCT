@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
 import Modal from "react-native-modal";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
+import { useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { bcctColors, bcctTypography } from "@/styles/bcctTheme";
@@ -103,12 +104,18 @@ export default function CoachDashboardScreen() {
 
   useEffect(() => {
     setTipIndex(Math.floor(Math.random() * TIPS.length));
-    fetchDashboardData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Refresh on every focus so count stays in sync with Clients screen
+  useFocusEffect(
+    useCallback(() => {
+      fetchDashboardData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+  );
+
   const fetchDashboardData = async () => {
-    console.log("[Coach Dashboard] Fetching dashboard data");
+    console.log("[Coach Dashboard] fetchDashboardData — start");
     try {
       if (!session?.user?.id) {
         console.error("[Coach Dashboard] No user session");
@@ -116,6 +123,7 @@ export default function CoachDashboardScreen() {
       }
 
       const userId = session.user.id;
+      console.log("[Coach Dashboard] Authenticated coach id:", userId);
 
       // Fetch profile
       const { data: profileData, error: profileError } = await supabase
@@ -131,16 +139,21 @@ export default function CoachDashboardScreen() {
         setProfile(profileData);
       }
 
-      // Fetch clients count
+      // SOURCE OF TRUTH: count only status='active' rows — must match Clients screen
       const { count: clientsCount, error: clientsError } = await supabase
         .from("coach_clients")
         .select("*", { count: "exact", head: true })
-        .eq("coach_id", userId);
+        .eq("coach_id", userId)
+        .eq("status", "active");
+
+      console.log(
+        "[Coach Dashboard] coach_clients count (status=active):",
+        clientsCount ?? 0,
+        "| error:", clientsError?.message ?? "none"
+      );
 
       if (clientsError) {
         console.error("[Coach Dashboard] Clients count error:", clientsError);
-      } else {
-        console.log("[Coach Dashboard] Clients count:", clientsCount);
       }
 
       // Fetch today's appointments
@@ -212,11 +225,12 @@ export default function CoachDashboardScreen() {
         setTodayAppointments(formatted);
       }
 
-      // Fetch recent activity: last 2 coach_clients + last 1 appointment
+      // Fetch recent activity: last 2 active coach_clients + last 1 appointment
       const { data: recentClients, error: recentClientsError } = await supabase
         .from("coach_clients")
         .select("client_id, created_at")
         .eq("coach_id", userId)
+        .eq("status", "active")
         .order("created_at", { ascending: false })
         .limit(2);
 

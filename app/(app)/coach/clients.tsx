@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
 import Modal from "react-native-modal";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "@react-navigation/native";
+import { useFocusEffect } from "@react-navigation/native";
 import { IconSymbol } from "@/components/IconSymbol";
 import { useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
@@ -56,25 +57,38 @@ export default function CoachClientsScreen() {
     setModalVisible(true);
   };
 
-  useEffect(() => {
-    fetchClients();
-    fetchInvites();
+  // Refresh whenever the screen comes into focus (navigation back, tab switch, post-invite)
+  useFocusEffect(
+    useCallback(() => {
+      fetchClients();
+      fetchInvites();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    }, [])
+  );
 
   const fetchClients = async () => {
-    console.log("[Coach Clients] Fetching clients");
+    console.log("[Coach Clients] fetchClients — start");
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        console.error("[Coach Clients] No user found");
+        console.error("[Coach Clients] No authenticated user");
         return;
       }
+      console.log("[Coach Clients] Authenticated coach id:", user.id);
 
+      // SOURCE OF TRUTH: coach_clients with status = 'active' only
+      // This must match the dashboard query so counts are consistent
       const { data: coachClients, error: coachClientsError } = await supabase
         .from('coach_clients')
-        .select('client_id')
-        .eq('coach_id', user.id);
+        .select('client_id, status')
+        .eq('coach_id', user.id)
+        .eq('status', 'active');
+
+      console.log(
+        "[Coach Clients] coach_clients rows (status=active):",
+        coachClients?.length ?? 0,
+        "| error:", coachClientsError?.message ?? "none"
+      );
 
       if (coachClientsError) {
         console.error("[Coach Clients] Error fetching coach_clients:", coachClientsError);
@@ -83,12 +97,13 @@ export default function CoachClientsScreen() {
       }
 
       if (!coachClients || coachClients.length === 0) {
-        console.log("[Coach Clients] No clients found");
+        console.log("[Coach Clients] No active clients found — list is empty");
         setClients([]);
         return;
       }
 
       const clientIds = coachClients.map(cc => cc.client_id);
+      console.log("[Coach Clients] Active client ids:", clientIds);
 
       const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
