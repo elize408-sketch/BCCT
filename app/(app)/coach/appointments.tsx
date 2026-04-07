@@ -1066,16 +1066,68 @@ export default function CoachAppointmentsScreen() {
             <TouchableOpacity
               style={styles.selectorBtn}
               onPress={() => {
-                console.log("[Appointments] Client selector opened");
-                setClientSelectorVisible(true);
+                console.log('[AppointmentForm] client field pressed');
+                console.log('[AppointmentForm] clients array at press time:', clients);
+                console.log('[AppointmentForm] clientSelectorVisible set to true');
+                setClientSelectorVisible((v) => !v);
               }}
               activeOpacity={0.8}
             >
               <Text style={[styles.selectorText, !formClientId && styles.selectorPlaceholder]}>
                 {selectedClientName}
               </Text>
-              <Ionicons name="chevron-down" size={16} color={bcctColors.textSecondary} />
+              <Ionicons name={clientSelectorVisible ? "chevron-up" : "chevron-down"} size={16} color={bcctColors.textSecondary} />
             </TouchableOpacity>
+
+            {/* Inline client dropdown — avoids nested pageSheet modal issue */}
+            {clientSelectorVisible && (
+              <View style={styles.inlineClientDropdown}>
+                <TouchableOpacity
+                  style={[styles.inlineClientRow, !formClientId && styles.inlineClientRowSelected]}
+                  onPress={() => {
+                    console.log("[Appointments] Client deselected (geen cliënt)");
+                    setFormClientId(null);
+                    setClientSelectorVisible(false);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.inlineClientAvatar, { backgroundColor: "#E5E7EB" }]}>
+                    <Ionicons name="person-outline" size={16} color={bcctColors.textSecondary} />
+                  </View>
+                  <Text style={styles.inlineClientName}>Geen cliënt</Text>
+                  {!formClientId && <Ionicons name="checkmark" size={16} color={bcctColors.primaryOrange} />}
+                </TouchableOpacity>
+
+                {clients.length === 0 ? (
+                  <View style={styles.inlineNoClients}>
+                    <Text style={styles.inlineNoClientsText}>Geen cliënten gevonden</Text>
+                  </View>
+                ) : (
+                  clients.map((c) => {
+                    const isSelected = formClientId === c.id;
+                    const initial = c.full_name ? c.full_name.charAt(0).toUpperCase() : "?";
+                    return (
+                      <TouchableOpacity
+                        key={c.id}
+                        style={[styles.inlineClientRow, isSelected && styles.inlineClientRowSelected]}
+                        onPress={() => {
+                          console.log("[Appointments] Client selected:", c.full_name);
+                          setFormClientId(c.id);
+                          setClientSelectorVisible(false);
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <View style={styles.inlineClientAvatar}>
+                          <Text style={styles.inlineClientAvatarText}>{initial}</Text>
+                        </View>
+                        <Text style={styles.inlineClientName}>{c.full_name}</Text>
+                        {isSelected && <Ionicons name="checkmark" size={16} color={bcctColors.primaryOrange} />}
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
+              </View>
+            )}
 
             {/* Date */}
             <Text style={styles.fieldLabel}>Datum</Text>
@@ -1262,80 +1314,7 @@ export default function CoachAppointmentsScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* ── Client selector sheet ── */}
-      <Modal
-        visible={clientSelectorVisible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setClientSelectorVisible(false)}
-      >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHandle} />
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Selecteer cliënt</Text>
-            <TouchableOpacity
-              onPress={() => {
-                console.log("[Appointments] Client selector closed");
-                setClientSelectorVisible(false);
-              }}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Ionicons name="close" size={22} color={bcctColors.textSecondary} />
-            </TouchableOpacity>
-          </View>
-          <ScrollView>
-            <TouchableOpacity
-              style={[styles.clientRow, !formClientId && styles.clientRowSelected]}
-              onPress={() => {
-                console.log("[Appointments] Client deselected (geen cliënt)");
-                setFormClientId(null);
-                setClientSelectorVisible(false);
-              }}
-              activeOpacity={0.8}
-            >
-              <View style={[styles.clientAvatar, { backgroundColor: "#E5E7EB" }]}>
-                <Ionicons name="person-outline" size={18} color={bcctColors.textSecondary} />
-              </View>
-              <Text style={styles.clientName}>Geen cliënt</Text>
-              {!formClientId && (
-                <Ionicons name="checkmark" size={18} color={bcctColors.primaryOrange} />
-              )}
-            </TouchableOpacity>
-
-            {clients.length === 0 ? (
-              <View style={styles.noClientsWrap}>
-                <Text style={styles.noClientsText}>Geen cliënten gevonden</Text>
-              </View>
-            ) : (
-              clients.map((c) => {
-                const isSelected = formClientId === c.id;
-                const initial = avatarInitial(c.full_name);
-                return (
-                  <TouchableOpacity
-                    key={c.id}
-                    style={[styles.clientRow, isSelected && styles.clientRowSelected]}
-                    onPress={() => {
-                      console.log("[Appointments] Client selected:", c.full_name);
-                      setFormClientId(c.id);
-                      setClientSelectorVisible(false);
-                    }}
-                    activeOpacity={0.8}
-                  >
-                    <View style={styles.clientAvatar}>
-                      <Text style={styles.clientAvatarText}>{initial}</Text>
-                    </View>
-                    <Text style={styles.clientName}>{c.full_name}</Text>
-                    {isSelected && (
-                      <Ionicons name="checkmark" size={18} color={bcctColors.primaryOrange} />
-                    )}
-                  </TouchableOpacity>
-                );
-              })
-            )}
-            <View style={{ height: 60 }} />
-          </ScrollView>
-        </View>
-      </Modal>
+      {/* Client selector sheet removed — now rendered as inline dropdown inside the create modal */}
 
       {/* ── Detail Modal ── */}
       <Modal
@@ -1954,43 +1933,56 @@ const styles = StyleSheet.create({
     color: bcctColors.textSecondary,
   },
 
-  // Client selector
-  clientRow: {
+  // Inline client dropdown (replaces the nested pageSheet modal)
+  inlineClientDropdown: {
+    marginTop: 4,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: bcctColors.borderGray,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  inlineClientRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#F3F4F6",
-    gap: 12,
+    gap: 10,
   },
-  clientRowSelected: {
+  inlineClientRowSelected: {
     backgroundColor: `${bcctColors.primaryOrange}0A`,
   },
-  clientAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  inlineClientAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: `${bcctColors.primaryOrange}22`,
     alignItems: "center",
     justifyContent: "center",
   },
-  clientAvatarText: {
-    fontSize: 16,
+  inlineClientAvatarText: {
+    fontSize: 14,
     fontWeight: "700",
     color: bcctColors.primaryOrange,
   },
-  clientName: {
+  inlineClientName: {
     flex: 1,
     fontSize: 15,
     fontWeight: "500",
     color: bcctColors.textPrimary,
   },
-  noClientsWrap: {
-    padding: 32,
+  inlineNoClients: {
+    padding: 20,
     alignItems: "center",
   },
-  noClientsText: {
+  inlineNoClientsText: {
     fontSize: 14,
     color: bcctColors.textSecondary,
   },
