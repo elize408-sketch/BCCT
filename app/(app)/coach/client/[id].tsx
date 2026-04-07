@@ -1,16 +1,16 @@
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   ActivityIndicator,
   Image,
   TextInput,
   ImageSourcePropType,
   Platform,
+  Animated,
 } from "react-native";
 import Modal from "react-native-modal";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -20,6 +20,14 @@ import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { bcctColors, bcctTypography } from "@/styles/bcctTheme";
 import { LinearGradient } from "expo-linear-gradient";
+import {
+  Activity,
+  BookOpen,
+  CreditCard,
+  Calendar,
+  FileText,
+} from "lucide-react-native";
+import { AnimatedPressable } from "@/components/AnimatedPressable";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -89,6 +97,18 @@ interface CoachNote {
   title: string | null;
 }
 
+// ─── Tab definition ───────────────────────────────────────────────────────────
+
+type TabKey = "logs" | "huiswerk" | "betalingen" | "afspraken" | "notities";
+
+const TABS: { key: TabKey; label: string }[] = [
+  { key: "logs", label: "Dagelijkse logs" },
+  { key: "huiswerk", label: "Huiswerk" },
+  { key: "betalingen", label: "Betalingen" },
+  { key: "afspraken", label: "Afspraken" },
+  { key: "notities", label: "Notities" },
+];
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function resolveImageSource(
@@ -126,25 +146,174 @@ function isTableMissingError(error: any): boolean {
   return error?.code === "42P01" || error?.message?.includes("does not exist");
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Skeleton loader ──────────────────────────────────────────────────────────
 
-function SectionHeader({ title, icon }: { title: string; icon: string }) {
+function SkeletonRow() {
+  const opacity = useRef(new Animated.Value(0.3)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, {
+          toValue: 0.7,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0.3,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, [opacity]);
+
   return (
-    <View style={sectionStyles.header}>
-      <View style={sectionStyles.leftBorder} />
-      <Text style={sectionStyles.icon}>{icon}</Text>
-      <Text style={sectionStyles.title}>{title}</Text>
+    <Animated.View style={[skeletonStyles.row, { opacity }]}>
+      <View style={skeletonStyles.left}>
+        <View style={[skeletonStyles.line, { width: "60%", height: 14 }]} />
+        <View style={[skeletonStyles.line, { width: "35%", height: 11, marginTop: 6 }]} />
+      </View>
+      <View style={[skeletonStyles.line, { width: 52, height: 22, borderRadius: 11 }]} />
+    </Animated.View>
+  );
+}
+
+const skeletonStyles = StyleSheet.create({
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(0,0,0,0.06)",
+  },
+  left: { flex: 1, gap: 0 },
+  line: {
+    backgroundColor: bcctColors.borderGray,
+    borderRadius: 6,
+  },
+});
+
+// ─── Animated list item ───────────────────────────────────────────────────────
+
+function AnimatedListItem({
+  index,
+  children,
+}: {
+  index: number;
+  children: React.ReactNode;
+}) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(10)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 300,
+        delay: index * 60,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 300,
+        delay: index * 60,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [index, opacity, translateY]);
+
+  return (
+    <Animated.View style={{ opacity, transform: [{ translateY }] }}>
+      {children}
+    </Animated.View>
+  );
+}
+
+// ─── Empty state ──────────────────────────────────────────────────────────────
+
+function EmptyState({
+  icon,
+  title,
+  subtitle,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <View style={emptyStyles.container}>
+      <View style={emptyStyles.iconCircle}>{icon}</View>
+      <Text style={emptyStyles.title}>{title}</Text>
+      <Text style={emptyStyles.subtitle}>{subtitle}</Text>
     </View>
   );
 }
 
-function EmptyState({ message }: { message: string }) {
+const emptyStyles = StyleSheet.create({
+  container: {
+    alignItems: "center",
+    paddingVertical: 36,
+    paddingHorizontal: 24,
+  },
+  iconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: bcctColors.primaryOrange + "15",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  title: {
+    fontSize: 17,
+    fontWeight: "600",
+    color: bcctColors.textPrimary,
+    marginBottom: 6,
+    textAlign: "center",
+  },
+  subtitle: {
+    fontSize: 14,
+    color: bcctColors.textSecondary,
+    textAlign: "center",
+    lineHeight: 20,
+    maxWidth: 260,
+  },
+});
+
+// ─── Badge ────────────────────────────────────────────────────────────────────
+
+function Badge({
+  label,
+  bg,
+  fg,
+}: {
+  label: string;
+  bg: string;
+  fg: string;
+}) {
   return (
-    <View style={sectionStyles.emptyState}>
-      <Text style={sectionStyles.emptyText}>{message}</Text>
+    <View style={[badgeStyles.pill, { backgroundColor: bg }]}>
+      <Text style={[badgeStyles.text, { color: fg }]}>{label}</Text>
     </View>
   );
 }
+
+const badgeStyles = StyleSheet.create({
+  pill: {
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    alignSelf: "flex-start",
+  },
+  text: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+});
+
+// ─── Invoice status badge ─────────────────────────────────────────────────────
 
 function InvoiceStatusBadge({ status }: { status: string | null }) {
   const s = (status ?? "").toLowerCase();
@@ -166,12 +335,397 @@ function InvoiceStatusBadge({ status }: { status: string | null }) {
     label = "Mislukt";
   }
 
+  return <Badge label={label} bg={bg} fg={fg} />;
+}
+
+// ─── CTA button ───────────────────────────────────────────────────────────────
+
+function CtaButton({
+  label,
+  onPress,
+}: {
+  label: string;
+  onPress: () => void;
+}) {
   return (
-    <View style={[sectionStyles.badge, { backgroundColor: bg }]}>
-      <Text style={[sectionStyles.badgeText, { color: fg }]}>{label}</Text>
+    <AnimatedPressable onPress={onPress} style={ctaStyles.button}>
+      <Text style={ctaStyles.text}>{label}</Text>
+    </AnimatedPressable>
+  );
+}
+
+const ctaStyles = StyleSheet.create({
+  button: {
+    marginTop: 16,
+    backgroundColor: bcctColors.primaryOrange + "15",
+    borderRadius: 12,
+    height: 48,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  text: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: bcctColors.primaryOrange,
+  },
+});
+
+// ─── Tab content sections ─────────────────────────────────────────────────────
+
+function LogsTab({
+  data,
+  loading,
+}: {
+  data: CheckinResponse[];
+  loading: boolean;
+}) {
+  if (loading) {
+    return (
+      <View style={tabContentStyles.container}>
+        {[0, 1, 2, 3].map((i) => (
+          <SkeletonRow key={i} />
+        ))}
+      </View>
+    );
+  }
+
+  if (data.length === 0) {
+    return (
+      <EmptyState
+        icon={<Activity size={28} color={bcctColors.primaryOrange} strokeWidth={2} />}
+        title="Nog geen dagelijkse logs"
+        subtitle="Logs verschijnen hier zodra de cliënt begint in te vullen"
+      />
+    );
+  }
+
+  return (
+    <View style={tabContentStyles.container}>
+      {data.map((r, i) => {
+        const checkinTitle = r.checkins?.title ?? "Check-in";
+        const scoreText = r.score != null ? `Score: ${r.score}` : null;
+        const dateText = formatDate(r.created_at);
+        return (
+          <AnimatedListItem key={r.id} index={i}>
+            <View style={tabContentStyles.row}>
+              <View style={tabContentStyles.rowLeft}>
+                <Text style={tabContentStyles.rowTitle} numberOfLines={1}>
+                  {checkinTitle}
+                </Text>
+                <Text style={tabContentStyles.rowSub}>{dateText}</Text>
+              </View>
+              {scoreText ? (
+                <Badge
+                  label={scoreText}
+                  bg={bcctColors.primaryOrange + "15"}
+                  fg={bcctColors.primaryOrange}
+                />
+              ) : null}
+            </View>
+          </AnimatedListItem>
+        );
+      })}
     </View>
   );
 }
+
+function HuiswerkTab({
+  programs,
+  themeAssignments,
+  loading,
+}: {
+  programs: ClientProgram[];
+  themeAssignments: ThemeAssignment[];
+  loading: boolean;
+}) {
+  const hasPrograms = programs.length > 0;
+  const items = hasPrograms ? programs : themeAssignments;
+
+  if (loading) {
+    return (
+      <View style={tabContentStyles.container}>
+        {[0, 1, 2].map((i) => (
+          <SkeletonRow key={i} />
+        ))}
+      </View>
+    );
+  }
+
+  return (
+    <View style={tabContentStyles.container}>
+      {items.length === 0 ? (
+        <EmptyState
+          icon={<BookOpen size={28} color={bcctColors.primaryOrange} strokeWidth={2} />}
+          title="Nog geen huiswerk"
+          subtitle="Stuur een programma om te beginnen"
+        />
+      ) : (
+        items.map((item, i) => {
+          const title = hasPrograms
+            ? (item as ClientProgram).template?.name ?? "Programma"
+            : (item as ThemeAssignment).themes?.title ?? "Thema";
+          const dateText = hasPrograms
+            ? formatDate((item as ClientProgram).assigned_at)
+            : formatDate((item as ThemeAssignment).created_at);
+          const weekText =
+            hasPrograms && (item as ClientProgram).current_week != null
+              ? `Week ${(item as ClientProgram).current_week}`
+              : null;
+          return (
+            <AnimatedListItem key={item.id} index={i}>
+              <View style={tabContentStyles.row}>
+                <View style={tabContentStyles.rowLeft}>
+                  <Text style={tabContentStyles.rowTitle} numberOfLines={1}>
+                    {title}
+                  </Text>
+                  <Text style={tabContentStyles.rowSub}>{dateText}</Text>
+                </View>
+                {weekText ? (
+                  <Badge
+                    label={weekText}
+                    bg={bcctColors.primaryOrange + "15"}
+                    fg={bcctColors.primaryOrange}
+                  />
+                ) : null}
+              </View>
+            </AnimatedListItem>
+          );
+        })
+      )}
+      <CtaButton
+        label="+ Huiswerk sturen"
+        onPress={() => console.log("[ClientDetail] Huiswerk sturen pressed")}
+      />
+    </View>
+  );
+}
+
+function BetalingenTab({
+  data,
+  loading,
+}: {
+  data: Invoice[];
+  loading: boolean;
+}) {
+  if (loading) {
+    return (
+      <View style={tabContentStyles.container}>
+        {[0, 1, 2].map((i) => (
+          <SkeletonRow key={i} />
+        ))}
+      </View>
+    );
+  }
+
+  return (
+    <View style={tabContentStyles.container}>
+      {data.length === 0 ? (
+        <EmptyState
+          icon={<CreditCard size={28} color={bcctColors.primaryOrange} strokeWidth={2} />}
+          title="Nog geen betalingen"
+          subtitle="Betalingen verschijnen hier"
+        />
+      ) : (
+        data.map((inv, i) => {
+          const amountText = formatAmount(inv.amount);
+          const dateText = formatDate(inv.created_at);
+          const descText = inv.description ?? "Factuur";
+          return (
+            <AnimatedListItem key={inv.id} index={i}>
+              <View style={tabContentStyles.row}>
+                <View style={tabContentStyles.rowLeft}>
+                  <Text style={tabContentStyles.rowTitle} numberOfLines={1}>
+                    {descText}
+                  </Text>
+                  <Text style={tabContentStyles.rowSub}>{dateText}</Text>
+                </View>
+                <View style={tabContentStyles.rowRight}>
+                  <Text style={tabContentStyles.amountText}>{amountText}</Text>
+                  <InvoiceStatusBadge status={inv.status} />
+                </View>
+              </View>
+            </AnimatedListItem>
+          );
+        })
+      )}
+      <CtaButton
+        label="+ Betaling aanmaken"
+        onPress={() => console.log("[ClientDetail] Betaling aanmaken pressed")}
+      />
+    </View>
+  );
+}
+
+function AfsprakenTab({
+  data,
+  loading,
+  onNew,
+}: {
+  data: Appointment[];
+  loading: boolean;
+  onNew: () => void;
+}) {
+  if (loading) {
+    return (
+      <View style={tabContentStyles.container}>
+        {[0, 1, 2].map((i) => (
+          <SkeletonRow key={i} />
+        ))}
+      </View>
+    );
+  }
+
+  return (
+    <View style={tabContentStyles.container}>
+      {data.length === 0 ? (
+        <EmptyState
+          icon={<Calendar size={28} color={bcctColors.primaryOrange} strokeWidth={2} />}
+          title="Nog geen afspraken"
+          subtitle="Plan een afspraak in met deze cliënt"
+        />
+      ) : (
+        data.map((apt, i) => {
+          const aptTitle = apt.title ?? "Afspraak";
+          const aptDate = formatDate(apt.start_time);
+          const aptTimeStart = formatTime(apt.start_time);
+          const aptTimeEnd = formatTime(apt.end_time);
+          const timeRange = apt.end_time
+            ? `${aptTimeStart} – ${aptTimeEnd}`
+            : aptTimeStart;
+          const dateTimeText = `${aptDate} · ${timeRange}`;
+          return (
+            <AnimatedListItem key={apt.id} index={i}>
+              <View style={tabContentStyles.row}>
+                <View style={tabContentStyles.rowLeft}>
+                  <Text style={tabContentStyles.rowTitle} numberOfLines={1}>
+                    {aptTitle}
+                  </Text>
+                  <Text style={tabContentStyles.rowSub}>{dateTimeText}</Text>
+                </View>
+                {apt.status ? (
+                  <Badge
+                    label={apt.status}
+                    bg={bcctColors.primaryOrange + "15"}
+                    fg={bcctColors.primaryOrange}
+                  />
+                ) : null}
+              </View>
+            </AnimatedListItem>
+          );
+        })
+      )}
+      <CtaButton label="+ Nieuwe afspraak" onPress={onNew} />
+    </View>
+  );
+}
+
+function NotitiesTab({
+  data,
+  loading,
+  onNew,
+}: {
+  data: CoachNote[];
+  loading: boolean;
+  onNew: () => void;
+}) {
+  if (loading) {
+    return (
+      <View style={tabContentStyles.container}>
+        {[0, 1, 2].map((i) => (
+          <SkeletonRow key={i} />
+        ))}
+      </View>
+    );
+  }
+
+  return (
+    <View style={tabContentStyles.container}>
+      {data.length === 0 ? (
+        <EmptyState
+          icon={<FileText size={28} color={bcctColors.primaryOrange} strokeWidth={2} />}
+          title="Nog geen notities"
+          subtitle="Voeg een notitie toe over deze cliënt"
+        />
+      ) : (
+        data.map((note, i) => {
+          const noteTitleText = note.title ?? "Notitie";
+          const preview =
+            (note.content ?? "").length > 80
+              ? (note.content ?? "").slice(0, 80) + "…"
+              : (note.content ?? "");
+          const dateText = formatDate(note.created_at);
+          return (
+            <AnimatedListItem key={note.id} index={i}>
+              <View style={tabContentStyles.row}>
+                <View style={tabContentStyles.rowLeft}>
+                  <Text style={tabContentStyles.rowTitle} numberOfLines={1}>
+                    {noteTitleText}
+                  </Text>
+                  {preview ? (
+                    <Text
+                      style={tabContentStyles.rowPreview}
+                      numberOfLines={2}
+                    >
+                      {preview}
+                    </Text>
+                  ) : null}
+                  <Text style={tabContentStyles.rowSub}>{dateText}</Text>
+                </View>
+              </View>
+            </AnimatedListItem>
+          );
+        })
+      )}
+      <CtaButton label="+ Nieuwe notitie" onPress={onNew} />
+    </View>
+  );
+}
+
+const tabContentStyles = StyleSheet.create({
+  container: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 8,
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(0,0,0,0.07)",
+    gap: 12,
+  },
+  rowLeft: {
+    flex: 1,
+    gap: 3,
+  },
+  rowRight: {
+    alignItems: "flex-end",
+    gap: 4,
+  },
+  rowTitle: {
+    fontSize: 15,
+    fontWeight: "500",
+    color: bcctColors.textPrimary,
+    lineHeight: 20,
+  },
+  rowSub: {
+    fontSize: 13,
+    color: bcctColors.textSecondary,
+    lineHeight: 18,
+  },
+  rowPreview: {
+    fontSize: 13,
+    color: bcctColors.textSecondary,
+    lineHeight: 18,
+  },
+  amountText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: bcctColors.textPrimary,
+  },
+});
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
@@ -192,6 +746,9 @@ export default function ClientDetailScreen() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [notes, setNotes] = useState<CoachNote[]>([]);
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState<TabKey>("logs");
 
   // Note modal state
   const [noteModalVisible, setNoteModalVisible] = useState(false);
@@ -257,7 +814,11 @@ export default function ClientDetailScreen() {
         .eq("client_id", clientId)
         .limit(1);
       const linkRow = linkRows?.[0] ?? null;
-      setLink(linkRow ? { id: clientId, created_at: linkRow.created_at, status: linkRow.status } : null);
+      setLink(
+        linkRow
+          ? { id: clientId, created_at: linkRow.created_at, status: linkRow.status }
+          : null
+      );
 
       // Fetch profile
       const { data: profileData } = await supabase
@@ -490,16 +1051,8 @@ export default function ClientDetailScreen() {
     .toUpperCase()
     .slice(0, 2);
   const linkedSince = link ? formatDate(link.created_at) : "—";
-  const onboardingLabel =
-    profile?.onboarding_completed
-      ? "Onboarding voltooid"
-      : "Onboarding niet voltooid";
-  const onboardingColor =
-    profile?.onboarding_completed ? bcctColors.success : bcctColors.accentOrange;
-
-  const homeworkItems = programs.length > 0 ? programs : themeAssignments;
-  const hasPrograms = programs.length > 0;
-  // Derived per-item display helpers are computed inline below
+  const onboardingIncomplete =
+    profile !== null && profile.onboarding_completed === false;
 
   // ── Loading / access denied ─────────────────────────────────────────────────
 
@@ -548,11 +1101,12 @@ export default function ClientDetailScreen() {
       <ScrollView
         style={[styles.container, { backgroundColor: colors.background }]}
         contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        {/* ── Hero card ── */}
-        <View style={[styles.heroCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={[styles.avatarCircle, { backgroundColor: bcctColors.primaryOrange + "20" }]}>
+        {/* ── Profile header ── */}
+        <View style={[styles.profileHeader, { backgroundColor: colors.card }]}>
+          {/* Avatar */}
+          <View style={styles.avatarCircle}>
             {profile?.avatar_url ? (
               <Image
                 source={resolveImageSource(profile.avatar_url)}
@@ -563,273 +1117,111 @@ export default function ClientDetailScreen() {
             )}
           </View>
 
-          <Text style={[styles.heroName, { color: colors.text }]}>{displayName}</Text>
-
-          {profile?.phone ? (
-            <Text style={[styles.heroPhone, { color: bcctColors.textSecondary }]}>
-              {profile.phone}
+          {/* Info */}
+          <View style={styles.profileInfo}>
+            <Text style={styles.profileName} numberOfLines={1}>
+              {displayName}
             </Text>
-          ) : null}
 
-          <View style={styles.heroBadgesRow}>
-            <View style={[styles.badge, { backgroundColor: bcctColors.success + "20" }]}>
-              <Text style={[styles.badgeText, { color: bcctColors.success }]}>Actief</Text>
+            <View style={styles.badgesRow}>
+              <Badge
+                label="Actief"
+                bg={bcctColors.success + "20"}
+                fg={bcctColors.success}
+              />
+              {onboardingIncomplete ? (
+                <Badge
+                  label="Onboarding niet voltooid"
+                  bg={bcctColors.accentOrange + "20"}
+                  fg={bcctColors.accentOrange}
+                />
+              ) : null}
             </View>
-            <View style={[styles.badge, { backgroundColor: onboardingColor + "20" }]}>
-              <Text style={[styles.badgeText, { color: onboardingColor }]}>
-                {onboardingLabel}
-              </Text>
-            </View>
+
+            <Text style={styles.linkedSince}>
+              {"Gekoppeld sinds "}
+              {linkedSince}
+            </Text>
           </View>
-
-          <Text style={[styles.heroMeta, { color: bcctColors.textSecondary }]}>
-            Gekoppeld sinds {linkedSince}
-          </Text>
         </View>
 
-        {/* ── Section 1: Dagelijkse logs ── */}
-        <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <SectionHeader title="Dagelijkse logs" icon="📋" />
-          {checkinResponses.length === 0 ? (
-            <EmptyState message="Nog geen logs" />
-          ) : (
-            checkinResponses.map((r) => {
-              const checkinTitle = r.checkins?.title ?? "Check-in";
-              const scoreText = r.score != null ? `Score: ${r.score}` : null;
-              const dateText = formatDate(r.created_at);
-              return (
-                <View
-                  key={r.id}
-                  style={[styles.listItem, { borderBottomColor: colors.border }]}
-                >
-                  <View style={styles.listItemLeft}>
-                    <Text style={[styles.listItemTitle, { color: colors.text }]}>
-                      {checkinTitle}
-                    </Text>
-                    <Text style={[styles.listItemSub, { color: bcctColors.textSecondary }]}>
-                      {dateText}
-                    </Text>
-                  </View>
-                  {scoreText ? (
-                    <View style={[styles.badge, { backgroundColor: bcctColors.primaryOrange + "20" }]}>
-                      <Text style={[styles.badgeText, { color: bcctColors.primaryOrange }]}>
-                        {scoreText}
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-              );
-            })
-          )}
-        </View>
-
-        {/* ── Section 2: Huiswerk ── */}
-        <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <SectionHeader title="Huiswerk" icon="📚" />
-          {homeworkItems.length === 0 ? (
-            <EmptyState message="Nog geen huiswerk" />
-          ) : (
-            homeworkItems.map((item) => {
-              const title = hasPrograms
-                ? (item as ClientProgram).template?.name ?? "Programma"
-                : (item as ThemeAssignment).themes?.title ?? "Thema";
-              const dateText = hasPrograms
-                ? formatDate((item as ClientProgram).assigned_at)
-                : formatDate((item as ThemeAssignment).created_at);
-              const weekText = hasPrograms && (item as ClientProgram).current_week != null
-                ? `Week ${(item as ClientProgram).current_week}`
-                : null;
-              return (
-                <View
-                  key={item.id}
-                  style={[styles.listItem, { borderBottomColor: colors.border }]}
-                >
-                  <View style={styles.listItemLeft}>
-                    <Text style={[styles.listItemTitle, { color: colors.text }]}>
-                      {title}
-                    </Text>
-                    <Text style={[styles.listItemSub, { color: bcctColors.textSecondary }]}>
-                      {dateText}
-                    </Text>
-                  </View>
-                  {weekText ? (
-                    <View style={[styles.badge, { backgroundColor: bcctColors.primaryOrange + "15" }]}>
-                      <Text style={[styles.badgeText, { color: bcctColors.primaryOrange }]}>
-                        {weekText}
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-              );
-            })
-          )}
-          <TouchableOpacity
-            style={[styles.ctaButton, { borderColor: bcctColors.primaryOrange }]}
-            onPress={() => console.log("[ClientDetail] Huiswerk sturen pressed")}
-            activeOpacity={0.7}
+        {/* ── Tab bar ── */}
+        <View style={[styles.tabBarWrapper, { backgroundColor: colors.card }]}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tabBarContent}
           >
-            <Text style={[styles.ctaButtonText, { color: bcctColors.primaryOrange }]}>
-              + Huiswerk sturen
-            </Text>
-          </TouchableOpacity>
+            {TABS.map((tab) => {
+              const isActive = activeTab === tab.key;
+              return (
+                <AnimatedPressable
+                  key={tab.key}
+                  onPress={() => {
+                    console.log("[ClientDetail] Tab pressed:", tab.key);
+                    setActiveTab(tab.key);
+                  }}
+                  style={[
+                    styles.tabItem,
+                    isActive && styles.tabItemActive,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.tabLabel,
+                      isActive ? styles.tabLabelActive : styles.tabLabelInactive,
+                    ]}
+                  >
+                    {tab.label}
+                  </Text>
+                </AnimatedPressable>
+              );
+            })}
+          </ScrollView>
         </View>
 
-        {/* ── Section 3: Betalingen ── */}
-        <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <SectionHeader title="Betalingen" icon="💳" />
-          {invoices.length === 0 ? (
-            <EmptyState message="Nog geen betalingen" />
-          ) : (
-            invoices.map((inv) => {
-              const amountText = formatAmount(inv.amount);
-              const dateText = formatDate(inv.created_at);
-              const descText = inv.description ?? "Factuur";
-              return (
-                <View
-                  key={inv.id}
-                  style={[styles.listItem, { borderBottomColor: colors.border }]}
-                >
-                  <View style={styles.listItemLeft}>
-                    <Text style={[styles.listItemTitle, { color: colors.text }]}>
-                      {descText}
-                    </Text>
-                    <Text style={[styles.listItemSub, { color: bcctColors.textSecondary }]}>
-                      {dateText}
-                    </Text>
-                  </View>
-                  <View style={styles.listItemRight}>
-                    <Text style={[styles.amountText, { color: colors.text }]}>
-                      {amountText}
-                    </Text>
-                    <InvoiceStatusBadge status={inv.status} />
-                  </View>
-                </View>
-              );
-            })
+        {/* ── Tab content card ── */}
+        <View
+          style={[
+            styles.contentCard,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          {activeTab === "logs" && (
+            <LogsTab data={checkinResponses} loading={false} />
           )}
-          <TouchableOpacity
-            style={[styles.ctaButton, { borderColor: bcctColors.primaryOrange }]}
-            onPress={() => console.log("[ClientDetail] Betaling aanmaken pressed")}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.ctaButtonText, { color: bcctColors.primaryOrange }]}>
-              + Betaling aanmaken
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* ── Section 4: Afspraken ── */}
-        <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <SectionHeader title="Afspraken" icon="📅" />
-          {appointments.length === 0 ? (
-            <EmptyState message="Nog geen afspraken" />
-          ) : (
-            appointments.map((apt) => {
-              const aptTitle = apt.title ?? "Afspraak";
-              const aptDate = formatDate(apt.start_time);
-              const aptTimeStart = formatTime(apt.start_time);
-              const aptTimeEnd = formatTime(apt.end_time);
-              const timeRange = apt.end_time
-                ? `${aptTimeStart} – ${aptTimeEnd}`
-                : aptTimeStart;
-              return (
-                <View
-                  key={apt.id}
-                  style={[styles.listItem, { borderBottomColor: colors.border }]}
-                >
-                  <View style={styles.listItemLeft}>
-                    <Text style={[styles.listItemTitle, { color: colors.text }]}>
-                      {aptTitle}
-                    </Text>
-                    <Text style={[styles.listItemSub, { color: bcctColors.textSecondary }]}>
-                      {aptDate}
-                    </Text>
-                    <Text style={[styles.listItemSub, { color: bcctColors.textSecondary }]}>
-                      {timeRange}
-                    </Text>
-                  </View>
-                  {apt.status ? (
-                    <View style={[styles.badge, { backgroundColor: bcctColors.primaryOrange + "15" }]}>
-                      <Text style={[styles.badgeText, { color: bcctColors.primaryOrange }]}>
-                        {apt.status}
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-              );
-            })
+          {activeTab === "huiswerk" && (
+            <HuiswerkTab
+              programs={programs}
+              themeAssignments={themeAssignments}
+              loading={false}
+            />
           )}
-          <TouchableOpacity
-            style={styles.ctaPrimaryButton}
-            onPress={() => {
-              console.log("[ClientDetail] Nieuwe afspraak pressed, navigating to appointment-form");
-              router.push("/(app)/coach/appointment-form" as any);
-            }}
-            activeOpacity={0.85}
-          >
-            <LinearGradient
-              colors={[bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.ctaPrimaryGradient}
-            >
-              <Text style={styles.ctaPrimaryText}>+ Nieuwe afspraak</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-
-        {/* ── Section 5: Notities ── */}
-        <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <SectionHeader title="Notities" icon="📝" />
-          {notes.length === 0 ? (
-            <EmptyState message="Nog geen notities" />
-          ) : (
-            notes.map((note) => {
-              const noteTitle = note.title ?? "Notitie";
-              const preview =
-                (note.content ?? "").length > 80
-                  ? (note.content ?? "").slice(0, 80) + "…"
-                  : (note.content ?? "");
-              const dateText = formatDate(note.created_at);
-              return (
-                <View
-                  key={note.id}
-                  style={[styles.listItem, { borderBottomColor: colors.border }]}
-                >
-                  <View style={styles.listItemLeft}>
-                    <Text style={[styles.listItemTitle, { color: colors.text }]}>
-                      {noteTitle}
-                    </Text>
-                    {preview ? (
-                      <Text style={[styles.listItemPreview, { color: bcctColors.textSecondary }]}>
-                        {preview}
-                      </Text>
-                    ) : null}
-                    <Text style={[styles.listItemSub, { color: bcctColors.textSecondary }]}>
-                      {dateText}
-                    </Text>
-                  </View>
-                </View>
-              );
-            })
+          {activeTab === "betalingen" && (
+            <BetalingenTab data={invoices} loading={false} />
           )}
-          <TouchableOpacity
-            style={styles.ctaPrimaryButton}
-            onPress={() => {
-              console.log("[ClientDetail] Nieuwe notitie pressed");
-              setNoteModalVisible(true);
-            }}
-            activeOpacity={0.85}
-          >
-            <LinearGradient
-              colors={[bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.ctaPrimaryGradient}
-            >
-              <Text style={styles.ctaPrimaryText}>+ Nieuwe notitie</Text>
-            </LinearGradient>
-          </TouchableOpacity>
+          {activeTab === "afspraken" && (
+            <AfsprakenTab
+              data={appointments}
+              loading={false}
+              onNew={() => {
+                console.log(
+                  "[ClientDetail] Nieuwe afspraak pressed, navigating to appointment-form"
+                );
+                router.push("/(app)/coach/appointment-form" as any);
+              }}
+            />
+          )}
+          {activeTab === "notities" && (
+            <NotitiesTab
+              data={notes}
+              loading={false}
+              onNew={() => {
+                console.log("[ClientDetail] Nieuwe notitie pressed");
+                setNoteModalVisible(true);
+              }}
+            />
+          )}
         </View>
 
         <View style={{ height: 100 }} />
@@ -858,7 +1250,11 @@ export default function ClientDetailScreen() {
           <TextInput
             style={[
               styles.textInput,
-              { backgroundColor: colors.background, color: colors.text, borderColor: colors.border },
+              {
+                backgroundColor: colors.background,
+                color: colors.text,
+                borderColor: colors.border,
+              },
             ]}
             placeholder="Bijv. Sessie samenvatting"
             placeholderTextColor={bcctColors.textSecondary}
@@ -874,7 +1270,11 @@ export default function ClientDetailScreen() {
             style={[
               styles.textInput,
               styles.textArea,
-              { backgroundColor: colors.background, color: colors.text, borderColor: colors.border },
+              {
+                backgroundColor: colors.background,
+                color: colors.text,
+                borderColor: colors.border,
+              },
             ]}
             placeholder="Schrijf hier je notitie..."
             placeholderTextColor={bcctColors.textSecondary}
@@ -886,24 +1286,30 @@ export default function ClientDetailScreen() {
           />
 
           <View style={styles.noteModalActions}>
-            <TouchableOpacity
+            <AnimatedPressable
               style={[styles.noteModalCancel, { borderColor: colors.border }]}
               onPress={() => {
                 console.log("[ClientDetail] Note modal cancelled");
                 setNoteModalVisible(false);
               }}
-              activeOpacity={0.7}
             >
-              <Text style={[styles.noteModalCancelText, { color: bcctColors.textSecondary }]}>
+              <Text
+                style={[
+                  styles.noteModalCancelText,
+                  { color: bcctColors.textSecondary },
+                ]}
+              >
                 Annuleren
               </Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
 
-            <TouchableOpacity
-              style={[styles.noteModalSave, { opacity: savingNote || !noteContent.trim() ? 0.5 : 1 }]}
+            <AnimatedPressable
+              style={[
+                styles.noteModalSave,
+                { opacity: savingNote || !noteContent.trim() ? 0.5 : 1 },
+              ]}
               onPress={handleSaveNote}
               disabled={savingNote || !noteContent.trim()}
-              activeOpacity={0.85}
             >
               <LinearGradient
                 colors={[bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
@@ -917,7 +1323,7 @@ export default function ClientDetailScreen() {
                   <Text style={styles.noteModalSaveText}>Opslaan</Text>
                 )}
               </LinearGradient>
-            </TouchableOpacity>
+            </AnimatedPressable>
           </View>
         </View>
       </Modal>
@@ -926,47 +1332,6 @@ export default function ClientDetailScreen() {
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
-
-const sectionStyles = StyleSheet.create({
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 16,
-    gap: 8,
-  },
-  leftBorder: {
-    width: 4,
-    height: 20,
-    borderRadius: 2,
-    backgroundColor: bcctColors.primaryOrange,
-  },
-  icon: {
-    fontSize: 16,
-  },
-  title: {
-    ...bcctTypography.bodySemiBold,
-    color: bcctColors.textPrimary,
-    flex: 1,
-  },
-  emptyState: {
-    paddingVertical: 20,
-    alignItems: "center",
-  },
-  emptyText: {
-    ...bcctTypography.small,
-    color: bcctColors.textSecondary,
-  },
-  badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    alignSelf: "flex-start",
-  },
-  badgeText: {
-    fontSize: 12,
-    fontWeight: "600",
-  },
-});
 
 const styles = StyleSheet.create({
   container: {
@@ -978,146 +1343,115 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 32,
   },
-  scrollContent: {
-    padding: 16,
-    gap: 16,
-  },
 
-  // Hero card
-  heroCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 24,
+  // Profile header
+  profileHeader: {
+    flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    gap: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(0,0,0,0.08)",
     ...Platform.select({
       ios: {
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.08,
-        shadowRadius: 6,
+        shadowOpacity: 0.06,
+        shadowRadius: 4,
       },
       android: { elevation: 2 },
     }),
   },
   avatarCircle: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: bcctColors.primaryOrange + "20",
     justifyContent: "center",
     alignItems: "center",
     overflow: "hidden",
-    marginBottom: 4,
+    flexShrink: 0,
   },
   avatarImage: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
   },
   avatarInitials: {
-    fontSize: 28,
+    fontSize: 20,
     fontWeight: "700",
     color: bcctColors.primaryOrange,
   },
-  heroName: {
-    ...bcctTypography.h2,
-    textAlign: "center",
+  profileInfo: {
+    flex: 1,
+    gap: 5,
   },
-  heroPhone: {
-    ...bcctTypography.small,
+  profileName: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: bcctColors.textPrimary,
+    letterSpacing: -0.3,
+    lineHeight: 26,
   },
-  heroBadgesRow: {
+  badgesRow: {
     flexDirection: "row",
-    gap: 8,
-    marginTop: 4,
     flexWrap: "wrap",
-    justifyContent: "center",
+    gap: 6,
   },
-  badge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 10,
-  },
-  badgeText: {
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  heroMeta: {
-    ...bcctTypography.small,
-    marginTop: 4,
+  linkedSince: {
+    fontSize: 13,
+    color: bcctColors.textSecondary,
+    lineHeight: 18,
   },
 
-  // Section card
-  section: {
+  // Tab bar
+  tabBarWrapper: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(0,0,0,0.08)",
+  },
+  tabBarContent: {
+    paddingHorizontal: 4,
+    flexDirection: "row",
+  },
+  tabItem: {
+    paddingHorizontal: 16,
+    height: 44,
+    justifyContent: "center",
+    alignItems: "center",
+    borderBottomWidth: 2,
+    borderBottomColor: "transparent",
+  },
+  tabItemActive: {
+    borderBottomColor: bcctColors.primaryOrange,
+  },
+  tabLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  tabLabelActive: {
+    color: bcctColors.primaryOrange,
+  },
+  tabLabelInactive: {
+    color: bcctColors.textSecondary,
+  },
+
+  // Content card
+  contentCard: {
+    marginHorizontal: 16,
+    marginTop: 16,
     borderRadius: 16,
     borderWidth: 1,
-    padding: 16,
+    overflow: "hidden",
     ...Platform.select({
       ios: {
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.08,
+        shadowOpacity: 0.06,
         shadowRadius: 4,
       },
       android: { elevation: 1 },
     }),
-  },
-
-  // List items
-  listItem: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: 12,
-  },
-  listItemLeft: {
-    flex: 1,
-    gap: 2,
-  },
-  listItemRight: {
-    alignItems: "flex-end",
-    gap: 4,
-  },
-  listItemTitle: {
-    ...bcctTypography.bodyMedium,
-  },
-  listItemSub: {
-    ...bcctTypography.small,
-  },
-  listItemPreview: {
-    ...bcctTypography.small,
-    lineHeight: 18,
-  },
-  amountText: {
-    ...bcctTypography.bodyMedium,
-    fontWeight: "700",
-  },
-
-  // CTA buttons
-  ctaButton: {
-    marginTop: 12,
-    borderWidth: 1.5,
-    borderRadius: 12,
-    paddingVertical: 10,
-    alignItems: "center",
-  },
-  ctaButtonText: {
-    ...bcctTypography.bodyMedium,
-  },
-  ctaPrimaryButton: {
-    marginTop: 12,
-    borderRadius: 12,
-    overflow: "hidden",
-  },
-  ctaPrimaryGradient: {
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  ctaPrimaryText: {
-    color: "#fff",
-    ...bcctTypography.button,
   },
 
   // Access denied
@@ -1185,6 +1519,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: "center",
+    justifyContent: "center",
   },
   noteModalCancelText: {
     ...bcctTypography.bodyMedium,
@@ -1197,6 +1532,7 @@ const styles = StyleSheet.create({
   noteModalSaveGradient: {
     paddingVertical: 12,
     alignItems: "center",
+    justifyContent: "center",
   },
   noteModalSaveText: {
     color: "#fff",
