@@ -10,6 +10,14 @@ export default function AppLayout() {
       <Stack.Screen name="org" />
       <Stack.Screen name="appointment-detail" />
       <Stack.Screen name="appointment-form" />
+      <Stack.Screen
+        name="homework-compose"
+        options={{
+          presentation: 'modal',
+          headerShown: true,
+          title: 'Huiswerk sturen',
+        }}
+      />
     </Stack>
   );
 }
