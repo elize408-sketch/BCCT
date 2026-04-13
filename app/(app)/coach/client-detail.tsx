@@ -515,15 +515,123 @@ function formatAmountEuro(amount: number | null): string {
   return `€ ${num.toFixed(2).replace(".", ",")}`;
 }
 
-function BetalingenTab({ clientId, coachId }: { clientId: string; coachId: string }) {
+interface BetalingenTabProps {
+  clientId: string;
+  coachId: string;
+  onOpenModal: () => void;
+  invoices: Invoice[];
+  loading: boolean;
+}
+
+function BetalingenTab({ clientId, coachId, onOpenModal, invoices, loading }: BetalingenTabProps) {
+  const { colors } = useTheme();
+
+  console.log("[BillingTab] Button rendered");
+
+  return (
+    <View style={styles.tabContent}>
+      <AnimatedPressable
+        style={[styles.actionBtn, { backgroundColor: bcctColors.primaryOrange }]}
+        onPress={() => {
+          console.log("[BillingTab] Button pressed, opening modal");
+          onOpenModal();
+        }}
+      >
+        <Text style={styles.actionBtnText}>+ Betaling aanmaken</Text>
+      </AnimatedPressable>
+
+      {loading ? (
+        <View style={styles.listContainer}>
+          <SkeletonCard />
+          <SkeletonCard />
+        </View>
+      ) : invoices.length === 0 ? (
+        <View style={styles.emptyState}>
+          <View style={[styles.emptyIconCircle, { backgroundColor: bcctColors.primaryOrange + "18" }]}>
+            <Text style={styles.emptyIcon}>💳</Text>
+          </View>
+          <Text style={[styles.emptyTitle, { color: colors.text }]}>Nog geen betalingen</Text>
+          <Text style={[styles.emptySubtitle, { color: bcctColors.textSecondary }]}>
+            Maak een betaling aan voor deze cliënt
+          </Text>
+        </View>
+      ) : (
+        <ScrollView
+          style={styles.listContainer}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 120 }}
+        >
+          {invoices.map((inv) => {
+            const amountText = formatAmountEuro(inv.amount);
+            const dateText = relativeDate(inv.created_at);
+            const sLabel = invoiceStatusLabel(inv.status);
+            const sColor = invoiceStatusColor(inv.status);
+            const tLabel = invoiceTypeLabel(inv.type);
+            const tColor = invoiceTypeColor(inv.type);
+            const invTitle = inv.title ?? inv.description ?? "Betaling";
+            const hasPayLink = !!inv.stripe_payment_link;
+            return (
+              <View
+                key={inv.id}
+                style={[styles.listCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+              >
+                <View style={styles.listCardRow}>
+                  <Text style={[styles.listCardTitle, { color: colors.text }]} numberOfLines={1}>
+                    {invTitle}
+                  </Text>
+                  <View style={[styles.statusBadge, { backgroundColor: sColor + "22" }]}>
+                    <Text style={[styles.statusBadgeText, { color: sColor }]}>{sLabel}</Text>
+                  </View>
+                </View>
+                <View style={styles.invCardMeta}>
+                  <Text style={[styles.listCardAmount, { color: bcctColors.primaryOrange }]}>
+                    {amountText}
+                  </Text>
+                  {tLabel ? (
+                    <View style={[styles.typeBadge, { backgroundColor: tColor + "18" }]}>
+                      <Text style={[styles.typeBadgeText, { color: tColor }]}>{tLabel}</Text>
+                    </View>
+                  ) : null}
+                </View>
+                <View style={styles.invCardFooter}>
+                  <Text style={[styles.listCardDate, { color: bcctColors.textSecondary }]}>
+                    {dateText}
+                  </Text>
+                  {hasPayLink ? (
+                    <TouchableOpacity
+                      style={styles.payLinkBtn}
+                      onPress={() => {
+                        console.log("[Betaling] Opening payment link:", inv.stripe_payment_link);
+                        Linking.openURL(inv.stripe_payment_link!);
+                      }}
+                    >
+                      <Text style={styles.payLinkBtnText}>Betaallink</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              </View>
+            );
+          })}
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+// ─── Billing modal (root-level to avoid iOS clipping) ─────────────────────────
+
+interface BillingModalProps {
+  visible: boolean;
+  clientId: string;
+  coachId: string;
+  onClose: () => void;
+  onCreated: () => void;
+}
+
+function BillingModal({ visible, clientId, coachId, onClose, onCreated }: BillingModalProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [loading, setLoading] = useState(true);
   const [stripeEnabled, setStripeEnabled] = useState(false);
-
-  // Modal state
-  const [modalVisible, setModalVisible] = useState(false);
   const [step, setStep] = useState<1 | 2>(1);
   const [selectedType, setSelectedType] = useState<PaymentType>("one_time");
 
@@ -543,63 +651,17 @@ function BetalingenTab({ clientId, coachId }: { clientId: string; coachId: strin
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
 
-  const loadInvoices = useCallback(async () => {
-    console.log("[Betaling] Refreshing payment list");
-    setLoading(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      if (!token) {
-        console.warn("[Betaling] No session token, skipping invoice load");
-        setInvoices([]);
-        return;
-      }
-
-      const url = `${BILLING_API}?client_id=${clientId}`;
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!res.ok) {
-        const errText = await res.text();
-        console.error("[Betaling] GET invoices error:", res.status, errText);
-        setInvoices([]);
-        return;
-      }
-
-      const json = await res.json();
-      const list: Invoice[] = json.invoices ?? [];
-      console.log("[Betaling] Payment list refreshed, count:", list.length);
-      setInvoices(list);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Onbekende fout";
-      console.error("[Betaling] Error loading invoices:", msg);
-      setInvoices([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [clientId]);
-
-  // Check if coach has Stripe enabled
-  const checkStripe = useCallback(async () => {
-    try {
-      const { data } = await supabase
-        .from("profiles")
-        .select("stripe_charges_enabled")
-        .eq("id", coachId)
-        .single();
-      setStripeEnabled(data?.stripe_charges_enabled === true);
-    } catch {
-      setStripeEnabled(false);
-    }
-  }, [coachId]);
-
-  useFocusEffect(
-    useCallback(() => {
-      loadInvoices();
-      checkStripe();
-    }, [loadInvoices, checkStripe])
-  );
+  // Check Stripe status when modal opens
+  useEffect(() => {
+    if (!visible) return;
+    supabase
+      .from("profiles")
+      .select("stripe_charges_enabled")
+      .eq("id", coachId)
+      .single()
+      .then(({ data }) => setStripeEnabled(data?.stripe_charges_enabled === true))
+      .catch(() => setStripeEnabled(false));
+  }, [visible, coachId]);
 
   const resetForm = useCallback(() => {
     setStep(1);
@@ -617,18 +679,17 @@ function BetalingenTab({ clientId, coachId }: { clientId: string; coachId: strin
     setSuccessMsg("");
   }, []);
 
-  const openModal = useCallback(() => {
-    console.log("[Betaling] Button pressed");
+  const handleClose = useCallback(() => {
+    if (submitting) return;
+    console.log("[BillingTab] Modal state changed:", false);
     resetForm();
-    setModalVisible(true);
-    console.log("[Betaling] Modal opened, step 1");
-  }, [resetForm]);
+    onClose();
+  }, [submitting, resetForm, onClose]);
 
   const handleTypeSelect = useCallback((type: PaymentType) => {
     console.log("[Betaling] Type selected:", type);
     setSelectedType(type);
     setStep(2);
-    console.log("[Betaling] Step 2 shown");
   }, []);
 
   const handleBack = useCallback(() => {
@@ -708,9 +769,9 @@ function BetalingenTab({ clientId, coachId }: { clientId: string; coachId: strin
       console.log("[Betaling] Invoice created successfully");
       setSuccessMsg("Betaling aangemaakt ✓");
       setTimeout(() => {
-        setModalVisible(false);
         resetForm();
-        loadInvoices();
+        onClose();
+        onCreated();
       }, 900);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Er is een fout opgetreden";
@@ -719,320 +780,238 @@ function BetalingenTab({ clientId, coachId }: { clientId: string; coachId: strin
     } finally {
       setSubmitting(false);
     }
-  }, [title, amount, description, notes, dueDate, startDate, endDate, selectedType, clientId, loadInvoices, resetForm]);
+  }, [title, amount, description, notes, dueDate, startDate, endDate, selectedType, clientId, resetForm, onClose, onCreated]);
 
   const stripeNoteText = stripeEnabled
     ? "Betaling wordt aangemaakt met Stripe betaallink"
     : "Betaling wordt opgeslagen als concept (Stripe nog niet gekoppeld)";
 
   const footerPadding = Math.max(insets.bottom, 16);
+  const selectedTypeLabel = PAYMENT_TYPES.find(p => p.key === selectedType)?.label ?? "Betaling";
 
   return (
-    <View style={styles.tabContent}>
-      <AnimatedPressable
-        style={[styles.actionBtn, { backgroundColor: bcctColors.primaryOrange }]}
-        onPress={openModal}
-      >
-        <Text style={styles.actionBtnText}>+ Betaling aanmaken</Text>
-      </AnimatedPressable>
+    <Modal
+      isVisible={visible}
+      onBackdropPress={handleClose}
+      onBackButtonPress={handleClose}
+      animationIn="slideInUp"
+      animationOut="slideOutDown"
+      backdropOpacity={0.5}
+      style={styles.bottomModal}
+      avoidKeyboard
+      useNativeDriver
+      hideModalContentWhileAnimating
+    >
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <View style={[styles.formModalContent, { backgroundColor: colors.card, paddingBottom: footerPadding }]}>
+          <View style={styles.modalHandle} />
 
-      {loading ? (
-        <View style={styles.listContainer}>
-          <SkeletonCard />
-          <SkeletonCard />
-        </View>
-      ) : invoices.length === 0 ? (
-        <View style={styles.emptyState}>
-          <View style={[styles.emptyIconCircle, { backgroundColor: bcctColors.primaryOrange + "18" }]}>
-            <Text style={styles.emptyIcon}>💳</Text>
-          </View>
-          <Text style={[styles.emptyTitle, { color: colors.text }]}>Nog geen betalingen</Text>
-          <Text style={[styles.emptySubtitle, { color: bcctColors.textSecondary }]}>
-            Maak een betaling aan voor deze cliënt
-          </Text>
-        </View>
-      ) : (
-        <ScrollView
-          style={styles.listContainer}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 120 }}
-        >
-          {invoices.map((inv) => {
-            const amountText = formatAmountEuro(inv.amount);
-            const dateText = relativeDate(inv.created_at);
-            const sLabel = invoiceStatusLabel(inv.status);
-            const sColor = invoiceStatusColor(inv.status);
-            const tLabel = invoiceTypeLabel(inv.type);
-            const tColor = invoiceTypeColor(inv.type);
-            const invTitle = inv.title ?? inv.description ?? "Betaling";
-            const hasPayLink = !!inv.stripe_payment_link;
-            return (
-              <View
-                key={inv.id}
-                style={[styles.listCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-              >
-                <View style={styles.listCardRow}>
-                  <Text style={[styles.listCardTitle, { color: colors.text }]} numberOfLines={1}>
-                    {invTitle}
-                  </Text>
-                  <View style={[styles.statusBadge, { backgroundColor: sColor + "22" }]}>
-                    <Text style={[styles.statusBadgeText, { color: sColor }]}>{sLabel}</Text>
-                  </View>
-                </View>
-                <View style={styles.invCardMeta}>
-                  <Text style={[styles.listCardAmount, { color: bcctColors.primaryOrange }]}>
-                    {amountText}
-                  </Text>
-                  {tLabel ? (
-                    <View style={[styles.typeBadge, { backgroundColor: tColor + "18" }]}>
-                      <Text style={[styles.typeBadgeText, { color: tColor }]}>{tLabel}</Text>
-                    </View>
-                  ) : null}
-                </View>
-                <View style={styles.invCardFooter}>
-                  <Text style={[styles.listCardDate, { color: bcctColors.textSecondary }]}>
-                    {dateText}
-                  </Text>
-                  {hasPayLink ? (
-                    <TouchableOpacity
-                      style={styles.payLinkBtn}
-                      onPress={() => {
-                        console.log("[Betaling] Opening payment link:", inv.stripe_payment_link);
-                        Linking.openURL(inv.stripe_payment_link!);
-                      }}
-                    >
-                      <Text style={styles.payLinkBtnText}>Betaallink</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
+          {/* ── Step 1: Type selector ── */}
+          {step === 1 ? (
+            <>
+              <View style={styles.formModalHeader}>
+                <Text style={[styles.formModalTitle, { color: colors.text }]}>Betaling aanmaken</Text>
+                <TouchableOpacity onPress={handleClose} style={styles.modalCloseBtn}>
+                  <Text style={[styles.modalCloseBtnText, { color: bcctColors.textSecondary }]}>✕</Text>
+                </TouchableOpacity>
               </View>
-            );
-          })}
-        </ScrollView>
-      )}
-
-      {/* Payment creation modal */}
-      <Modal
-        isVisible={modalVisible}
-        onBackdropPress={() => !submitting && setModalVisible(false)}
-        onBackButtonPress={() => !submitting && setModalVisible(false)}
-        animationIn="slideInUp"
-        animationOut="slideOutDown"
-        backdropOpacity={0.5}
-        style={styles.bottomModal}
-        avoidKeyboard
-      >
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
-          <View style={[styles.formModalContent, { backgroundColor: colors.card, paddingBottom: footerPadding }]}>
-            <View style={styles.modalHandle} />
-
-            {/* ── Step 1: Type selector ── */}
-            {step === 1 ? (
-              <>
-                <View style={styles.formModalHeader}>
-                  <Text style={[styles.formModalTitle, { color: colors.text }]}>Betaling aanmaken</Text>
-                  <TouchableOpacity
-                    onPress={() => setModalVisible(false)}
-                    style={styles.modalCloseBtn}
-                  >
-                    <Text style={[styles.modalCloseBtnText, { color: bcctColors.textSecondary }]}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-                <Text style={[styles.stepSubtitle, { color: bcctColors.textSecondary }]}>
-                  Kies het type betaling
-                </Text>
-                <View style={styles.typeCardsContainer}>
-                  {PAYMENT_TYPES.map((pt) => {
-                    const isSelected = selectedType === pt.key;
-                    return (
-                      <TouchableOpacity
-                        key={pt.key}
-                        style={[
-                          styles.typeCard,
-                          { borderColor: isSelected ? bcctColors.primaryOrange : colors.border, backgroundColor: isSelected ? bcctColors.primaryOrange + "10" : colors.background },
-                        ]}
-                        onPress={() => handleTypeSelect(pt.key)}
-                        activeOpacity={0.75}
-                      >
-                        <Text style={styles.typeCardIcon}>{pt.icon}</Text>
-                        <View style={styles.typeCardText}>
-                          <Text style={[styles.typeCardLabel, { color: colors.text }]}>{pt.label}</Text>
-                          <Text style={[styles.typeCardSubtitle, { color: bcctColors.textSecondary }]}>{pt.subtitle}</Text>
+              <Text style={[styles.stepSubtitle, { color: bcctColors.textSecondary }]}>
+                Kies het type betaling
+              </Text>
+              <View style={styles.typeCardsContainer}>
+                {PAYMENT_TYPES.map((pt) => {
+                  const isSelected = selectedType === pt.key;
+                  return (
+                    <TouchableOpacity
+                      key={pt.key}
+                      style={[
+                        styles.typeCard,
+                        {
+                          borderColor: isSelected ? bcctColors.primaryOrange : colors.border,
+                          backgroundColor: isSelected ? bcctColors.primaryOrange + "10" : colors.background,
+                        },
+                      ]}
+                      onPress={() => handleTypeSelect(pt.key)}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={styles.typeCardIcon}>{pt.icon}</Text>
+                      <View style={styles.typeCardText}>
+                        <Text style={[styles.typeCardLabel, { color: colors.text }]}>{pt.label}</Text>
+                        <Text style={[styles.typeCardSubtitle, { color: bcctColors.textSecondary }]}>{pt.subtitle}</Text>
+                      </View>
+                      {isSelected ? (
+                        <View style={[styles.typeCardCheck, { backgroundColor: bcctColors.primaryOrange }]}>
+                          <Text style={styles.typeCardCheckMark}>✓</Text>
                         </View>
-                        {isSelected ? (
-                          <View style={[styles.typeCardCheck, { backgroundColor: bcctColors.primaryOrange }]}>
-                            <Text style={styles.typeCardCheckMark}>✓</Text>
-                          </View>
-                        ) : null}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </>
-            ) : (
-              /* ── Step 2: Form ── */
-              <>
-                <View style={styles.formModalHeader}>
-                  <TouchableOpacity onPress={handleBack} style={styles.backLink} disabled={submitting}>
-                    <Text style={[styles.backLinkText, { color: bcctColors.primaryOrange }]}>← Terug</Text>
-                  </TouchableOpacity>
-                  <Text style={[styles.formModalTitle, { color: colors.text }]}>
-                    {PAYMENT_TYPES.find(p => p.key === selectedType)?.label ?? "Betaling"}
+                      ) : null}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          ) : (
+            /* ── Step 2: Form ── */
+            <>
+              <View style={styles.formModalHeader}>
+                <TouchableOpacity onPress={handleBack} style={styles.backLink} disabled={submitting}>
+                  <Text style={[styles.backLinkText, { color: bcctColors.primaryOrange }]}>← Terug</Text>
+                </TouchableOpacity>
+                <Text style={[styles.formModalTitle, { color: colors.text }]}>
+                  {selectedTypeLabel}
+                </Text>
+                <TouchableOpacity
+                  onPress={handleClose}
+                  style={styles.modalCloseBtn}
+                  disabled={submitting}
+                >
+                  <Text style={[styles.modalCloseBtnText, { color: bcctColors.textSecondary }]}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                {/* Titel */}
+                <Text style={[styles.fieldLabel, { color: bcctColors.textSecondary }]}>Titel *</Text>
+                <TextInput
+                  style={[styles.formInput, { color: colors.text, borderColor: titleError ? bcctColors.error : colors.border, backgroundColor: colors.background }]}
+                  placeholder="bijv. Sessie november"
+                  placeholderTextColor={bcctColors.textSecondary}
+                  value={title}
+                  onChangeText={(t) => { setTitle(t); if (t.trim()) setTitleError(""); }}
+                  editable={!submitting}
+                  returnKeyType="next"
+                />
+                {titleError ? <Text style={styles.fieldError}>{titleError}</Text> : null}
+
+                {/* Bedrag */}
+                <Text style={[styles.fieldLabel, { color: bcctColors.textSecondary }]}>Bedrag (€) *</Text>
+                <TextInput
+                  style={[styles.formInput, { color: colors.text, borderColor: amountError ? bcctColors.error : colors.border, backgroundColor: colors.background }]}
+                  placeholder="bijv. 75,00"
+                  placeholderTextColor={bcctColors.textSecondary}
+                  value={amount}
+                  onChangeText={(t) => { setAmount(t); if (t.trim()) setAmountError(""); }}
+                  keyboardType="decimal-pad"
+                  editable={!submitting}
+                  returnKeyType="next"
+                />
+                {amountError ? <Text style={styles.fieldError}>{amountError}</Text> : null}
+
+                {/* Omschrijving */}
+                <Text style={[styles.fieldLabel, { color: bcctColors.textSecondary }]}>Omschrijving (optioneel)</Text>
+                <TextInput
+                  style={[styles.formInput, styles.formTextArea, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                  placeholder="Beschrijving van de betaling..."
+                  placeholderTextColor={bcctColors.textSecondary}
+                  value={description}
+                  onChangeText={setDescription}
+                  multiline
+                  numberOfLines={3}
+                  textAlignVertical="top"
+                  editable={!submitting}
+                />
+
+                {/* Interne notitie */}
+                <Text style={[styles.fieldLabel, { color: bcctColors.textSecondary }]}>Interne notitie (optioneel)</Text>
+                <TextInput
+                  style={[styles.formInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                  placeholder="Alleen zichtbaar voor jou..."
+                  placeholderTextColor={bcctColors.textSecondary}
+                  value={notes}
+                  onChangeText={setNotes}
+                  editable={!submitting}
+                  returnKeyType="next"
+                />
+
+                {/* Type-specific date fields */}
+                {(selectedType === "one_time" || selectedType === "package") ? (
+                  <>
+                    <Text style={[styles.fieldLabel, { color: bcctColors.textSecondary }]}>Vervaldatum (optioneel, DD-MM-YYYY)</Text>
+                    <TextInput
+                      style={[styles.formInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                      placeholder="bijv. 31-12-2025"
+                      placeholderTextColor={bcctColors.textSecondary}
+                      value={dueDate}
+                      onChangeText={setDueDate}
+                      keyboardType="numbers-and-punctuation"
+                      editable={!submitting}
+                      returnKeyType="done"
+                    />
+                  </>
+                ) : null}
+
+                {selectedType === "recurring_monthly" ? (
+                  <>
+                    <Text style={[styles.fieldLabel, { color: bcctColors.textSecondary }]}>Startdatum (optioneel, DD-MM-YYYY)</Text>
+                    <TextInput
+                      style={[styles.formInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                      placeholder="bijv. 01-01-2025"
+                      placeholderTextColor={bcctColors.textSecondary}
+                      value={startDate}
+                      onChangeText={setStartDate}
+                      keyboardType="numbers-and-punctuation"
+                      editable={!submitting}
+                      returnKeyType="next"
+                    />
+                    <Text style={[styles.fieldLabel, { color: bcctColors.textSecondary }]}>Einddatum (optioneel, DD-MM-YYYY)</Text>
+                    <TextInput
+                      style={[styles.formInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                      placeholder="bijv. 31-12-2025"
+                      placeholderTextColor={bcctColors.textSecondary}
+                      value={endDate}
+                      onChangeText={setEndDate}
+                      keyboardType="numbers-and-punctuation"
+                      editable={!submitting}
+                      returnKeyType="done"
+                    />
+                  </>
+                ) : null}
+
+                {/* Stripe note */}
+                <View style={[styles.formNote, { marginTop: 16 }]}>
+                  <Text style={[styles.formNoteText, { color: bcctColors.textSecondary }]}>
+                    {stripeNoteText}
                   </Text>
-                  <TouchableOpacity
-                    onPress={() => !submitting && setModalVisible(false)}
-                    style={styles.modalCloseBtn}
-                    disabled={submitting}
-                  >
-                    <Text style={[styles.modalCloseBtnText, { color: bcctColors.textSecondary }]}>✕</Text>
-                  </TouchableOpacity>
                 </View>
 
-                <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-                  {/* Titel */}
-                  <Text style={[styles.fieldLabel, { color: bcctColors.textSecondary }]}>Titel *</Text>
-                  <TextInput
-                    style={[styles.formInput, { color: colors.text, borderColor: titleError ? bcctColors.error : colors.border, backgroundColor: colors.background }]}
-                    placeholder="bijv. Sessie november"
-                    placeholderTextColor={bcctColors.textSecondary}
-                    value={title}
-                    onChangeText={(t) => { setTitle(t); if (t.trim()) setTitleError(""); }}
-                    editable={!submitting}
-                    returnKeyType="next"
-                  />
-                  {titleError ? <Text style={styles.fieldError}>{titleError}</Text> : null}
-
-                  {/* Bedrag */}
-                  <Text style={[styles.fieldLabel, { color: bcctColors.textSecondary }]}>Bedrag (€) *</Text>
-                  <TextInput
-                    style={[styles.formInput, { color: colors.text, borderColor: amountError ? bcctColors.error : colors.border, backgroundColor: colors.background }]}
-                    placeholder="bijv. 75,00"
-                    placeholderTextColor={bcctColors.textSecondary}
-                    value={amount}
-                    onChangeText={(t) => { setAmount(t); if (t.trim()) setAmountError(""); }}
-                    keyboardType="decimal-pad"
-                    editable={!submitting}
-                    returnKeyType="next"
-                  />
-                  {amountError ? <Text style={styles.fieldError}>{amountError}</Text> : null}
-
-                  {/* Omschrijving */}
-                  <Text style={[styles.fieldLabel, { color: bcctColors.textSecondary }]}>Omschrijving (optioneel)</Text>
-                  <TextInput
-                    style={[styles.formInput, styles.formTextArea, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
-                    placeholder="Beschrijving van de betaling..."
-                    placeholderTextColor={bcctColors.textSecondary}
-                    value={description}
-                    onChangeText={setDescription}
-                    multiline
-                    numberOfLines={3}
-                    textAlignVertical="top"
-                    editable={!submitting}
-                  />
-
-                  {/* Interne notitie */}
-                  <Text style={[styles.fieldLabel, { color: bcctColors.textSecondary }]}>Interne notitie (optioneel)</Text>
-                  <TextInput
-                    style={[styles.formInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
-                    placeholder="Alleen zichtbaar voor jou..."
-                    placeholderTextColor={bcctColors.textSecondary}
-                    value={notes}
-                    onChangeText={setNotes}
-                    editable={!submitting}
-                    returnKeyType="next"
-                  />
-
-                  {/* Type-specific date fields */}
-                  {(selectedType === "one_time" || selectedType === "package") ? (
-                    <>
-                      <Text style={[styles.fieldLabel, { color: bcctColors.textSecondary }]}>Vervaldatum (optioneel, DD-MM-YYYY)</Text>
-                      <TextInput
-                        style={[styles.formInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
-                        placeholder="bijv. 31-12-2025"
-                        placeholderTextColor={bcctColors.textSecondary}
-                        value={dueDate}
-                        onChangeText={setDueDate}
-                        keyboardType="numbers-and-punctuation"
-                        editable={!submitting}
-                        returnKeyType="done"
-                      />
-                    </>
-                  ) : null}
-
-                  {selectedType === "recurring_monthly" ? (
-                    <>
-                      <Text style={[styles.fieldLabel, { color: bcctColors.textSecondary }]}>Startdatum (optioneel, DD-MM-YYYY)</Text>
-                      <TextInput
-                        style={[styles.formInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
-                        placeholder="bijv. 01-01-2025"
-                        placeholderTextColor={bcctColors.textSecondary}
-                        value={startDate}
-                        onChangeText={setStartDate}
-                        keyboardType="numbers-and-punctuation"
-                        editable={!submitting}
-                        returnKeyType="next"
-                      />
-                      <Text style={[styles.fieldLabel, { color: bcctColors.textSecondary }]}>Einddatum (optioneel, DD-MM-YYYY)</Text>
-                      <TextInput
-                        style={[styles.formInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
-                        placeholder="bijv. 31-12-2025"
-                        placeholderTextColor={bcctColors.textSecondary}
-                        value={endDate}
-                        onChangeText={setEndDate}
-                        keyboardType="numbers-and-punctuation"
-                        editable={!submitting}
-                        returnKeyType="done"
-                      />
-                    </>
-                  ) : null}
-
-                  {/* Stripe note */}
-                  <View style={[styles.formNote, { marginTop: 16 }]}>
-                    <Text style={[styles.formNoteText, { color: bcctColors.textSecondary }]}>
-                      {stripeNoteText}
-                    </Text>
+                {submitError ? (
+                  <View style={styles.submitErrorBox}>
+                    <Text style={styles.submitErrorText}>{submitError}</Text>
                   </View>
+                ) : null}
 
-                  {submitError ? (
-                    <View style={styles.submitErrorBox}>
-                      <Text style={styles.submitErrorText}>{submitError}</Text>
-                    </View>
-                  ) : null}
+                {successMsg ? (
+                  <View style={styles.successBox}>
+                    <Text style={styles.successText}>{successMsg}</Text>
+                  </View>
+                ) : null}
 
-                  {successMsg ? (
-                    <View style={styles.successBox}>
-                      <Text style={styles.successText}>{successMsg}</Text>
-                    </View>
-                  ) : null}
+                <TouchableOpacity
+                  style={[styles.submitBtn, { backgroundColor: submitting ? bcctColors.primaryOrangeDisabled : bcctColors.primaryOrange }]}
+                  onPress={handleSubmit}
+                  disabled={submitting}
+                >
+                  {submitting ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={styles.submitBtnText}>Aanmaken</Text>
+                  )}
+                </TouchableOpacity>
 
-                  <TouchableOpacity
-                    style={[styles.submitBtn, { backgroundColor: submitting ? bcctColors.primaryOrangeDisabled : bcctColors.primaryOrange }]}
-                    onPress={handleSubmit}
-                    disabled={submitting}
-                  >
-                    {submitting ? (
-                      <ActivityIndicator color="#fff" size="small" />
-                    ) : (
-                      <Text style={styles.submitBtnText}>Aanmaken</Text>
-                    )}
-                  </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.cancelBtn, { borderColor: colors.border }]}
+                  onPress={handleClose}
+                  disabled={submitting}
+                >
+                  <Text style={[styles.cancelBtnText, { color: colors.text }]}>Annuleren</Text>
+                </TouchableOpacity>
 
-                  <TouchableOpacity
-                    style={[styles.cancelBtn, { borderColor: colors.border }]}
-                    onPress={() => !submitting && setModalVisible(false)}
-                    disabled={submitting}
-                  >
-                    <Text style={[styles.cancelBtnText, { color: colors.text }]}>Annuleren</Text>
-                  </TouchableOpacity>
-
-                  <View style={{ height: 24 }} />
-                </ScrollView>
-              </>
-            )}
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-    </View>
+                <View style={{ height: 24 }} />
+              </ScrollView>
+            </>
+          )}
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 }
 
@@ -1411,6 +1390,54 @@ export default function ClientDetailScreen() {
   const coachId = user?.id ?? "";
   const clientId = String(id ?? "");
 
+  // Billing state (lifted to root to avoid iOS modal clipping)
+  const [billingModalVisible, setBillingModalVisible] = useState(false);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [invoicesLoading, setInvoicesLoading] = useState(true);
+
+  const loadInvoices = useCallback(async () => {
+    console.log("[Betaling] Refreshing payment list");
+    setInvoicesLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) {
+        console.warn("[Betaling] No session token, skipping invoice load");
+        setInvoices([]);
+        return;
+      }
+      const url = `${BILLING_API}?client_id=${clientId}`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error("[Betaling] GET invoices error:", res.status, errText);
+        setInvoices([]);
+        return;
+      }
+      const json = await res.json();
+      const list: Invoice[] = json.invoices ?? [];
+      console.log("[Betaling] Payment list refreshed, count:", list.length);
+      setInvoices(list);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Onbekende fout";
+      console.error("[Betaling] Error loading invoices:", msg);
+      setInvoices([]);
+    } finally {
+      setInvoicesLoading(false);
+    }
+  }, [clientId]);
+
+  const openBillingModal = useCallback(() => {
+    console.log("[BillingTab] Button pressed, opening modal");
+    console.log("[BillingTab] Modal state changed:", true);
+    setBillingModalVisible(true);
+  }, []);
+
+  const closeBillingModal = useCallback(() => {
+    console.log("[BillingTab] Modal state changed:", false);
+    setBillingModalVisible(false);
+  }, []);
+
   const showInfoModal = (title: string, message: string) => {
     setInfoModalTitle(title);
     setInfoModalMessage(message);
@@ -1421,6 +1448,7 @@ export default function ClientDetailScreen() {
     if (id) {
       fetchClientDetails();
       fetchThemes();
+      loadInvoices();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
@@ -1654,11 +1682,26 @@ export default function ClientDetailScreen() {
         ) : activeTab === "huiswerk" ? (
           <HuiswerkTab clientId={clientId} clientName={client.full_name} />
         ) : activeTab === "betalingen" ? (
-          <BetalingenTab clientId={clientId} coachId={coachId} />
+          <BetalingenTab
+            clientId={clientId}
+            coachId={coachId}
+            onOpenModal={openBillingModal}
+            invoices={invoices}
+            loading={invoicesLoading}
+          />
         ) : (
           <AfsprakenTab clientId={clientId} clientName={client.full_name} coachId={coachId} />
         )}
       </SafeAreaView>
+
+      {/* Billing modal (root-level for iOS) */}
+      <BillingModal
+        visible={billingModalVisible}
+        clientId={clientId}
+        coachId={coachId}
+        onClose={closeBillingModal}
+        onCreated={loadInvoices}
+      />
 
       {/* Theme picker modal */}
       <Modal
