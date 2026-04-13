@@ -11,10 +11,11 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Linking,
 } from "react-native";
 import Modal from "react-native-modal";
 import { useTheme } from "@react-navigation/native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
 import { IconSymbol } from "@/components/IconSymbol";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -46,7 +47,11 @@ interface Invoice {
   due_date: string | null;
   description: string | null;
   title: string | null;
+  type: string | null;
+  stripe_payment_link: string | null;
 }
+
+type PaymentType = "one_time" | "package" | "recurring_monthly";
 
 interface Appointment {
   id: string;
@@ -451,17 +456,87 @@ function HuiswerkTab({ clientId, clientName }: { clientId: string; clientName: s
 
 // ─── Betalingen tab ───────────────────────────────────────────────────────────
 
+const BILLING_API = "https://qcirmbquzdbprjvqhqlj.supabase.co/functions/v1/billing-invoices";
+
+const PAYMENT_TYPES: { key: PaymentType; label: string; subtitle: string; icon: string }[] = [
+  { key: "one_time", label: "Eenmalig", subtitle: "Eenmalige betaling", icon: "💳" },
+  { key: "package", label: "Pakket", subtitle: "Pakketprijs", icon: "📦" },
+  { key: "recurring_monthly", label: "Maandelijks", subtitle: "Maandelijkse betaling", icon: "🔄" },
+];
+
+function invoiceStatusColor(status: string | null): string {
+  if (status === "paid") return bcctColors.success;
+  if (status === "draft") return bcctColors.textSecondary;
+  if (status === "cancelled") return bcctColors.error;
+  if (status === "open") return "#3B82F6";
+  return bcctColors.primaryOrange;
+}
+
+function invoiceStatusLabel(status: string | null): string {
+  if (status === "paid") return "Betaald";
+  if (status === "draft") return "Concept";
+  if (status === "cancelled") return "Geannuleerd";
+  if (status === "open") return "Open";
+  return status ?? "—";
+}
+
+function invoiceTypeLabel(type: string | null): string {
+  if (type === "one_time") return "Eenmalig";
+  if (type === "package") return "Pakket";
+  if (type === "recurring_monthly") return "Maandelijks";
+  return "";
+}
+
+function invoiceTypeColor(type: string | null): string {
+  if (type === "one_time") return "#8B5CF6";
+  if (type === "package") return "#F59E0B";
+  if (type === "recurring_monthly") return "#3B82F6";
+  return bcctColors.textSecondary;
+}
+
+function parseDateNL(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parts = trimmed.split("-");
+  if (parts.length === 3) {
+    const [day, month, year] = parts.map(Number);
+    if (!isNaN(day) && !isNaN(month) && !isNaN(year) && year > 1000) {
+      const mm = String(month).padStart(2, "0");
+      const dd = String(day).padStart(2, "0");
+      return `${year}-${mm}-${dd}`;
+    }
+  }
+  return null;
+}
+
+function formatAmountEuro(amount: number | null): string {
+  const num = Number(amount);
+  if (isNaN(num)) return "—";
+  return `€ ${num.toFixed(2).replace(".", ",")}`;
+}
+
 function BetalingenTab({ clientId, coachId }: { clientId: string; coachId: string }) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
+  const [stripeEnabled, setStripeEnabled] = useState(false);
 
   // Modal state
   const [modalVisible, setModalVisible] = useState(false);
+  const [step, setStep] = useState<1 | 2>(1);
+  const [selectedType, setSelectedType] = useState<PaymentType>("one_time");
+
+  // Form fields
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
+  const [description, setDescription] = useState("");
   const [notes, setNotes] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
+  // Validation
   const [titleError, setTitleError] = useState("");
   const [amountError, setAmountError] = useState("");
   const [submitError, setSubmitError] = useState("");
@@ -469,112 +544,188 @@ function BetalingenTab({ clientId, coachId }: { clientId: string; coachId: strin
   const [successMsg, setSuccessMsg] = useState("");
 
   const loadInvoices = useCallback(async () => {
-    console.log("[BetalingenTab] Loading invoices for client:", clientId);
+    console.log("[Betaling] Refreshing payment list");
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("invoices")
-        .select("id, created_at, amount, status, due_date, description, title")
-        .eq("client_id", clientId)
-        .order("created_at", { ascending: false })
-        .limit(20);
-
-      if (error) {
-        if (isTableMissingError(error)) {
-          console.warn("[BetalingenTab] invoices table missing");
-          setInvoices([]);
-          return;
-        }
-        console.error("[BetalingenTab] Error loading invoices:", error.message);
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) {
+        console.warn("[Betaling] No session token, skipping invoice load");
+        setInvoices([]);
         return;
       }
-      console.log("[BetalingenTab] Loaded", data?.length ?? 0, "invoices");
-      setInvoices((data as Invoice[]) ?? []);
+
+      const url = `${BILLING_API}?client_id=${clientId}`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error("[Betaling] GET invoices error:", res.status, errText);
+        setInvoices([]);
+        return;
+      }
+
+      const json = await res.json();
+      const list: Invoice[] = json.invoices ?? [];
+      console.log("[Betaling] Payment list refreshed, count:", list.length);
+      setInvoices(list);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Onbekende fout";
+      console.error("[Betaling] Error loading invoices:", msg);
+      setInvoices([]);
     } finally {
       setLoading(false);
     }
   }, [clientId]);
 
+  // Check if coach has Stripe enabled
+  const checkStripe = useCallback(async () => {
+    try {
+      const { data } = await supabase
+        .from("profiles")
+        .select("stripe_charges_enabled")
+        .eq("id", coachId)
+        .single();
+      setStripeEnabled(data?.stripe_charges_enabled === true);
+    } catch {
+      setStripeEnabled(false);
+    }
+  }, [coachId]);
+
   useFocusEffect(
     useCallback(() => {
       loadInvoices();
-    }, [loadInvoices])
+      checkStripe();
+    }, [loadInvoices, checkStripe])
   );
 
-  const openModal = useCallback(() => {
-    console.log("[ClientDetail] Betaling aanmaken pressed, clientId:", clientId);
+  const resetForm = useCallback(() => {
+    setStep(1);
+    setSelectedType("one_time");
     setTitle("");
     setAmount("");
+    setDescription("");
     setNotes("");
     setDueDate("");
+    setStartDate("");
+    setEndDate("");
     setTitleError("");
     setAmountError("");
     setSubmitError("");
     setSuccessMsg("");
+  }, []);
+
+  const openModal = useCallback(() => {
+    console.log("[Betaling] Button pressed");
+    resetForm();
     setModalVisible(true);
-    console.log("[ClientDetail] Betaling modal opened");
-  }, [clientId]);
+    console.log("[Betaling] Modal opened, step 1");
+  }, [resetForm]);
+
+  const handleTypeSelect = useCallback((type: PaymentType) => {
+    console.log("[Betaling] Type selected:", type);
+    setSelectedType(type);
+    setStep(2);
+    console.log("[Betaling] Step 2 shown");
+  }, []);
+
+  const handleBack = useCallback(() => {
+    setStep(1);
+    setTitleError("");
+    setAmountError("");
+    setSubmitError("");
+  }, []);
 
   const handleSubmit = useCallback(async () => {
     let hasError = false;
     if (!title.trim()) { setTitleError("Titel is verplicht"); hasError = true; }
     const parsedAmount = parseFloat(amount.replace(",", "."));
     if (!amount.trim() || isNaN(parsedAmount) || parsedAmount <= 0) {
-      setAmountError("Voer een geldig bedrag in");
+      setAmountError("Voer een geldig bedrag in (groter dan 0)");
       hasError = true;
     }
     if (hasError) return;
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       client_id: clientId,
-      coach_id: coachId,
       title: title.trim(),
-      description: title.trim(),
+      description: description.trim() || undefined,
+      notes: notes.trim() || undefined,
       amount: parsedAmount,
-      notes: notes.trim() || null,
-      due_date: dueDate.trim() || null,
-      status: "draft",
+      currency: "eur",
+      type: selectedType,
     };
-    console.log("[ClientDetail] Betaling submit payload:", payload);
+
+    if (selectedType === "one_time" || selectedType === "package") {
+      const due = parseDateNL(dueDate);
+      if (due) payload.due_date = due;
+    } else if (selectedType === "recurring_monthly") {
+      const start = parseDateNL(startDate);
+      const end = parseDateNL(endDate);
+      if (start) payload.start_date = start;
+      if (end) payload.end_date = end;
+    }
+
+    console.log("[Betaling] Submit pressed, payload:", payload);
     setSubmitting(true);
     setSubmitError("");
 
     try {
-      const { data, error } = await supabase.from("invoices").insert(payload).select().single();
-      if (error) {
-        console.error("[ClientDetail] Betaling insert error:", error.message);
-        setSubmitError(error.message);
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) {
+        setSubmitError("Niet ingelogd");
         return;
       }
-      console.log("[ClientDetail] Betaling insert result:", data);
-      setSuccessMsg("Betaling aangemaakt als concept ✓");
+
+      const res = await fetch(BILLING_API, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const responseText = await res.text();
+      console.log("[Betaling] API response:", res.status, responseText);
+
+      if (!res.ok) {
+        let errMsg = `Fout ${res.status}`;
+        try {
+          const errJson = JSON.parse(responseText);
+          errMsg = errJson.error ?? errJson.message ?? errMsg;
+        } catch {
+          errMsg = responseText || errMsg;
+        }
+        console.error("[Betaling] Error creating invoice:", errMsg);
+        setSubmitError(errMsg);
+        return;
+      }
+
+      console.log("[Betaling] Invoice created successfully");
+      setSuccessMsg("Betaling aangemaakt ✓");
       setTimeout(() => {
         setModalVisible(false);
+        resetForm();
         loadInvoices();
       }, 900);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Er is een fout opgetreden";
-      console.error("[ClientDetail] Betaling unexpected error:", msg);
+      console.error("[Betaling] Error creating invoice:", msg);
       setSubmitError(msg);
     } finally {
       setSubmitting(false);
     }
-  }, [title, amount, notes, dueDate, clientId, coachId, loadInvoices]);
+  }, [title, amount, description, notes, dueDate, startDate, endDate, selectedType, clientId, loadInvoices, resetForm]);
 
-  const statusColor = (status: string | null) => {
-    if (status === "paid") return bcctColors.success;
-    if (status === "draft") return bcctColors.textSecondary;
-    if (status === "overdue") return bcctColors.error;
-    return bcctColors.primaryOrange;
-  };
+  const stripeNoteText = stripeEnabled
+    ? "Betaling wordt aangemaakt met Stripe betaallink"
+    : "Betaling wordt opgeslagen als concept (Stripe nog niet gekoppeld)";
 
-  const statusLabel = (status: string | null) => {
-    if (status === "paid") return "Betaald";
-    if (status === "draft") return "Concept";
-    if (status === "overdue") return "Verlopen";
-    if (status === "open") return "Open";
-    return status ?? "—";
-  };
+  const footerPadding = Math.max(insets.bottom, 16);
 
   return (
     <View style={styles.tabContent}>
@@ -607,11 +758,14 @@ function BetalingenTab({ clientId, coachId }: { clientId: string; coachId: strin
           contentContainerStyle={{ paddingBottom: 120 }}
         >
           {invoices.map((inv) => {
-            const amountText = formatAmount(inv.amount);
+            const amountText = formatAmountEuro(inv.amount);
             const dateText = relativeDate(inv.created_at);
-            const sLabel = statusLabel(inv.status);
-            const sColor = statusColor(inv.status);
-            const invoiceTitle = inv.title ?? inv.description ?? "Betaling";
+            const sLabel = invoiceStatusLabel(inv.status);
+            const sColor = invoiceStatusColor(inv.status);
+            const tLabel = invoiceTypeLabel(inv.type);
+            const tColor = invoiceTypeColor(inv.type);
+            const invTitle = inv.title ?? inv.description ?? "Betaling";
+            const hasPayLink = !!inv.stripe_payment_link;
             return (
               <View
                 key={inv.id}
@@ -619,19 +773,37 @@ function BetalingenTab({ clientId, coachId }: { clientId: string; coachId: strin
               >
                 <View style={styles.listCardRow}>
                   <Text style={[styles.listCardTitle, { color: colors.text }]} numberOfLines={1}>
-                    {invoiceTitle}
+                    {invTitle}
                   </Text>
                   <View style={[styles.statusBadge, { backgroundColor: sColor + "22" }]}>
                     <Text style={[styles.statusBadgeText, { color: sColor }]}>{sLabel}</Text>
                   </View>
                 </View>
-                <View style={styles.listCardMeta}>
+                <View style={styles.invCardMeta}>
                   <Text style={[styles.listCardAmount, { color: bcctColors.primaryOrange }]}>
                     {amountText}
                   </Text>
+                  {tLabel ? (
+                    <View style={[styles.typeBadge, { backgroundColor: tColor + "18" }]}>
+                      <Text style={[styles.typeBadgeText, { color: tColor }]}>{tLabel}</Text>
+                    </View>
+                  ) : null}
+                </View>
+                <View style={styles.invCardFooter}>
                   <Text style={[styles.listCardDate, { color: bcctColors.textSecondary }]}>
                     {dateText}
                   </Text>
+                  {hasPayLink ? (
+                    <TouchableOpacity
+                      style={styles.payLinkBtn}
+                      onPress={() => {
+                        console.log("[Betaling] Opening payment link:", inv.stripe_payment_link);
+                        Linking.openURL(inv.stripe_payment_link!);
+                      }}
+                    >
+                      <Text style={styles.payLinkBtnText}>Betaallink</Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
               </View>
             );
@@ -651,105 +823,212 @@ function BetalingenTab({ clientId, coachId }: { clientId: string; coachId: strin
         avoidKeyboard
       >
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
-          <View style={[styles.formModalContent, { backgroundColor: colors.card }]}>
+          <View style={[styles.formModalContent, { backgroundColor: colors.card, paddingBottom: footerPadding }]}>
             <View style={styles.modalHandle} />
-            <View style={styles.formModalHeader}>
-              <Text style={[styles.formModalTitle, { color: colors.text }]}>Betaling aanmaken</Text>
-              <TouchableOpacity
-                onPress={() => !submitting && setModalVisible(false)}
-                style={styles.modalCloseBtn}
-                disabled={submitting}
-              >
-                <Text style={[styles.modalCloseBtnText, { color: bcctColors.textSecondary }]}>✕</Text>
-              </TouchableOpacity>
-            </View>
 
-            <View style={styles.formNote}>
-              <Text style={[styles.formNoteText, { color: bcctColors.textSecondary }]}>
-                Betaling wordt aangemaakt als concept
-              </Text>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              {/* Titel */}
-              <Text style={[styles.fieldLabel, { color: bcctColors.textSecondary }]}>Titel *</Text>
-              <TextInput
-                style={[styles.formInput, { color: colors.text, borderColor: titleError ? bcctColors.error : colors.border, backgroundColor: colors.background }]}
-                placeholder="bijv. Sessie november"
-                placeholderTextColor={bcctColors.textSecondary}
-                value={title}
-                onChangeText={(t) => { setTitle(t); if (t.trim()) setTitleError(""); }}
-                editable={!submitting}
-                returnKeyType="next"
-              />
-              {titleError ? <Text style={styles.fieldError}>{titleError}</Text> : null}
-
-              {/* Bedrag */}
-              <Text style={[styles.fieldLabel, { color: bcctColors.textSecondary }]}>Bedrag (€) *</Text>
-              <TextInput
-                style={[styles.formInput, { color: colors.text, borderColor: amountError ? bcctColors.error : colors.border, backgroundColor: colors.background }]}
-                placeholder="bijv. 75.00"
-                placeholderTextColor={bcctColors.textSecondary}
-                value={amount}
-                onChangeText={(t) => { setAmount(t); if (t.trim()) setAmountError(""); }}
-                keyboardType="decimal-pad"
-                editable={!submitting}
-                returnKeyType="next"
-              />
-              {amountError ? <Text style={styles.fieldError}>{amountError}</Text> : null}
-
-              {/* Vervaldatum */}
-              <Text style={[styles.fieldLabel, { color: bcctColors.textSecondary }]}>Vervaldatum (optioneel)</Text>
-              <TextInput
-                style={[styles.formInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
-                placeholder="bijv. 2025-12-31"
-                placeholderTextColor={bcctColors.textSecondary}
-                value={dueDate}
-                onChangeText={setDueDate}
-                editable={!submitting}
-                returnKeyType="next"
-              />
-
-              {/* Notitie */}
-              <Text style={[styles.fieldLabel, { color: bcctColors.textSecondary }]}>Notitie (optioneel)</Text>
-              <TextInput
-                style={[styles.formInput, styles.formTextArea, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
-                placeholder="Eventuele opmerkingen..."
-                placeholderTextColor={bcctColors.textSecondary}
-                value={notes}
-                onChangeText={setNotes}
-                multiline
-                numberOfLines={3}
-                textAlignVertical="top"
-                editable={!submitting}
-              />
-
-              {submitError ? (
-                <View style={styles.submitErrorBox}>
-                  <Text style={styles.submitErrorText}>{submitError}</Text>
+            {/* ── Step 1: Type selector ── */}
+            {step === 1 ? (
+              <>
+                <View style={styles.formModalHeader}>
+                  <Text style={[styles.formModalTitle, { color: colors.text }]}>Betaling aanmaken</Text>
+                  <TouchableOpacity
+                    onPress={() => setModalVisible(false)}
+                    style={styles.modalCloseBtn}
+                  >
+                    <Text style={[styles.modalCloseBtnText, { color: bcctColors.textSecondary }]}>✕</Text>
+                  </TouchableOpacity>
                 </View>
-              ) : null}
-
-              {successMsg ? (
-                <View style={styles.successBox}>
-                  <Text style={styles.successText}>{successMsg}</Text>
+                <Text style={[styles.stepSubtitle, { color: bcctColors.textSecondary }]}>
+                  Kies het type betaling
+                </Text>
+                <View style={styles.typeCardsContainer}>
+                  {PAYMENT_TYPES.map((pt) => {
+                    const isSelected = selectedType === pt.key;
+                    return (
+                      <TouchableOpacity
+                        key={pt.key}
+                        style={[
+                          styles.typeCard,
+                          { borderColor: isSelected ? bcctColors.primaryOrange : colors.border, backgroundColor: isSelected ? bcctColors.primaryOrange + "10" : colors.background },
+                        ]}
+                        onPress={() => handleTypeSelect(pt.key)}
+                        activeOpacity={0.75}
+                      >
+                        <Text style={styles.typeCardIcon}>{pt.icon}</Text>
+                        <View style={styles.typeCardText}>
+                          <Text style={[styles.typeCardLabel, { color: colors.text }]}>{pt.label}</Text>
+                          <Text style={[styles.typeCardSubtitle, { color: bcctColors.textSecondary }]}>{pt.subtitle}</Text>
+                        </View>
+                        {isSelected ? (
+                          <View style={[styles.typeCardCheck, { backgroundColor: bcctColors.primaryOrange }]}>
+                            <Text style={styles.typeCardCheckMark}>✓</Text>
+                          </View>
+                        ) : null}
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
-              ) : null}
+              </>
+            ) : (
+              /* ── Step 2: Form ── */
+              <>
+                <View style={styles.formModalHeader}>
+                  <TouchableOpacity onPress={handleBack} style={styles.backLink} disabled={submitting}>
+                    <Text style={[styles.backLinkText, { color: bcctColors.primaryOrange }]}>← Terug</Text>
+                  </TouchableOpacity>
+                  <Text style={[styles.formModalTitle, { color: colors.text }]}>
+                    {PAYMENT_TYPES.find(p => p.key === selectedType)?.label ?? "Betaling"}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => !submitting && setModalVisible(false)}
+                    style={styles.modalCloseBtn}
+                    disabled={submitting}
+                  >
+                    <Text style={[styles.modalCloseBtnText, { color: bcctColors.textSecondary }]}>✕</Text>
+                  </TouchableOpacity>
+                </View>
 
-              <TouchableOpacity
-                style={[styles.submitBtn, { backgroundColor: submitting ? bcctColors.primaryOrangeDisabled : bcctColors.primaryOrange }]}
-                onPress={handleSubmit}
-                disabled={submitting}
-              >
-                {submitting ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Text style={styles.submitBtnText}>Aanmaken</Text>
-                )}
-              </TouchableOpacity>
+                <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                  {/* Titel */}
+                  <Text style={[styles.fieldLabel, { color: bcctColors.textSecondary }]}>Titel *</Text>
+                  <TextInput
+                    style={[styles.formInput, { color: colors.text, borderColor: titleError ? bcctColors.error : colors.border, backgroundColor: colors.background }]}
+                    placeholder="bijv. Sessie november"
+                    placeholderTextColor={bcctColors.textSecondary}
+                    value={title}
+                    onChangeText={(t) => { setTitle(t); if (t.trim()) setTitleError(""); }}
+                    editable={!submitting}
+                    returnKeyType="next"
+                  />
+                  {titleError ? <Text style={styles.fieldError}>{titleError}</Text> : null}
 
-              <View style={{ height: 24 }} />
-            </ScrollView>
+                  {/* Bedrag */}
+                  <Text style={[styles.fieldLabel, { color: bcctColors.textSecondary }]}>Bedrag (€) *</Text>
+                  <TextInput
+                    style={[styles.formInput, { color: colors.text, borderColor: amountError ? bcctColors.error : colors.border, backgroundColor: colors.background }]}
+                    placeholder="bijv. 75,00"
+                    placeholderTextColor={bcctColors.textSecondary}
+                    value={amount}
+                    onChangeText={(t) => { setAmount(t); if (t.trim()) setAmountError(""); }}
+                    keyboardType="decimal-pad"
+                    editable={!submitting}
+                    returnKeyType="next"
+                  />
+                  {amountError ? <Text style={styles.fieldError}>{amountError}</Text> : null}
+
+                  {/* Omschrijving */}
+                  <Text style={[styles.fieldLabel, { color: bcctColors.textSecondary }]}>Omschrijving (optioneel)</Text>
+                  <TextInput
+                    style={[styles.formInput, styles.formTextArea, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                    placeholder="Beschrijving van de betaling..."
+                    placeholderTextColor={bcctColors.textSecondary}
+                    value={description}
+                    onChangeText={setDescription}
+                    multiline
+                    numberOfLines={3}
+                    textAlignVertical="top"
+                    editable={!submitting}
+                  />
+
+                  {/* Interne notitie */}
+                  <Text style={[styles.fieldLabel, { color: bcctColors.textSecondary }]}>Interne notitie (optioneel)</Text>
+                  <TextInput
+                    style={[styles.formInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                    placeholder="Alleen zichtbaar voor jou..."
+                    placeholderTextColor={bcctColors.textSecondary}
+                    value={notes}
+                    onChangeText={setNotes}
+                    editable={!submitting}
+                    returnKeyType="next"
+                  />
+
+                  {/* Type-specific date fields */}
+                  {(selectedType === "one_time" || selectedType === "package") ? (
+                    <>
+                      <Text style={[styles.fieldLabel, { color: bcctColors.textSecondary }]}>Vervaldatum (optioneel, DD-MM-YYYY)</Text>
+                      <TextInput
+                        style={[styles.formInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                        placeholder="bijv. 31-12-2025"
+                        placeholderTextColor={bcctColors.textSecondary}
+                        value={dueDate}
+                        onChangeText={setDueDate}
+                        keyboardType="numbers-and-punctuation"
+                        editable={!submitting}
+                        returnKeyType="done"
+                      />
+                    </>
+                  ) : null}
+
+                  {selectedType === "recurring_monthly" ? (
+                    <>
+                      <Text style={[styles.fieldLabel, { color: bcctColors.textSecondary }]}>Startdatum (optioneel, DD-MM-YYYY)</Text>
+                      <TextInput
+                        style={[styles.formInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                        placeholder="bijv. 01-01-2025"
+                        placeholderTextColor={bcctColors.textSecondary}
+                        value={startDate}
+                        onChangeText={setStartDate}
+                        keyboardType="numbers-and-punctuation"
+                        editable={!submitting}
+                        returnKeyType="next"
+                      />
+                      <Text style={[styles.fieldLabel, { color: bcctColors.textSecondary }]}>Einddatum (optioneel, DD-MM-YYYY)</Text>
+                      <TextInput
+                        style={[styles.formInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                        placeholder="bijv. 31-12-2025"
+                        placeholderTextColor={bcctColors.textSecondary}
+                        value={endDate}
+                        onChangeText={setEndDate}
+                        keyboardType="numbers-and-punctuation"
+                        editable={!submitting}
+                        returnKeyType="done"
+                      />
+                    </>
+                  ) : null}
+
+                  {/* Stripe note */}
+                  <View style={[styles.formNote, { marginTop: 16 }]}>
+                    <Text style={[styles.formNoteText, { color: bcctColors.textSecondary }]}>
+                      {stripeNoteText}
+                    </Text>
+                  </View>
+
+                  {submitError ? (
+                    <View style={styles.submitErrorBox}>
+                      <Text style={styles.submitErrorText}>{submitError}</Text>
+                    </View>
+                  ) : null}
+
+                  {successMsg ? (
+                    <View style={styles.successBox}>
+                      <Text style={styles.successText}>{successMsg}</Text>
+                    </View>
+                  ) : null}
+
+                  <TouchableOpacity
+                    style={[styles.submitBtn, { backgroundColor: submitting ? bcctColors.primaryOrangeDisabled : bcctColors.primaryOrange }]}
+                    onPress={handleSubmit}
+                    disabled={submitting}
+                  >
+                    {submitting ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <Text style={styles.submitBtnText}>Aanmaken</Text>
+                    )}
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.cancelBtn, { borderColor: colors.border }]}
+                    onPress={() => !submitting && setModalVisible(false)}
+                    disabled={submitting}
+                  >
+                    <Text style={[styles.cancelBtnText, { color: colors.text }]}>Annuleren</Text>
+                  </TouchableOpacity>
+
+                  <View style={{ height: 24 }} />
+                </ScrollView>
+              </>
+            )}
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -1802,4 +2081,80 @@ const styles = StyleSheet.create({
     minWidth: 100,
   },
   modalButtonText: { color: "#fff", ...bcctTypography.button, textAlign: "center" },
+
+  // Betaling modal — step subtitle
+  stepSubtitle: {
+    ...bcctTypography.body,
+    marginBottom: 16,
+    marginTop: 4,
+  },
+
+  // Type selector cards
+  typeCardsContainer: { gap: 12, paddingBottom: 8 },
+  typeCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderRadius: 12,
+    padding: 16,
+    gap: 14,
+  },
+  typeCardIcon: { fontSize: 26 },
+  typeCardText: { flex: 1, gap: 2 },
+  typeCardLabel: { ...bcctTypography.bodyMedium },
+  typeCardSubtitle: { ...bcctTypography.small },
+  typeCardCheck: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  typeCardCheckMark: { color: "#fff", fontSize: 13, fontWeight: "700" },
+
+  // Back link in step 2 header
+  backLink: { paddingVertical: 4, paddingRight: 8 },
+  backLinkText: { ...bcctTypography.bodyMedium },
+
+  // Cancel button
+  cancelBtn: {
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginTop: 12,
+    borderWidth: 1,
+    minHeight: 48,
+    justifyContent: "center",
+  },
+  cancelBtnText: { ...bcctTypography.button },
+
+  // Invoice card meta rows
+  invCardMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  invCardFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 2,
+  },
+
+  // Type badge (Eenmalig / Pakket / Maandelijks)
+  typeBadge: {
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  typeBadgeText: { fontSize: 11, fontWeight: "600", lineHeight: 18 },
+
+  // Payment link button
+  payLinkBtn: {
+    backgroundColor: bcctColors.primaryOrange + "18",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  payLinkBtnText: { color: bcctColors.primaryOrange, fontSize: 12, fontWeight: "600" },
 });
