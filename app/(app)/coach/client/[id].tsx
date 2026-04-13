@@ -12,6 +12,7 @@ import {
   Platform,
   Animated,
   KeyboardAvoidingView,
+  Alert,
 } from "react-native";
 import Modal from "react-native-modal";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -21,6 +22,7 @@ import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { bcctColors, bcctTypography } from "@/styles/bcctTheme";
 import { LinearGradient } from "expo-linear-gradient";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import {
   Activity,
   BookOpen,
@@ -29,6 +31,7 @@ import {
   FileText,
 } from "lucide-react-native";
 import { AnimatedPressable } from "@/components/AnimatedPressable";
+import { createAssignment, listAssignments, HomeworkAssignment } from "@/utils/homeworkApi";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -433,14 +436,19 @@ function LogsTab({
 function HuiswerkTab({
   programs,
   themeAssignments,
+  homeworkAssignments,
   loading,
+  onNew,
 }: {
   programs: ClientProgram[];
   themeAssignments: ThemeAssignment[];
+  homeworkAssignments: HomeworkAssignment[];
   loading: boolean;
+  onNew: () => void;
 }) {
+  console.log("[HuiswerkTab] Button rendered");
   const hasPrograms = programs.length > 0;
-  const items = hasPrograms ? programs : themeAssignments;
+  const legacyItems = hasPrograms ? programs : themeAssignments;
 
   if (loading) {
     return (
@@ -452,50 +460,79 @@ function HuiswerkTab({
     );
   }
 
+  const hasAny = homeworkAssignments.length > 0 || legacyItems.length > 0;
+
   return (
     <View style={tabContentStyles.container}>
-      {items.length === 0 ? (
+      {!hasAny ? (
         <EmptyState
           icon={<BookOpen size={28} color={bcctColors.primaryOrange} strokeWidth={2} />}
           title="Nog geen huiswerk"
-          subtitle="Stuur een programma om te beginnen"
+          subtitle="Stuur huiswerk om te beginnen"
         />
       ) : (
-        items.map((item, i) => {
-          const title = hasPrograms
-            ? (item as ClientProgram).template?.name ?? "Programma"
-            : (item as ThemeAssignment).themes?.title ?? "Thema";
-          const dateText = hasPrograms
-            ? formatDate((item as ClientProgram).assigned_at)
-            : formatDate((item as ThemeAssignment).created_at);
-          const weekText =
-            hasPrograms && (item as ClientProgram).current_week != null
-              ? `Week ${(item as ClientProgram).current_week}`
-              : null;
-          return (
-            <AnimatedListItem key={item.id} index={i}>
-              <View style={tabContentStyles.row}>
-                <View style={tabContentStyles.rowLeft}>
-                  <Text style={tabContentStyles.rowTitle} numberOfLines={1}>
-                    {title}
-                  </Text>
-                  <Text style={tabContentStyles.rowSub}>{dateText}</Text>
-                </View>
-                {weekText ? (
+        <>
+          {homeworkAssignments.map((hw, i) => {
+            const hwTitle = hw.subject;
+            const hwDate = formatDate(hw.created_at);
+            const hwStatus = hw.status ?? "open";
+            return (
+              <AnimatedListItem key={hw.id} index={i}>
+                <View style={tabContentStyles.row}>
+                  <View style={tabContentStyles.rowLeft}>
+                    <Text style={tabContentStyles.rowTitle} numberOfLines={1}>
+                      {hwTitle}
+                    </Text>
+                    <Text style={tabContentStyles.rowSub}>{hwDate}</Text>
+                  </View>
                   <Badge
-                    label={weekText}
+                    label={hwStatus}
                     bg={bcctColors.primaryOrange + "15"}
                     fg={bcctColors.primaryOrange}
                   />
-                ) : null}
-              </View>
-            </AnimatedListItem>
-          );
-        })
+                </View>
+              </AnimatedListItem>
+            );
+          })}
+          {legacyItems.map((item, i) => {
+            const title = hasPrograms
+              ? (item as ClientProgram).template?.name ?? "Programma"
+              : (item as ThemeAssignment).themes?.title ?? "Thema";
+            const dateText = hasPrograms
+              ? formatDate((item as ClientProgram).assigned_at)
+              : formatDate((item as ThemeAssignment).created_at);
+            const weekText =
+              hasPrograms && (item as ClientProgram).current_week != null
+                ? `Week ${(item as ClientProgram).current_week}`
+                : null;
+            return (
+              <AnimatedListItem key={item.id} index={homeworkAssignments.length + i}>
+                <View style={tabContentStyles.row}>
+                  <View style={tabContentStyles.rowLeft}>
+                    <Text style={tabContentStyles.rowTitle} numberOfLines={1}>
+                      {title}
+                    </Text>
+                    <Text style={tabContentStyles.rowSub}>{dateText}</Text>
+                  </View>
+                  {weekText ? (
+                    <Badge
+                      label={weekText}
+                      bg={bcctColors.primaryOrange + "15"}
+                      fg={bcctColors.primaryOrange}
+                    />
+                  ) : null}
+                </View>
+              </AnimatedListItem>
+            );
+          })}
+        </>
       )}
       <CtaButton
         label="+ Huiswerk sturen"
-        onPress={() => console.log("[ClientDetail] Huiswerk sturen pressed")}
+        onPress={() => {
+          console.log("[HuiswerkTab] Button pressed, opening modal");
+          onNew();
+        }}
       />
     </View>
   );
@@ -725,6 +762,346 @@ const tabContentStyles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700",
     color: bcctColors.textPrimary,
+  },
+});
+
+// ─── Homework Modal ───────────────────────────────────────────────────────────
+
+function HomeworkModal({
+  visible,
+  subject,
+  message,
+  deadline,
+  showDatePicker,
+  saving,
+  colors,
+  onChangeSubject,
+  onChangeMessage,
+  onToggleDatePicker,
+  onChangeDeadline,
+  onClearDeadline,
+  onCancel,
+  onSave,
+}: {
+  visible: boolean;
+  subject: string;
+  message: string;
+  deadline: Date | null;
+  showDatePicker: boolean;
+  saving: boolean;
+  colors: { card: string; background: string; text: string; border: string };
+  onChangeSubject: (v: string) => void;
+  onChangeMessage: (v: string) => void;
+  onToggleDatePicker: () => void;
+  onChangeDeadline: (date: Date) => void;
+  onClearDeadline: () => void;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const isSaveDisabled = saving || !subject.trim() || !message.trim();
+  const footerPaddingBottom = Math.max(insets.bottom, 16);
+  const deadlineLabel = deadline
+    ? deadline.toLocaleDateString("nl-NL", { day: "numeric", month: "short", year: "numeric" })
+    : "Geen deadline";
+
+  return (
+    <Modal
+      isVisible={visible}
+      onBackdropPress={onCancel}
+      onBackButtonPress={onCancel}
+      animationIn="slideInUp"
+      animationOut="slideOutDown"
+      backdropOpacity={0.5}
+      style={hwModalStyles.modal}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={hwModalStyles.kavWrapper}
+      >
+        <View style={[hwModalStyles.sheet, { backgroundColor: colors.card }]}>
+          {/* Handle */}
+          <View style={hwModalStyles.handle} />
+
+          {/* Header */}
+          <Text style={[hwModalStyles.title, { color: colors.text }]}>
+            Huiswerk sturen
+          </Text>
+
+          {/* Scrollable form */}
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={hwModalStyles.scrollContent}
+          >
+            {/* Onderwerp */}
+            <Text style={[hwModalStyles.label, { color: bcctColors.textSecondary }]}>
+              Onderwerp *
+            </Text>
+            <TextInput
+              style={[
+                hwModalStyles.input,
+                {
+                  backgroundColor: colors.background,
+                  color: colors.text,
+                  borderColor: colors.border,
+                },
+              ]}
+              placeholder="Bijv. Ademhalingsoefening"
+              placeholderTextColor={bcctColors.textSecondary}
+              value={subject}
+              onChangeText={onChangeSubject}
+              returnKeyType="next"
+              editable={!saving}
+            />
+
+            {/* Tekst */}
+            <Text style={[hwModalStyles.label, { color: bcctColors.textSecondary }]}>
+              Tekst *
+            </Text>
+            <TextInput
+              style={[
+                hwModalStyles.input,
+                hwModalStyles.textArea,
+                {
+                  backgroundColor: colors.background,
+                  color: colors.text,
+                  borderColor: colors.border,
+                },
+              ]}
+              placeholder="Beschrijf het huiswerk..."
+              placeholderTextColor={bcctColors.textSecondary}
+              value={message}
+              onChangeText={onChangeMessage}
+              multiline
+              numberOfLines={5}
+              textAlignVertical="top"
+              editable={!saving}
+            />
+
+            {/* Deadline */}
+            <Text style={[hwModalStyles.label, { color: bcctColors.textSecondary }]}>
+              Deadline (optioneel)
+            </Text>
+            <View style={hwModalStyles.deadlineRow}>
+              <AnimatedPressable
+                style={[
+                  hwModalStyles.deadlineBtn,
+                  {
+                    backgroundColor: colors.background,
+                    borderColor: colors.border,
+                  },
+                ]}
+                onPress={onToggleDatePicker}
+                disabled={saving}
+              >
+                <Calendar size={16} color={bcctColors.primaryOrange} strokeWidth={2} />
+                <Text style={[hwModalStyles.deadlineBtnText, { color: deadline ? colors.text : bcctColors.textSecondary }]}>
+                  {deadlineLabel}
+                </Text>
+              </AnimatedPressable>
+              {deadline ? (
+                <AnimatedPressable
+                  style={hwModalStyles.clearDeadlineBtn}
+                  onPress={onClearDeadline}
+                  disabled={saving}
+                >
+                  <Text style={hwModalStyles.clearDeadlineBtnText}>Wissen</Text>
+                </AnimatedPressable>
+              ) : null}
+            </View>
+
+            {showDatePicker ? (
+              <DateTimePicker
+                value={deadline ?? new Date()}
+                mode="date"
+                display={Platform.OS === "ios" ? "inline" : "default"}
+                minimumDate={new Date()}
+                onChange={(_event, date) => {
+                  if (date) onChangeDeadline(date);
+                }}
+                style={hwModalStyles.datePicker}
+              />
+            ) : null}
+
+            {/* Bijlagen placeholder */}
+            <Text style={[hwModalStyles.label, { color: bcctColors.textSecondary }]}>
+              Bijlagen (optioneel)
+            </Text>
+            <View
+              style={[
+                hwModalStyles.attachmentPlaceholder,
+                { backgroundColor: colors.background, borderColor: colors.border },
+              ]}
+            >
+              <Text style={[hwModalStyles.attachmentPlaceholderText, { color: bcctColors.textSecondary }]}>
+                Bijlagen toevoegen — binnenkort beschikbaar
+              </Text>
+            </View>
+          </ScrollView>
+
+          {/* Footer */}
+          <View style={[hwModalStyles.footer, { paddingBottom: footerPaddingBottom }]}>
+            <AnimatedPressable
+              style={[hwModalStyles.cancelBtn, { borderColor: colors.border }]}
+              onPress={onCancel}
+              disabled={saving}
+            >
+              <Text style={[hwModalStyles.cancelBtnText, { color: bcctColors.textSecondary }]}>
+                Annuleren
+              </Text>
+            </AnimatedPressable>
+
+            <AnimatedPressable
+              style={[hwModalStyles.saveBtn, { opacity: isSaveDisabled ? 0.5 : 1 }]}
+              onPress={onSave}
+              disabled={isSaveDisabled}
+            >
+              <LinearGradient
+                colors={[bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={hwModalStyles.saveBtnGradient}
+              >
+                {saving ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={hwModalStyles.saveBtnText}>Versturen</Text>
+                )}
+              </LinearGradient>
+            </AnimatedPressable>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+const hwModalStyles = StyleSheet.create({
+  modal: {
+    justifyContent: "flex-end",
+    margin: 0,
+  },
+  kavWrapper: {
+    width: "100%",
+  },
+  sheet: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 12,
+    paddingHorizontal: 24,
+    maxHeight: "92%",
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    backgroundColor: "#ccc",
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 20,
+  },
+  title: {
+    ...bcctTypography.h3,
+    marginBottom: 20,
+  },
+  scrollContent: {
+    paddingBottom: 8,
+  },
+  label: {
+    ...bcctTypography.label,
+    marginBottom: 6,
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    ...bcctTypography.body,
+    marginBottom: 16,
+  },
+  textArea: {
+    minHeight: 120,
+    paddingTop: 12,
+  },
+  deadlineRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 16,
+  },
+  deadlineBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  deadlineBtnText: {
+    ...bcctTypography.body,
+  },
+  clearDeadlineBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  clearDeadlineBtnText: {
+    fontSize: 14,
+    color: bcctColors.error,
+    fontWeight: "500",
+  },
+  datePicker: {
+    marginBottom: 16,
+  },
+  attachmentPlaceholder: {
+    borderWidth: 1,
+    borderRadius: 12,
+    borderStyle: "dashed",
+    paddingHorizontal: 14,
+    paddingVertical: 16,
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  attachmentPlaceholderText: {
+    fontSize: 14,
+    fontStyle: "italic",
+  },
+  footer: {
+    flexDirection: "row",
+    gap: 12,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(0,0,0,0.08)",
+  },
+  cancelBtn: {
+    flex: 1,
+    minHeight: 48,
+    borderWidth: 1,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 13,
+  },
+  cancelBtnText: {
+    ...bcctTypography.bodyMedium,
+  },
+  saveBtn: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+  saveBtnGradient: {
+    flex: 1,
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 13,
+  },
+  saveBtnText: {
+    color: "#fff",
+    ...bcctTypography.button,
   },
 });
 
@@ -981,6 +1358,15 @@ export default function ClientDetailScreen() {
   const [noteContent, setNoteContent] = useState("");
   const [savingNote, setSavingNote] = useState(false);
 
+  // Homework modal state
+  const [hwModalVisible, setHwModalVisible] = useState(false);
+  const [hwSubject, setHwSubject] = useState("");
+  const [hwMessage, setHwMessage] = useState("");
+  const [hwDeadline, setHwDeadline] = useState<Date | null>(null);
+  const [hwShowDatePicker, setHwShowDatePicker] = useState(false);
+  const [savingHw, setSavingHw] = useState(false);
+  const [homeworkAssignments, setHomeworkAssignments] = useState<HomeworkAssignment[]>([]);
+
   // ── Fetch all data ──────────────────────────────────────────────────────────
 
   const loadAll = useCallback(async () => {
@@ -1060,6 +1446,7 @@ export default function ClientDetailScreen() {
         fetchInvoices(clientId, coachId),
         fetchAppointments(clientId, coachId),
         fetchNotes(clientId, coachId),
+        fetchHomeworkAssignments(clientId),
       ]);
     } catch (err: any) {
       console.error("[ClientDetail] loadAll error:", err);
@@ -1233,6 +1620,76 @@ export default function ClientDetailScreen() {
       setNotes((data as CoachNote[]) ?? []);
     } catch (e: any) {
       console.error("[ClientDetail] fetchNotes exception:", e);
+    }
+  };
+
+  // ── Homework fetcher ────────────────────────────────────────────────────────
+
+  const fetchHomeworkAssignments = async (cid: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) {
+        console.warn("[HuiswerkTab] No auth token, skipping homework fetch");
+        return;
+      }
+      const data = await listAssignments(token, cid);
+      console.log("[ClientDetail] homework assignments:", data.length);
+      setHomeworkAssignments(data);
+    } catch (e: any) {
+      console.error("[ClientDetail] fetchHomeworkAssignments exception:", e);
+    }
+  };
+
+  // ── Homework modal handlers ─────────────────────────────────────────────────
+
+  const openHwModal = useCallback(() => {
+    console.log("[HuiswerkTab] Modal state changed:", true);
+    setHwSubject("");
+    setHwMessage("");
+    setHwDeadline(null);
+    setHwShowDatePicker(false);
+    setHwModalVisible(true);
+  }, []);
+
+  const closeHwModal = useCallback(() => {
+    console.log("[HuiswerkTab] Modal state changed:", false);
+    setHwModalVisible(false);
+    setHwShowDatePicker(false);
+  }, []);
+
+  const handleSaveHw = async () => {
+    if (!hwSubject.trim() || !hwMessage.trim() || !clientId) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) {
+      console.warn("[HuiswerkTab] No auth token, cannot send homework");
+      Alert.alert("Fout", "Je bent niet ingelogd. Probeer opnieuw.");
+      return;
+    }
+    const deadlineStr = hwDeadline
+      ? hwDeadline.toISOString().split("T")[0]
+      : null;
+    const payload = {
+      client_id: clientId,
+      subject: hwSubject.trim(),
+      message: hwMessage.trim(),
+      deadline: deadlineStr,
+    };
+    console.log("[HuiswerkTab] Sending homework, payload:", payload);
+    setSavingHw(true);
+    try {
+      await createAssignment(token, payload);
+      console.log("[HuiswerkTab] Homework sent successfully");
+      setHwModalVisible(false);
+      setHwShowDatePicker(false);
+      await fetchHomeworkAssignments(clientId);
+      Alert.alert("Verstuurd", "Het huiswerk is succesvol verstuurd.");
+    } catch (e: any) {
+      console.error("[HuiswerkTab] Send homework error:", e);
+      Alert.alert("Fout", e?.message ?? "Er is iets misgegaan. Probeer opnieuw.");
+    } finally {
+      setSavingHw(false);
     }
   };
 
@@ -1434,7 +1891,9 @@ export default function ClientDetailScreen() {
             <HuiswerkTab
               programs={programs}
               themeAssignments={themeAssignments}
+              homeworkAssignments={homeworkAssignments}
               loading={false}
+              onNew={openHwModal}
             />
           )}
           {activeTab === "betalingen" && (
@@ -1475,6 +1934,30 @@ export default function ClientDetailScreen() {
         onChangeContent={setNoteContent}
         onCancel={closeNoteModal}
         onSave={handleSaveNote}
+      />
+
+      {/* ── Homework modal ── */}
+      <HomeworkModal
+        visible={hwModalVisible}
+        subject={hwSubject}
+        message={hwMessage}
+        deadline={hwDeadline}
+        showDatePicker={hwShowDatePicker}
+        saving={savingHw}
+        colors={colors}
+        onChangeSubject={setHwSubject}
+        onChangeMessage={setHwMessage}
+        onToggleDatePicker={() => setHwShowDatePicker((v) => !v)}
+        onChangeDeadline={(date) => {
+          setHwDeadline(date);
+          setHwShowDatePicker(false);
+        }}
+        onClearDeadline={() => {
+          setHwDeadline(null);
+          setHwShowDatePicker(false);
+        }}
+        onCancel={closeHwModal}
+        onSave={handleSaveHw}
       />
     </>
   );
