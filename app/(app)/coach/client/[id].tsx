@@ -11,9 +11,10 @@ import {
   ImageSourcePropType,
   Platform,
   Animated,
+  KeyboardAvoidingView,
 } from "react-native";
 import Modal from "react-native-modal";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@react-navigation/native";
 import { useFocusEffect } from "@react-navigation/native";
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
@@ -727,6 +728,230 @@ const tabContentStyles = StyleSheet.create({
   },
 });
 
+// ─── Note Modal ───────────────────────────────────────────────────────────────
+
+function NoteModal({
+  visible,
+  noteTitle,
+  noteContent,
+  savingNote,
+  colors,
+  onChangeTitle,
+  onChangeContent,
+  onCancel,
+  onSave,
+}: {
+  visible: boolean;
+  noteTitle: string;
+  noteContent: string;
+  savingNote: boolean;
+  colors: { card: string; background: string; text: string; border: string };
+  onChangeTitle: (v: string) => void;
+  onChangeContent: (v: string) => void;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const isSaveDisabled = savingNote || !noteContent.trim();
+  const footerPaddingBottom = Math.max(insets.bottom, 16);
+
+  return (
+    <Modal
+      isVisible={visible}
+      onBackdropPress={onCancel}
+      onBackButtonPress={onCancel}
+      animationIn="slideInUp"
+      animationOut="slideOutDown"
+      backdropOpacity={0.5}
+      style={noteModalStyles.modal}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={noteModalStyles.kavWrapper}
+      >
+        <View style={[noteModalStyles.sheet, { backgroundColor: colors.card }]}>
+          {/* Handle */}
+          <View style={noteModalStyles.handle} />
+
+          {/* Header */}
+          <Text style={[noteModalStyles.title, { color: colors.text }]}>
+            Nieuwe notitie
+          </Text>
+
+          {/* Scrollable form */}
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={noteModalStyles.scrollContent}
+          >
+            <Text style={[noteModalStyles.label, { color: bcctColors.textSecondary }]}>
+              Titel (optioneel)
+            </Text>
+            <TextInput
+              style={[
+                noteModalStyles.input,
+                {
+                  backgroundColor: colors.background,
+                  color: colors.text,
+                  borderColor: colors.border,
+                },
+              ]}
+              placeholder="Bijv. Sessie samenvatting"
+              placeholderTextColor={bcctColors.textSecondary}
+              value={noteTitle}
+              onChangeText={onChangeTitle}
+              returnKeyType="next"
+              editable={!savingNote}
+            />
+
+            <Text style={[noteModalStyles.label, { color: bcctColors.textSecondary }]}>
+              Inhoud
+            </Text>
+            <TextInput
+              style={[
+                noteModalStyles.input,
+                noteModalStyles.textArea,
+                {
+                  backgroundColor: colors.background,
+                  color: colors.text,
+                  borderColor: colors.border,
+                },
+              ]}
+              placeholder="Schrijf hier je notitie..."
+              placeholderTextColor={bcctColors.textSecondary}
+              value={noteContent}
+              onChangeText={onChangeContent}
+              multiline
+              numberOfLines={5}
+              textAlignVertical="top"
+              editable={!savingNote}
+            />
+          </ScrollView>
+
+          {/* Footer — anchored outside scroll, safe area aware */}
+          <View style={[noteModalStyles.footer, { paddingBottom: footerPaddingBottom }]}>
+            <AnimatedPressable
+              style={[noteModalStyles.cancelBtn, { borderColor: colors.border }]}
+              onPress={onCancel}
+              disabled={savingNote}
+            >
+              <Text style={[noteModalStyles.cancelBtnText, { color: bcctColors.textSecondary }]}>
+                Annuleren
+              </Text>
+            </AnimatedPressable>
+
+            <AnimatedPressable
+              style={[
+                noteModalStyles.saveBtn,
+                { opacity: isSaveDisabled ? 0.5 : 1 },
+              ]}
+              onPress={onSave}
+              disabled={isSaveDisabled}
+            >
+              <LinearGradient
+                colors={[bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={noteModalStyles.saveBtnGradient}
+              >
+                {savingNote ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={noteModalStyles.saveBtnText}>Opslaan</Text>
+                )}
+              </LinearGradient>
+            </AnimatedPressable>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+const noteModalStyles = StyleSheet.create({
+  modal: {
+    justifyContent: "flex-end",
+    margin: 0,
+  },
+  kavWrapper: {
+    width: "100%",
+  },
+  sheet: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 12,
+    paddingHorizontal: 24,
+    maxHeight: "90%",
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    backgroundColor: "#ccc",
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 20,
+  },
+  title: {
+    ...bcctTypography.h3,
+    marginBottom: 20,
+  },
+  scrollContent: {
+    paddingBottom: 8,
+  },
+  label: {
+    ...bcctTypography.label,
+    marginBottom: 6,
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    ...bcctTypography.body,
+    marginBottom: 16,
+  },
+  textArea: {
+    minHeight: 120,
+    paddingTop: 12,
+  },
+  footer: {
+    flexDirection: "row",
+    gap: 12,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(0,0,0,0.08)",
+  },
+  cancelBtn: {
+    flex: 1,
+    minHeight: 48,
+    borderWidth: 1,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 13,
+  },
+  cancelBtnText: {
+    ...bcctTypography.bodyMedium,
+  },
+  saveBtn: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+  saveBtnGradient: {
+    flex: 1,
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 13,
+  },
+  saveBtnText: {
+    color: "#fff",
+    ...bcctTypography.button,
+  },
+});
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function ClientDetailScreen() {
@@ -1013,28 +1238,43 @@ export default function ClientDetailScreen() {
 
   // ── Note creation ───────────────────────────────────────────────────────────
 
+  const openNoteModal = useCallback(() => {
+    console.log("[Notes] Modal opened");
+    setNoteTitle("");
+    setNoteContent("");
+    setNoteModalVisible(true);
+  }, []);
+
+  const closeNoteModal = useCallback(() => {
+    console.log("[Notes] Modal closed / cancelled");
+    setNoteTitle("");
+    setNoteContent("");
+    setNoteModalVisible(false);
+  }, []);
+
   const handleSaveNote = async () => {
     if (!noteContent.trim() || !coachProfileId || !clientId) return;
-    console.log("[ClientDetail] Saving note for client:", clientId);
+    const payload = {
+      coach_id: coachProfileId,
+      client_id: clientId,
+      title: noteTitle.trim() || null,
+      content: noteContent.trim(),
+    };
+    console.log("[Notes] Save pressed, payload:", payload);
     setSavingNote(true);
     try {
-      const { error } = await supabase.from("coach_notes").insert({
-        coach_id: coachProfileId,
-        client_id: clientId,
-        title: noteTitle.trim() || null,
-        content: noteContent.trim(),
-      });
+      const { error } = await supabase.from("coach_notes").insert(payload);
       if (error) {
-        console.error("[ClientDetail] Error saving note:", error.message);
+        console.error("[Notes] Save error:", error.message);
         return;
       }
-      console.log("[ClientDetail] Note saved successfully");
+      console.log("[Notes] Save success");
       setNoteTitle("");
       setNoteContent("");
       setNoteModalVisible(false);
       await fetchNotes(clientId, coachProfileId);
     } catch (e: any) {
-      console.error("[ClientDetail] handleSaveNote exception:", e);
+      console.error("[Notes] Save error:", e);
     } finally {
       setSavingNote(false);
     }
@@ -1216,10 +1456,7 @@ export default function ClientDetailScreen() {
             <NotitiesTab
               data={notes}
               loading={false}
-              onNew={() => {
-                console.log("[ClientDetail] Nieuwe notitie pressed");
-                setNoteModalVisible(true);
-              }}
+              onNew={openNoteModal}
             />
           )}
         </View>
@@ -1228,105 +1465,17 @@ export default function ClientDetailScreen() {
       </ScrollView>
 
       {/* ── Note modal ── */}
-      <Modal
-        isVisible={noteModalVisible}
-        onBackdropPress={() => setNoteModalVisible(false)}
-        onBackButtonPress={() => setNoteModalVisible(false)}
-        animationIn="slideInUp"
-        animationOut="slideOutDown"
-        backdropOpacity={0.5}
-        style={styles.bottomModal}
-        avoidKeyboard
-      >
-        <View style={[styles.noteModalContent, { backgroundColor: colors.card }]}>
-          <View style={styles.modalHandle} />
-          <Text style={[styles.noteModalTitle, { color: colors.text }]}>
-            Nieuwe notitie
-          </Text>
-
-          <Text style={[styles.inputLabel, { color: bcctColors.textSecondary }]}>
-            Titel (optioneel)
-          </Text>
-          <TextInput
-            style={[
-              styles.textInput,
-              {
-                backgroundColor: colors.background,
-                color: colors.text,
-                borderColor: colors.border,
-              },
-            ]}
-            placeholder="Bijv. Sessie samenvatting"
-            placeholderTextColor={bcctColors.textSecondary}
-            value={noteTitle}
-            onChangeText={setNoteTitle}
-            returnKeyType="next"
-          />
-
-          <Text style={[styles.inputLabel, { color: bcctColors.textSecondary }]}>
-            Inhoud
-          </Text>
-          <TextInput
-            style={[
-              styles.textInput,
-              styles.textArea,
-              {
-                backgroundColor: colors.background,
-                color: colors.text,
-                borderColor: colors.border,
-              },
-            ]}
-            placeholder="Schrijf hier je notitie..."
-            placeholderTextColor={bcctColors.textSecondary}
-            value={noteContent}
-            onChangeText={setNoteContent}
-            multiline
-            numberOfLines={5}
-            textAlignVertical="top"
-          />
-
-          <View style={styles.noteModalActions}>
-            <AnimatedPressable
-              style={[styles.noteModalCancel, { borderColor: colors.border }]}
-              onPress={() => {
-                console.log("[ClientDetail] Note modal cancelled");
-                setNoteModalVisible(false);
-              }}
-            >
-              <Text
-                style={[
-                  styles.noteModalCancelText,
-                  { color: bcctColors.textSecondary },
-                ]}
-              >
-                Annuleren
-              </Text>
-            </AnimatedPressable>
-
-            <AnimatedPressable
-              style={[
-                styles.noteModalSave,
-                { opacity: savingNote || !noteContent.trim() ? 0.5 : 1 },
-              ]}
-              onPress={handleSaveNote}
-              disabled={savingNote || !noteContent.trim()}
-            >
-              <LinearGradient
-                colors={[bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.noteModalSaveGradient}
-              >
-                {savingNote ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Text style={styles.noteModalSaveText}>Opslaan</Text>
-                )}
-              </LinearGradient>
-            </AnimatedPressable>
-          </View>
-        </View>
-      </Modal>
+      <NoteModal
+        visible={noteModalVisible}
+        noteTitle={noteTitle}
+        noteContent={noteContent}
+        savingNote={savingNote}
+        colors={colors}
+        onChangeTitle={setNoteTitle}
+        onChangeContent={setNoteContent}
+        onCancel={closeNoteModal}
+        onSave={handleSaveNote}
+      />
     </>
   );
 }
