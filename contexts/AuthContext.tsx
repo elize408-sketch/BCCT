@@ -52,7 +52,7 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   signInWithPassword: (email: string, password: string, role: 'client' | 'coach') => Promise<void>;
-  signUpWithPassword: (email: string, password: string, name?: string) => Promise<void>;
+  signUpWithPassword: (email: string, password: string, name?: string, role?: 'client' | 'coach') => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signInWithApple: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -111,8 +111,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signUpWithPassword = async (email: string, password: string, name?: string) => {
-    console.log('[AuthContext] Signing up with email:', email);
+  const signUpWithPassword = async (email: string, password: string, name?: string, role: 'client' | 'coach' = 'client') => {
+    console.log('[AuthContext] Signing up with email:', email, 'role:', role);
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -130,9 +130,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     console.log('[AuthContext] Sign up successful:', data.user?.id);
 
-    // Create initial profile with default role
+    // Create initial profile with the selected role — never default blindly to 'client'
     if (data.user) {
-      await upsertProfileWithRole(data.user.id, 'client', name);
+      await upsertProfileWithRole(data.user.id, role, name);
     }
   };
 

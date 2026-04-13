@@ -212,26 +212,28 @@ export default function AuthScreen() {
 
         console.log('[Auth] User signed in successfully:', signInData.user.id);
 
-        // Step 2: Ensure profile exists (upsert without overwriting role if user chose Coach)
+        // Step 2: Ensure profile exists — preserve existing role, never send null
+        console.log('[Auth] Selected auth mode (sign-in):', selectedRole);
+
         const existingProfileQuery = await supabase
           .from('profiles')
           .select('role')
           .eq('id', signInData.user.id)
           .single();
 
-        const existingRole = existingProfileQuery.data?.role;
-        console.log('[Auth] Existing profile role:', existingRole);
+        const existingRole = existingProfileQuery.data?.role ?? null;
+        const profileAlreadyExists = !!existingProfileQuery.data;
+        console.log('[Auth] Profile already exists:', profileAlreadyExists, '| existing role:', existingRole);
 
-        // Only set role if profile doesn't exist OR if user chose client
+        // Preserve existing role if the profile already has one; otherwise use UI selection; final fallback = 'client'
+        const resolvedRole: 'client' | 'coach' = existingRole ?? selectedRole ?? 'client';
+        console.log('[Auth] Resolved role for upsert:', resolvedRole);
+
         const profileData: any = {
           id: signInData.user.id,
-          created_at: new Date().toISOString(),
+          role: resolvedRole,
+          updated_at: new Date().toISOString(),
         };
-
-        // Don't overwrite role if user chose Coach and profile already exists
-        if (!existingRole || selectedRole === 'client') {
-          profileData.role = selectedRole;
-        }
 
         console.log('[Auth] Upserting profile:', profileData);
 

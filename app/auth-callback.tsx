@@ -23,44 +23,52 @@ export default function AuthCallbackScreen() {
           console.log('[AuthCallback] User authenticated:', session.user.id);
           
           // Check if there's a pending role from social login
-          const pendingRole = await AsyncStorage.getItem('pendingRole');
+          const pendingRoleRaw = await AsyncStorage.getItem('pendingRole');
           const pendingMode = await AsyncStorage.getItem('pendingMode');
           const pendingInviteCode = await AsyncStorage.getItem('pendingInviteCode');
-          
-          if (pendingRole) {
-            console.log('[AuthCallback] Found pending role:', pendingRole, 'mode:', pendingMode, 'inviteCode:', pendingInviteCode ? 'provided' : 'empty');
-            
-            // Check if profile already exists
-            const { data: existingProfile } = await supabase
+
+          console.log('[AuthCallback] pendingRole:', pendingRoleRaw, '| pendingMode:', pendingMode, '| inviteCode:', pendingInviteCode ? 'provided' : 'empty');
+
+          // Always check for an existing profile first
+          const { data: existingProfile } = await supabase
+            .from('profiles')
+            .select('id, role')
+            .eq('id', session.user.id)
+            .single();
+
+          const profileAlreadyExists = !!existingProfile;
+          const existingRole = existingProfile?.role ?? null;
+          console.log('[AuthCallback] Profile already exists:', profileAlreadyExists, '| existing role:', existingRole);
+
+          // Resolve role: preserve existing > pending from UI > safe fallback
+          const pendingRole = (pendingRoleRaw === 'coach' || pendingRoleRaw === 'client') ? pendingRoleRaw : null;
+          const resolvedRole: 'client' | 'coach' = existingRole ?? pendingRole ?? 'client';
+          console.log('[AuthCallback] Resolved role for upsert:', resolvedRole);
+
+          // Upsert profile — always include role so NOT NULL constraint is satisfied
+          {
+            const profileData = {
+              id: session.user.id,
+              full_name: session.user.user_metadata?.full_name || null,
+              role: resolvedRole,
+              ...(!profileAlreadyExists && { onboarding_completed: false, created_at: new Date().toISOString() }),
+              updated_at: new Date().toISOString(),
+            };
+
+            console.log('[AuthCallback] Upserting profile:', profileData);
+
+            const { error: profileError } = await supabase
               .from('profiles')
-              .select('id, role')
-              .eq('id', session.user.id)
-              .single();
-            
-            if (!existingProfile) {
-              // Create profile with the selected role
-              const profileData = {
-                id: session.user.id,
-                full_name: session.user.user_metadata?.full_name || null,
-                role: pendingRole as 'client' | 'coach',
-                onboarding_completed: false,
-                created_at: new Date().toISOString(),
-              };
-              
-              console.log('[AuthCallback] Creating profile:', profileData);
-              
-              const { error: profileError } = await supabase
-                .from('profiles')
-                .upsert(profileData);
-              
-              if (profileError) {
-                console.error('[AuthCallback] Profile creation error:', profileError);
-              } else {
-                console.log('[AuthCallback] Profile created successfully');
-              }
+              .upsert(profileData, { onConflict: 'id' });
+
+            if (profileError) {
+              console.error('[AuthCallback] Profile upsert error:', profileError);
             } else {
-              console.log('[AuthCallback] Profile already exists:', existingProfile);
+              console.log('[AuthCallback] Profile upserted successfully');
             }
+          }
+
+          if (pendingRoleRaw) {
             
             // Claim invite code if provided and role is client
             if (pendingRole === 'client' && pendingInviteCode) {
