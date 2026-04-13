@@ -541,10 +541,14 @@ function HuiswerkTab({
 function BetalingenTab({
   data,
   loading,
+  onOpenModal,
 }: {
   data: Invoice[];
   loading: boolean;
+  onOpenModal: () => void;
 }) {
+  console.log("[BetalingBtn] rendered");
+
   if (loading) {
     return (
       <View style={tabContentStyles.container}>
@@ -588,11 +592,514 @@ function BetalingenTab({
       )}
       <CtaButton
         label="+ Betaling aanmaken"
-        onPress={() => console.log("[ClientDetail] Betaling aanmaken pressed")}
+        onPress={() => {
+          console.log("[BetalingBtn] pressed");
+          onOpenModal();
+        }}
       />
     </View>
   );
 }
+
+// ─── Payment type options ─────────────────────────────────────────────────────
+
+type PaymentType = "one_time" | "package" | "recurring_monthly";
+
+const PAYMENT_TYPES: { key: PaymentType; label: string; subtitle: string; icon: string }[] = [
+  { key: "one_time", label: "Eenmalig", subtitle: "Eenmalige betaling", icon: "💳" },
+  { key: "package", label: "Pakket", subtitle: "Pakketprijs", icon: "📦" },
+  { key: "recurring_monthly", label: "Maandelijks", subtitle: "Maandelijkse betaling", icon: "🔄" },
+];
+
+const BILLING_API = "https://qcirmbquzdbprjvqhqlj.supabase.co/functions/v1/billing-invoices";
+
+function parseDateNL(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parts = trimmed.split("-");
+  if (parts.length === 3) {
+    const [day, month, year] = parts.map(Number);
+    if (!isNaN(day) && !isNaN(month) && !isNaN(year) && year > 1000) {
+      const mm = String(month).padStart(2, "0");
+      const dd = String(day).padStart(2, "0");
+      return `${year}-${mm}-${dd}`;
+    }
+  }
+  return null;
+}
+
+// ─── Billing Modal ────────────────────────────────────────────────────────────
+
+function BillingModal({
+  visible,
+  clientId,
+  coachId,
+  onClose,
+  onCreated,
+}: {
+  visible: boolean;
+  clientId: string;
+  coachId: string;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const [stripeEnabled, setStripeEnabled] = useState(false);
+  const [step, setStep] = useState<1 | 2>(1);
+  const [selectedType, setSelectedType] = useState<PaymentType>("one_time");
+
+  const [title, setTitle] = useState("");
+  const [amount, setAmount] = useState("");
+  const [description, setDescription] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [titleError, setTitleError] = useState("");
+  const [amountError, setAmountError] = useState("");
+  const [submitError, setSubmitError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [successMsg, setSuccessMsg] = useState("");
+
+  useEffect(() => {
+    if (!visible) return;
+    supabase
+      .from("profiles")
+      .select("stripe_charges_enabled")
+      .eq("id", coachId)
+      .single()
+      .then(({ data }) => setStripeEnabled(data?.stripe_charges_enabled === true))
+      .catch(() => setStripeEnabled(false));
+  }, [visible, coachId]);
+
+  const resetForm = useCallback(() => {
+    setStep(1);
+    setSelectedType("one_time");
+    setTitle("");
+    setAmount("");
+    setDescription("");
+    setDueDate("");
+    setStartDate("");
+    setEndDate("");
+    setTitleError("");
+    setAmountError("");
+    setSubmitError("");
+    setSuccessMsg("");
+  }, []);
+
+  const handleClose = useCallback(() => {
+    if (submitting) return;
+    console.log("[BetalingBtn] modal open:", false);
+    resetForm();
+    onClose();
+  }, [submitting, resetForm, onClose]);
+
+  const handleTypeSelect = useCallback((type: PaymentType) => {
+    console.log("[Betaling] Type selected:", type);
+    setSelectedType(type);
+    setStep(2);
+  }, []);
+
+  const handleBack = useCallback(() => {
+    setStep(1);
+    setTitleError("");
+    setAmountError("");
+    setSubmitError("");
+  }, []);
+
+  const handleSubmit = useCallback(async () => {
+    let hasError = false;
+    if (!title.trim()) { setTitleError("Titel is verplicht"); hasError = true; }
+    const parsedAmount = parseFloat(amount.replace(",", "."));
+    if (!amount.trim() || isNaN(parsedAmount) || parsedAmount <= 0) {
+      setAmountError("Voer een geldig bedrag in (groter dan 0)");
+      hasError = true;
+    }
+    if (hasError) return;
+
+    const payload: Record<string, unknown> = {
+      client_id: clientId,
+      title: title.trim(),
+      description: description.trim() || undefined,
+      amount: parsedAmount,
+      currency: "eur",
+      type: selectedType,
+    };
+
+    if (selectedType === "one_time" || selectedType === "package") {
+      const due = parseDateNL(dueDate);
+      if (due) payload.due_date = due;
+    } else if (selectedType === "recurring_monthly") {
+      const start = parseDateNL(startDate);
+      const end = parseDateNL(endDate);
+      if (start) payload.start_date = start;
+      if (end) payload.end_date = end;
+    }
+
+    console.log("[Betaling] Submit pressed, payload:", payload);
+    setSubmitting(true);
+    setSubmitError("");
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) {
+        setSubmitError("Niet ingelogd");
+        return;
+      }
+
+      const res = await fetch(BILLING_API, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const responseText = await res.text();
+      console.log("[Betaling] API response:", res.status, responseText);
+
+      if (!res.ok) {
+        let errMsg = `Fout ${res.status}`;
+        try {
+          const errJson = JSON.parse(responseText);
+          errMsg = errJson.error ?? errJson.message ?? errMsg;
+        } catch {
+          errMsg = responseText || errMsg;
+        }
+        setSubmitError(errMsg);
+        return;
+      }
+
+      console.log("[Betaling] Invoice created successfully");
+      setSuccessMsg("Betaling aangemaakt ✓");
+      setTimeout(() => {
+        resetForm();
+        onClose();
+        onCreated();
+      }, 900);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Er is een fout opgetreden";
+      setSubmitError(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [title, amount, description, dueDate, startDate, endDate, selectedType, clientId, resetForm, onClose, onCreated]);
+
+  const stripeNoteText = stripeEnabled
+    ? "Betaling wordt aangemaakt met Stripe betaallink"
+    : "Betaling wordt opgeslagen als concept (Stripe nog niet gekoppeld)";
+
+  const footerPadding = Math.max(insets.bottom, 16);
+  const selectedTypeLabel = PAYMENT_TYPES.find((p) => p.key === selectedType)?.label ?? "Betaling";
+
+  return (
+    <Modal
+      isVisible={visible}
+      onBackdropPress={handleClose}
+      onBackButtonPress={handleClose}
+      animationIn="slideInUp"
+      animationOut="slideOutDown"
+      backdropOpacity={0.5}
+      style={billingModalStyles.modal}
+      avoidKeyboard
+      useNativeDriver
+      hideModalContentWhileAnimating
+    >
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <View style={[billingModalStyles.sheet, { backgroundColor: colors.card, paddingBottom: footerPadding }]}>
+          <View style={billingModalStyles.handle} />
+
+          {step === 1 ? (
+            <>
+              <View style={billingModalStyles.header}>
+                <Text style={[billingModalStyles.title, { color: colors.text }]}>Betaling aanmaken</Text>
+                <AnimatedPressable onPress={handleClose} style={billingModalStyles.closeBtn}>
+                  <Text style={[billingModalStyles.closeBtnText, { color: bcctColors.textSecondary }]}>✕</Text>
+                </AnimatedPressable>
+              </View>
+              <Text style={[billingModalStyles.subtitle, { color: bcctColors.textSecondary }]}>
+                Kies het type betaling
+              </Text>
+              <View style={billingModalStyles.typeCards}>
+                {PAYMENT_TYPES.map((pt) => {
+                  const isSelected = selectedType === pt.key;
+                  return (
+                    <AnimatedPressable
+                      key={pt.key}
+                      style={[
+                        billingModalStyles.typeCard,
+                        {
+                          borderColor: isSelected ? bcctColors.primaryOrange : colors.border,
+                          backgroundColor: isSelected ? bcctColors.primaryOrange + "10" : colors.background,
+                        },
+                      ]}
+                      onPress={() => handleTypeSelect(pt.key)}
+                    >
+                      <Text style={billingModalStyles.typeCardIcon}>{pt.icon}</Text>
+                      <View style={billingModalStyles.typeCardText}>
+                        <Text style={[billingModalStyles.typeCardLabel, { color: colors.text }]}>{pt.label}</Text>
+                        <Text style={[billingModalStyles.typeCardSub, { color: bcctColors.textSecondary }]}>{pt.subtitle}</Text>
+                      </View>
+                      {isSelected ? (
+                        <View style={[billingModalStyles.typeCardCheck, { backgroundColor: bcctColors.primaryOrange }]}>
+                          <Text style={billingModalStyles.typeCardCheckMark}>✓</Text>
+                        </View>
+                      ) : null}
+                    </AnimatedPressable>
+                  );
+                })}
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={billingModalStyles.header}>
+                <AnimatedPressable onPress={handleBack} disabled={submitting}>
+                  <Text style={[billingModalStyles.backLink, { color: bcctColors.primaryOrange }]}>← Terug</Text>
+                </AnimatedPressable>
+                <Text style={[billingModalStyles.title, { color: colors.text }]}>{selectedTypeLabel}</Text>
+                <AnimatedPressable onPress={handleClose} style={billingModalStyles.closeBtn} disabled={submitting}>
+                  <Text style={[billingModalStyles.closeBtnText, { color: bcctColors.textSecondary }]}>✕</Text>
+                </AnimatedPressable>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <Text style={[billingModalStyles.label, { color: bcctColors.textSecondary }]}>Titel *</Text>
+                <TextInput
+                  style={[billingModalStyles.input, { color: colors.text, borderColor: titleError ? bcctColors.error : colors.border, backgroundColor: colors.background }]}
+                  placeholder="bijv. Sessie november"
+                  placeholderTextColor={bcctColors.textSecondary}
+                  value={title}
+                  onChangeText={(t) => { setTitle(t); if (t.trim()) setTitleError(""); }}
+                  editable={!submitting}
+                  returnKeyType="next"
+                />
+                {titleError ? <Text style={billingModalStyles.fieldError}>{titleError}</Text> : null}
+
+                <Text style={[billingModalStyles.label, { color: bcctColors.textSecondary }]}>Bedrag (€) *</Text>
+                <TextInput
+                  style={[billingModalStyles.input, { color: colors.text, borderColor: amountError ? bcctColors.error : colors.border, backgroundColor: colors.background }]}
+                  placeholder="bijv. 75,00"
+                  placeholderTextColor={bcctColors.textSecondary}
+                  value={amount}
+                  onChangeText={(t) => { setAmount(t); if (t.trim()) setAmountError(""); }}
+                  keyboardType="decimal-pad"
+                  editable={!submitting}
+                  returnKeyType="next"
+                />
+                {amountError ? <Text style={billingModalStyles.fieldError}>{amountError}</Text> : null}
+
+                <Text style={[billingModalStyles.label, { color: bcctColors.textSecondary }]}>Omschrijving (optioneel)</Text>
+                <TextInput
+                  style={[billingModalStyles.input, billingModalStyles.textArea, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                  placeholder="Beschrijving van de betaling..."
+                  placeholderTextColor={bcctColors.textSecondary}
+                  value={description}
+                  onChangeText={setDescription}
+                  multiline
+                  numberOfLines={3}
+                  textAlignVertical="top"
+                  editable={!submitting}
+                />
+
+                {(selectedType === "one_time" || selectedType === "package") ? (
+                  <>
+                    <Text style={[billingModalStyles.label, { color: bcctColors.textSecondary }]}>Vervaldatum (optioneel, DD-MM-YYYY)</Text>
+                    <TextInput
+                      style={[billingModalStyles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                      placeholder="bijv. 31-12-2025"
+                      placeholderTextColor={bcctColors.textSecondary}
+                      value={dueDate}
+                      onChangeText={setDueDate}
+                      keyboardType="numbers-and-punctuation"
+                      editable={!submitting}
+                      returnKeyType="done"
+                    />
+                  </>
+                ) : null}
+
+                {selectedType === "recurring_monthly" ? (
+                  <>
+                    <Text style={[billingModalStyles.label, { color: bcctColors.textSecondary }]}>Startdatum (optioneel, DD-MM-YYYY)</Text>
+                    <TextInput
+                      style={[billingModalStyles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                      placeholder="bijv. 01-01-2025"
+                      placeholderTextColor={bcctColors.textSecondary}
+                      value={startDate}
+                      onChangeText={setStartDate}
+                      keyboardType="numbers-and-punctuation"
+                      editable={!submitting}
+                      returnKeyType="next"
+                    />
+                    <Text style={[billingModalStyles.label, { color: bcctColors.textSecondary }]}>Einddatum (optioneel, DD-MM-YYYY)</Text>
+                    <TextInput
+                      style={[billingModalStyles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                      placeholder="bijv. 31-12-2025"
+                      placeholderTextColor={bcctColors.textSecondary}
+                      value={endDate}
+                      onChangeText={setEndDate}
+                      keyboardType="numbers-and-punctuation"
+                      editable={!submitting}
+                      returnKeyType="done"
+                    />
+                  </>
+                ) : null}
+
+                <View style={[billingModalStyles.stripeNote, { marginTop: 16 }]}>
+                  <Text style={[billingModalStyles.stripeNoteText, { color: bcctColors.textSecondary }]}>
+                    {stripeNoteText}
+                  </Text>
+                </View>
+
+                {submitError ? (
+                  <View style={billingModalStyles.errorBox}>
+                    <Text style={billingModalStyles.errorText}>{submitError}</Text>
+                  </View>
+                ) : null}
+
+                {successMsg ? (
+                  <View style={billingModalStyles.successBox}>
+                    <Text style={billingModalStyles.successText}>{successMsg}</Text>
+                  </View>
+                ) : null}
+
+                <AnimatedPressable
+                  style={[billingModalStyles.submitBtn, { opacity: submitting ? 0.6 : 1 }]}
+                  onPress={handleSubmit}
+                  disabled={submitting}
+                >
+                  <LinearGradient
+                    colors={[bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={billingModalStyles.submitBtnGradient}
+                  >
+                    {submitting ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <Text style={billingModalStyles.submitBtnText}>Aanmaken</Text>
+                    )}
+                  </LinearGradient>
+                </AnimatedPressable>
+
+                <AnimatedPressable
+                  style={[billingModalStyles.cancelBtn, { borderColor: colors.border }]}
+                  onPress={handleClose}
+                  disabled={submitting}
+                >
+                  <Text style={[billingModalStyles.cancelBtnText, { color: bcctColors.textSecondary }]}>Annuleren</Text>
+                </AnimatedPressable>
+
+                <View style={{ height: 24 }} />
+              </ScrollView>
+            </>
+          )}
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+const billingModalStyles = StyleSheet.create({
+  modal: { justifyContent: "flex-end", margin: 0 },
+  sheet: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 12,
+    paddingHorizontal: 24,
+    maxHeight: "92%",
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    backgroundColor: "#ccc",
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 20,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  title: { ...bcctTypography.h3, flex: 1, textAlign: "center" },
+  subtitle: { ...bcctTypography.body, marginBottom: 16 },
+  closeBtn: { padding: 4 },
+  closeBtnText: { fontSize: 18, fontWeight: "600" },
+  backLink: { fontSize: 15, fontWeight: "500" },
+  typeCards: { gap: 10, marginBottom: 8 },
+  typeCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderRadius: 14,
+    padding: 14,
+    gap: 12,
+  },
+  typeCardIcon: { fontSize: 24 },
+  typeCardText: { flex: 1 },
+  typeCardLabel: { ...bcctTypography.bodyMedium },
+  typeCardSub: { fontSize: 13, lineHeight: 18 },
+  typeCardCheck: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  typeCardCheckMark: { color: "#fff", fontSize: 13, fontWeight: "700" },
+  label: { ...bcctTypography.label, marginBottom: 6 },
+  input: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    ...bcctTypography.body,
+    marginBottom: 16,
+  },
+  textArea: { minHeight: 80, paddingTop: 12 },
+  fieldError: { color: bcctColors.error, fontSize: 12, marginTop: -12, marginBottom: 12 },
+  stripeNote: {
+    borderRadius: 10,
+    backgroundColor: bcctColors.primaryOrange + "10",
+    padding: 12,
+    marginBottom: 16,
+  },
+  stripeNoteText: { fontSize: 13, lineHeight: 18 },
+  errorBox: {
+    backgroundColor: bcctColors.error + "15",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+  },
+  errorText: { color: bcctColors.error, fontSize: 13 },
+  successBox: {
+    backgroundColor: bcctColors.success + "15",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+  },
+  successText: { color: bcctColors.success, fontSize: 13, fontWeight: "600" },
+  submitBtn: { borderRadius: 12, overflow: "hidden", marginBottom: 10 },
+  submitBtnGradient: {
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 13,
+  },
+  submitBtnText: { color: "#fff", ...bcctTypography.button },
+  cancelBtn: {
+    minHeight: 48,
+    borderWidth: 1,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 13,
+  },
+  cancelBtnText: { ...bcctTypography.bodyMedium },
+});
 
 function AfsprakenTab({
   data,
@@ -1367,6 +1874,20 @@ export default function ClientDetailScreen() {
   const [savingHw, setSavingHw] = useState(false);
   const [homeworkAssignments, setHomeworkAssignments] = useState<HomeworkAssignment[]>([]);
 
+  // Billing modal state (lifted to root to avoid iOS modal clipping)
+  const [billingModalVisible, setBillingModalVisible] = useState(false);
+
+  const openBillingModal = useCallback(() => {
+    console.log("[BetalingBtn] pressed");
+    console.log("[BetalingBtn] modal open:", true);
+    setBillingModalVisible(true);
+  }, []);
+
+  const closeBillingModal = useCallback(() => {
+    console.log("[BetalingBtn] modal open:", false);
+    setBillingModalVisible(false);
+  }, []);
+
   // ── Fetch all data ──────────────────────────────────────────────────────────
 
   const loadAll = useCallback(async () => {
@@ -1897,7 +2418,7 @@ export default function ClientDetailScreen() {
             />
           )}
           {activeTab === "betalingen" && (
-            <BetalingenTab data={invoices} loading={false} />
+            <BetalingenTab data={invoices} loading={false} onOpenModal={openBillingModal} />
           )}
           {activeTab === "afspraken" && (
             <AfsprakenTab
@@ -1958,6 +2479,19 @@ export default function ClientDetailScreen() {
         }}
         onCancel={closeHwModal}
         onSave={handleSaveHw}
+      />
+
+      {/* ── Billing modal (root-level to avoid iOS clipping) ── */}
+      <BillingModal
+        visible={billingModalVisible}
+        clientId={clientId ?? ""}
+        coachId={coachProfileId ?? ""}
+        onClose={closeBillingModal}
+        onCreated={() => {
+          if (clientId && coachProfileId) {
+            fetchInvoices(clientId, coachProfileId);
+          }
+        }}
       />
     </>
   );
