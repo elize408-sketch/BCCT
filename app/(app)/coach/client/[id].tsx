@@ -13,6 +13,7 @@ import {
   Animated,
   KeyboardAvoidingView,
   Alert,
+  useWindowDimensions,
 } from "react-native";
 import Modal from "react-native-modal";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -1306,8 +1307,10 @@ function HomeworkModal({
   onSave: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  const { height: screenHeight } = useWindowDimensions();
   const isSaveDisabled = saving || !subject.trim() || !message.trim();
   const footerPaddingBottom = Math.max(insets.bottom, 16);
+  const sheetHeight = screenHeight * 0.88;
   const deadlineLabel = deadline
     ? deadline.toLocaleDateString("nl-NL", { day: "numeric", month: "short", year: "numeric" })
     : "Geen deadline";
@@ -1321,22 +1324,28 @@ function HomeworkModal({
       animationOut="slideOutDown"
       backdropOpacity={0.5}
       style={hwModalStyles.modal}
+      avoidKeyboard={false}
+      useNativeDriver
+      hideModalContentWhileAnimating
     >
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={hwModalStyles.kavWrapper}
       >
-        <View style={[hwModalStyles.sheet, { backgroundColor: colors.card }]}>
-          {/* Handle */}
+        <View style={[hwModalStyles.sheet, { backgroundColor: colors.card, height: sheetHeight }]}>
+          {/* Drag handle */}
           <View style={hwModalStyles.handle} />
 
           {/* Header */}
-          <Text style={[hwModalStyles.title, { color: colors.text }]}>
-            Huiswerk sturen
-          </Text>
+          <View style={hwModalStyles.headerRow}>
+            <Text style={[hwModalStyles.title, { color: colors.text }]}>
+              Huiswerk sturen
+            </Text>
+          </View>
 
-          {/* Scrollable form */}
+          {/* Scrollable form — fills remaining space between header and footer */}
           <ScrollView
+            style={hwModalStyles.scrollArea}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={hwModalStyles.scrollContent}
@@ -1399,7 +1408,10 @@ function HomeworkModal({
                     borderColor: colors.border,
                   },
                 ]}
-                onPress={onToggleDatePicker}
+                onPress={() => {
+                  console.log("[HomeworkModal] Toggle date picker pressed");
+                  onToggleDatePicker();
+                }}
                 disabled={saving}
               >
                 <Calendar size={16} color={bcctColors.primaryOrange} strokeWidth={2} />
@@ -1410,7 +1422,10 @@ function HomeworkModal({
               {deadline ? (
                 <AnimatedPressable
                   style={hwModalStyles.clearDeadlineBtn}
-                  onPress={onClearDeadline}
+                  onPress={() => {
+                    console.log("[HomeworkModal] Clear deadline pressed");
+                    onClearDeadline();
+                  }}
                   disabled={saving}
                 >
                   <Text style={hwModalStyles.clearDeadlineBtnText}>Wissen</Text>
@@ -1447,21 +1462,27 @@ function HomeworkModal({
             </View>
           </ScrollView>
 
-          {/* Footer */}
+          {/* Sticky footer */}
           <View style={[hwModalStyles.footer, { paddingBottom: footerPaddingBottom }]}>
             <AnimatedPressable
-              style={[hwModalStyles.cancelBtn, { borderColor: colors.border }]}
-              onPress={onCancel}
+              style={hwModalStyles.cancelBtn}
+              onPress={() => {
+                console.log("[HomeworkModal] Annuleren pressed");
+                onCancel();
+              }}
               disabled={saving}
             >
-              <Text style={[hwModalStyles.cancelBtnText, { color: bcctColors.textSecondary }]}>
+              <Text style={hwModalStyles.cancelBtnText}>
                 Annuleren
               </Text>
             </AnimatedPressable>
 
             <AnimatedPressable
-              style={[hwModalStyles.saveBtn, { opacity: isSaveDisabled ? 0.5 : 1 }]}
-              onPress={onSave}
+              style={[hwModalStyles.saveBtn, { opacity: isSaveDisabled ? 0.45 : 1 }]}
+              onPress={() => {
+                console.log("[HomeworkModal] Versturen pressed, subject:", subject, "saving:", saving);
+                onSave();
+              }}
               disabled={isSaveDisabled}
             >
               <LinearGradient
@@ -1493,26 +1514,36 @@ const hwModalStyles = StyleSheet.create({
     width: "100%",
   },
   sheet: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 12,
-    paddingHorizontal: 24,
-    maxHeight: "92%",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 0,
+    overflow: "hidden",
   },
   handle: {
-    width: 40,
+    width: 36,
     height: 4,
-    backgroundColor: "#ccc",
+    backgroundColor: "rgba(0,0,0,0.2)",
     borderRadius: 2,
     alignSelf: "center",
-    marginBottom: 20,
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  headerRow: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 16,
   },
   title: {
-    ...bcctTypography.h3,
-    marginBottom: 20,
+    fontSize: 18,
+    fontWeight: "700",
+    lineHeight: 24,
+  },
+  scrollArea: {
+    flex: 1,
   },
   scrollContent: {
-    paddingBottom: 8,
+    paddingHorizontal: 20,
+    paddingBottom: 12,
   },
   label: {
     ...bcctTypography.label,
@@ -1522,13 +1553,14 @@ const hwModalStyles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 13,
+    minHeight: 48,
     ...bcctTypography.body,
     marginBottom: 16,
   },
   textArea: {
-    minHeight: 120,
-    paddingTop: 12,
+    minHeight: 110,
+    paddingTop: 13,
   },
   deadlineRow: {
     flexDirection: "row",
@@ -1544,7 +1576,8 @@ const hwModalStyles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 13,
+    minHeight: 48,
   },
   deadlineBtnText: {
     ...bcctTypography.body,
@@ -1568,7 +1601,7 @@ const hwModalStyles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 16,
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 8,
   },
   attachmentPlaceholderText: {
     fontSize: 14,
@@ -1577,38 +1610,41 @@ const hwModalStyles = StyleSheet.create({
   footer: {
     flexDirection: "row",
     gap: 12,
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
     borderTopColor: "rgba(0,0,0,0.08)",
   },
   cancelBtn: {
     flex: 1,
-    minHeight: 48,
-    borderWidth: 1,
+    height: 52,
+    borderWidth: 1.5,
     borderRadius: 12,
+    borderColor: bcctColors.borderGray,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 13,
+    backgroundColor: "transparent",
   },
   cancelBtnText: {
-    ...bcctTypography.bodyMedium,
+    fontSize: 16,
+    fontWeight: "600",
+    color: bcctColors.textPrimary,
   },
   saveBtn: {
     flex: 1,
-    minHeight: 48,
+    height: 52,
     borderRadius: 12,
     overflow: "hidden",
   },
   saveBtnGradient: {
     flex: 1,
-    minHeight: 48,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 13,
   },
   saveBtnText: {
     color: "#fff",
-    ...bcctTypography.button,
+    fontSize: 16,
+    fontWeight: "700",
   },
 });
 
