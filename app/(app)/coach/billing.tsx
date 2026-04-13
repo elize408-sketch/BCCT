@@ -44,8 +44,8 @@ interface CoachProfile {
 
 interface Client {
   id: string;
-  full_name: string;
-  email: string;
+  full_name: string | null;
+  stripe_email: string | null;
 }
 
 interface FormErrors {
@@ -123,13 +123,15 @@ export default function CoachBillingScreen() {
 
   const loadClients = useCallback(async () => {
     if (!user) return;
-    console.log('[Billing] Loading clients for coach:', user.id);
+    console.log('[Billing] Fetching clients for coach:', user.id);
     setLoadingClients(true);
     try {
       const { data: coachClients, error: ccError } = await supabase
         .from('coach_clients')
         .select('client_id')
         .eq('coach_id', user.id);
+
+      console.log('[Billing] coach_clients result:', coachClients, ccError);
 
       if (ccError) {
         console.error('[Billing] Error fetching coach_clients:', ccError);
@@ -145,16 +147,18 @@ export default function CoachBillingScreen() {
       }
 
       const clientIds = coachClients.map((c) => c.client_id);
-      const { data: profiles, error: pError } = await supabase
+      const { data: profilesData, error: pError } = await supabase
         .from('profiles')
-        .select('id, full_name, email')
+        .select('id, full_name, stripe_email')
         .in('id', clientIds);
+
+      console.log('[Billing] profiles result:', profilesData, pError);
 
       if (pError) {
         console.error('[Billing] Error fetching profiles:', pError);
       } else {
-        console.log('[Billing] Clients loaded:', profiles?.length ?? 0);
-        setClients(profiles ?? []);
+        console.log('[Billing] Clients loaded:', profilesData?.length ?? 0);
+        setClients(profilesData ?? []);
       }
     } catch (err) {
       console.error('[Billing] Unexpected error loading clients:', err);
@@ -205,7 +209,7 @@ export default function CoachBillingScreen() {
   const handleSelectClient = (client: Client) => {
     console.log('[Billing] Client selected:', client.id, client.full_name);
     setSelectedClient(client);
-    setClientEmail(client.email);
+    setClientEmail(client.stripe_email ?? '');
     setClientPickerVisible(false);
     setErrors((prev) => ({ ...prev, client: undefined, clientEmail: undefined }));
   };
@@ -310,8 +314,8 @@ export default function CoachBillingScreen() {
     !!profile?.stripe_account_id &&
     (!profile?.stripe_onboarding_completed || !profile?.stripe_charges_enabled || !profile?.stripe_payouts_enabled);
 
-  const selectedClientName = selectedClient ? selectedClient.full_name : null;
-  const selectedClientEmail = selectedClient ? selectedClient.email : null;
+  const selectedClientName = selectedClient ? (selectedClient.full_name ?? 'Cliënt') : null;
+  const selectedClientEmail = selectedClient ? (selectedClient.stripe_email ?? '') : null;
 
   const chargesDisabled = !profile?.stripe_charges_enabled;
   const payoutsDisabled = !profile?.stripe_payouts_enabled;
@@ -746,8 +750,8 @@ export default function CoachBillingScreen() {
                       <Ionicons name="person" size={20} color={bcctColors.primaryOrange} />
                     </View>
                     <View style={styles.clientRowInfo}>
-                      <Text style={[styles.clientRowName, { color: colors.text }]}>{client.full_name}</Text>
-                      <Text style={[styles.clientRowEmail, { color: bcctColors.textSecondary }]}>{client.email}</Text>
+                      <Text style={[styles.clientRowName, { color: colors.text }]}>{client.full_name ?? 'Cliënt'}</Text>
+                      <Text style={[styles.clientRowEmail, { color: bcctColors.textSecondary }]}>{client.stripe_email ?? ''}</Text>
                     </View>
                     {isSelected && (
                       <Ionicons name="checkmark-circle" size={22} color={bcctColors.primaryOrange} />
