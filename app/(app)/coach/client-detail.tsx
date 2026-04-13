@@ -22,7 +22,7 @@ import { supabase } from "@/lib/supabase";
 import { bcctColors, bcctTypography } from "@/styles/bcctTheme";
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { useAuth } from "@/contexts/AuthContext";
-import { listAssignments, HomeworkAssignment } from "@/utils/homeworkApi";
+import { listAssignments, createAssignment, HomeworkAssignment } from "@/utils/homeworkApi";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -197,11 +197,21 @@ function HomeworkCard({ item, index }: { item: HomeworkAssignment; index: number
 
 function HuiswerkTab({ clientId, clientName }: { clientId: string; clientName: string }) {
   const { colors } = useTheme();
-  const router = useRouter();
   const { session } = useAuth();
   const [assignments, setAssignments] = useState<HomeworkAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  // Modal state
+  const [modalVisible, setModalVisible] = useState(false);
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
+  const [deadline, setDeadline] = useState("");
+  const [subjectError, setSubjectError] = useState("");
+  const [messageError, setMessageError] = useState("");
+  const [submitError, setSubmitError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [successMsg, setSuccessMsg] = useState("");
 
   const loadAssignments = useCallback(async () => {
     const token = session?.access_token;
@@ -227,19 +237,75 @@ function HuiswerkTab({ clientId, clientName }: { clientId: string; clientName: s
     }, [loadAssignments])
   );
 
-  const handleSendHomework = useCallback(() => {
-    console.log("[ClientDetail] Huiswerk sturen pressed, clientId:", clientId);
-    router.push({
-      pathname: "/(app)/homework-compose",
-      params: { clientId, clientName },
-    });
-  }, [router, clientId, clientName]);
+  const openModal = useCallback(() => {
+    console.log("[Huiswerk] Button pressed");
+    console.log("[Huiswerk] Opening modal");
+    setSubject("");
+    setMessage("");
+    setDeadline("");
+    setSubjectError("");
+    setMessageError("");
+    setSubmitError("");
+    setSuccessMsg("");
+    setModalVisible(true);
+    console.log("[Huiswerk] Modal opened successfully");
+  }, []);
+
+  const parseDeadlineNL = (value: string): string | null => {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    // Accept DD-MM-YYYY
+    const parts = trimmed.split("-");
+    if (parts.length === 3) {
+      const [day, month, year] = parts.map(Number);
+      if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
+        return new Date(year, month - 1, day).toISOString().split("T")[0];
+      }
+    }
+    return trimmed;
+  };
+
+  const handleSubmit = useCallback(async () => {
+    let hasError = false;
+    if (!subject.trim()) { setSubjectError("Onderwerp is verplicht"); hasError = true; }
+    if (!message.trim()) { setMessageError("Beschrijving is verplicht"); hasError = true; }
+    if (hasError) return;
+
+    const token = session?.access_token;
+    if (!token) {
+      setSubmitError("Niet ingelogd");
+      return;
+    }
+
+    const deadlineValue = parseDeadlineNL(deadline);
+    const payload = { client_id: clientId, subject: subject.trim(), message: message.trim(), deadline: deadlineValue };
+    console.log("[Huiswerk] Submit payload:", { subject: payload.subject, message: payload.message, deadline: payload.deadline, clientId });
+
+    setSubmitting(true);
+    setSubmitError("");
+
+    try {
+      await createAssignment(token, payload);
+      console.log("[Huiswerk] Save success");
+      setSuccessMsg("Huiswerk verstuurd ✓");
+      setTimeout(() => {
+        setModalVisible(false);
+        loadAssignments();
+      }, 900);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Er is een fout opgetreden";
+      console.log("[Huiswerk] Save error:", msg);
+      setSubmitError(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [subject, message, deadline, clientId, session, loadAssignments]);
 
   return (
     <View style={styles.tabContent}>
       <AnimatedPressable
         style={[styles.actionBtn, { backgroundColor: bcctColors.primaryOrange }]}
-        onPress={handleSendHomework}
+        onPress={openModal}
       >
         <Text style={styles.actionBtnText}>+ Huiswerk sturen</Text>
       </AnimatedPressable>
@@ -275,6 +341,110 @@ function HuiswerkTab({ clientId, clientName }: { clientId: string; clientName: s
           ))}
         </ScrollView>
       )}
+
+      {/* Homework compose modal */}
+      <Modal
+        isVisible={modalVisible}
+        onBackdropPress={() => !submitting && setModalVisible(false)}
+        onBackButtonPress={() => !submitting && setModalVisible(false)}
+        animationIn="slideInUp"
+        animationOut="slideOutDown"
+        backdropOpacity={0.5}
+        style={styles.bottomModal}
+        avoidKeyboard
+      >
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
+          <View style={[styles.formModalContent, { backgroundColor: colors.card }]}>
+            <View style={styles.modalHandle} />
+            <View style={styles.formModalHeader}>
+              <Text style={[styles.formModalTitle, { color: colors.text }]}>Huiswerk sturen</Text>
+              <TouchableOpacity
+                onPress={() => !submitting && setModalVisible(false)}
+                style={styles.modalCloseBtn}
+                disabled={submitting}
+              >
+                <Text style={[styles.modalCloseBtnText, { color: bcctColors.textSecondary }]}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Client (read-only) */}
+            <View style={styles.formNote}>
+              <Text style={[styles.formNoteText, { color: bcctColors.textSecondary }]}>
+                Aan: {clientName}
+              </Text>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {/* Onderwerp */}
+              <Text style={[styles.fieldLabel, { color: bcctColors.textSecondary }]}>Onderwerp *</Text>
+              <TextInput
+                style={[styles.formInput, { color: colors.text, borderColor: subjectError ? bcctColors.error : colors.border, backgroundColor: colors.background }]}
+                placeholder="bijv. Ademhalingsoefening"
+                placeholderTextColor={bcctColors.textSecondary}
+                value={subject}
+                onChangeText={(t) => { setSubject(t); if (t.trim()) setSubjectError(""); }}
+                editable={!submitting}
+                returnKeyType="next"
+              />
+              {subjectError ? <Text style={styles.fieldError}>{subjectError}</Text> : null}
+
+              {/* Beschrijving */}
+              <Text style={[styles.fieldLabel, { color: bcctColors.textSecondary }]}>Beschrijving *</Text>
+              <TextInput
+                style={[styles.formInput, styles.hwTextArea, { color: colors.text, borderColor: messageError ? bcctColors.error : colors.border, backgroundColor: colors.background }]}
+                placeholder="Beschrijf het huiswerk..."
+                placeholderTextColor={bcctColors.textSecondary}
+                value={message}
+                onChangeText={(t) => { setMessage(t); if (t.trim()) setMessageError(""); }}
+                multiline
+                numberOfLines={5}
+                textAlignVertical="top"
+                editable={!submitting}
+              />
+              {messageError ? <Text style={styles.fieldError}>{messageError}</Text> : null}
+
+              {/* Deadline */}
+              <Text style={[styles.fieldLabel, { color: bcctColors.textSecondary }]}>Deadline (optioneel, DD-MM-YYYY)</Text>
+              <TextInput
+                style={[styles.formInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                placeholder="bijv. 25-12-2025"
+                placeholderTextColor={bcctColors.textSecondary}
+                value={deadline}
+                onChangeText={setDeadline}
+                keyboardType="numbers-and-punctuation"
+                editable={!submitting}
+                returnKeyType="done"
+              />
+
+              {submitError ? (
+                <View style={styles.submitErrorBox}>
+                  <Text style={styles.submitErrorText}>{submitError}</Text>
+                </View>
+              ) : null}
+
+              {successMsg ? (
+                <View style={styles.successBox}>
+                  <Text style={styles.successText}>{successMsg}</Text>
+                </View>
+              ) : null}
+
+              <TouchableOpacity
+                style={[styles.submitBtn, { backgroundColor: submitting ? bcctColors.primaryOrangeDisabled : bcctColors.primaryOrange }]}
+                onPress={handleSubmit}
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.submitBtnText}>Opslaan</Text>
+                )}
+              </TouchableOpacity>
+
+              <View style={{ height: 24 }} />
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -1583,6 +1753,7 @@ const styles = StyleSheet.create({
     ...bcctTypography.body,
   },
   formTextArea: { minHeight: 80, paddingTop: 12 },
+  hwTextArea: { minHeight: 120, paddingTop: 12 },
   formInputReadOnly: {
     borderWidth: 1,
     borderRadius: 12,
