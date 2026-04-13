@@ -198,26 +198,41 @@ export default function CoachChatListScreen() {
   // ── Realtime subscription ─────────────────────────────────────────────────
 
   useEffect(() => {
-    if (!user) return;
-    console.log('[CoachChat] Subscribing to realtime conversation updates');
+    if (!user?.id) return;
 
+    console.log('[Chat] Creating realtime channel for user:', user.id);
+    console.log('[Chat] Attaching postgres_changes listeners');
+
+    const channelName = `coach-conversations:${user.id}`;
+
+    console.log('[Chat] Calling subscribe()');
     const channel = supabase
-      .channel('coach-conversations')
+      .channel(channelName)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'messages' },
         () => {
-          console.log('[CoachChat] Realtime message change — reloading conversations');
+          console.log('[Chat] Realtime message change — reloading conversations');
           loadData();
         }
       )
-      .subscribe();
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'conversations' },
+        () => {
+          console.log('[Chat] Realtime conversation change — reloading conversations');
+          loadData();
+        }
+      )
+      .subscribe((status) => {
+        console.log('[Chat] Channel status:', status);
+      });
 
     return () => {
-      console.log('[CoachChat] Unsubscribing from realtime');
+      console.log('[Chat] Cleanup: removing channel');
       supabase.removeChannel(channel);
     };
-  }, [user, loadData]);
+  }, [user?.id, loadData]);
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
 
