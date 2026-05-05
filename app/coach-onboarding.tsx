@@ -65,7 +65,7 @@ const COACHING_FORMAT_OPTIONS = [
 ];
 
 const REVENUE_MODEL_OPTIONS = [
-  { label: 'Per sessie', value: 'per-sessie' },
+  { label: 'Per sessie', value: 'per_sessie' },
   { label: 'Trajectprijs', value: 'trajectprijs' },
   { label: 'Abonnement', value: 'abonnement' },
 ];
@@ -150,7 +150,7 @@ export default function CoachOnboardingScreen() {
 
   // Step 6 — Werkwijze & Verdienmodel
   const [coachingFormat, setCoachingFormat] = useState<string>('');
-  const [revenueModel, setRevenueModel] = useState<string>('');
+  const [revenueModels, setRevenueModels] = useState<string[]>([]);
   const [activeClientRange, setActiveClientRange] = useState<string>('');
   const [primaryGoals, setPrimaryGoals] = useState<string[]>([]);
   const [step6Error, setStep6Error] = useState('');
@@ -221,7 +221,12 @@ export default function CoachOnboardingScreen() {
           if (profile.coaching_types?.length) setSelectedTypes(profile.coaching_types);
           if (profile.calendar_provider) setCalendarProvider(profile.calendar_provider);
           setCoachingFormat(profile.coaching_format ?? '');
-          setRevenueModel(profile.revenue_model ?? '');
+          // Prefill billing_methods array; fall back to legacy revenue_model string
+          if (Array.isArray(profile.billing_methods) && profile.billing_methods.length > 0) {
+            setRevenueModels(profile.billing_methods);
+          } else if (profile.revenue_model) {
+            setRevenueModels([profile.revenue_model]);
+          }
           setActiveClientRange(profile.active_client_range ?? '');
           setPrimaryGoals(profile.primary_goals ?? []);
           // New fields
@@ -327,8 +332,8 @@ export default function CoachOnboardingScreen() {
   };
 
   const handleStep6Next = () => {
-    console.log('[CoachOnboarding] Step 6 next pressed', { coachingFormat, revenueModel, activeClientRange, primaryGoals });
-    if (!coachingFormat || !revenueModel) {
+    console.log('[CoachOnboarding] Step 6 next pressed', { coachingFormat, revenueModels, activeClientRange, primaryGoals });
+    if (!coachingFormat || revenueModels.length === 0) {
       setStep6Error('Vul werkwijze en verdienmodel in om verder te gaan.');
       return;
     }
@@ -537,6 +542,23 @@ export default function CoachOnboardingScreen() {
     );
   };
 
+  // Log when Step 6 is active
+  useEffect(() => {
+    if (step === 5) {
+      console.log('[CoachOnboarding] Step 6 rendered, revenueModels:', revenueModels);
+    }
+  }, [step, revenueModels]);
+
+  // ── Revenue model toggle ──
+
+  const toggleRevenueModel = (value: string) => {
+    console.log('[CoachOnboarding] Toggle revenue model:', value);
+    setRevenueModels(prev =>
+      prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]
+    );
+    setStep6Error('');
+  };
+
   // ── Primary goals toggle ──
 
   const toggleGoal = (value: string) => {
@@ -576,7 +598,8 @@ export default function CoachOnboardingScreen() {
         calendar_connected: false,
         avatar_url: avatarUrl || null,
         coaching_format: coachingFormat || null,
-        revenue_model: revenueModel || null,
+        billing_methods: revenueModels.length > 0 ? revenueModels : null,
+        revenue_model: revenueModels[0] || null, // keep legacy column populated with first selection
         active_client_range: activeClientRange || null,
         primary_goals: primaryGoals.length > 0 ? primaryGoals : null,
       };
@@ -1000,11 +1023,11 @@ export default function CoachOnboardingScreen() {
                 {/* Vraag 2 — Verdienmodel */}
                 <View style={styles.questionBlock}>
                   <Text style={[styles.label, { color: colors.text }]}>
-                    Hoe factureer jij? <Text style={{ color: bcctColors.error }}>*</Text>
+                    Hoe factureer jij? (meerdere mogelijk) <Text style={{ color: bcctColors.error }}>*</Text>
                   </Text>
                   <View style={styles.chipsRow}>
                     {REVENUE_MODEL_OPTIONS.map(opt => {
-                      const isSelected = revenueModel === opt.value;
+                      const isSelected = revenueModels.includes(opt.value);
                       return (
                         <TouchableOpacity
                           key={opt.value}
@@ -1015,11 +1038,7 @@ export default function CoachOnboardingScreen() {
                               borderColor: isSelected ? bcctColors.primaryOrange : bcctColors.borderGray,
                             },
                           ]}
-                          onPress={() => {
-                            console.log('[CoachOnboarding] Revenue model selected:', opt.value);
-                            setRevenueModel(opt.value);
-                            setStep6Error('');
-                          }}
+                          onPress={() => toggleRevenueModel(opt.value)}
                           activeOpacity={0.8}
                         >
                           <Text style={[styles.chipText, { color: isSelected ? '#fff' : bcctColors.textPrimary }]}>
