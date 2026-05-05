@@ -14,7 +14,10 @@ import {
   Animated,
   ImageSourcePropType,
   Linking,
+  Share,
 } from 'react-native';
+import Modal from 'react-native-modal';
+import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@react-navigation/native';
@@ -188,6 +191,13 @@ export default function CoachOnboardingScreen() {
   // Step 10 — Stripe Connect
   const [stripeError] = useState('');
   const [stripeLoading, setStripeLoading] = useState(false);
+
+  // Invite modal state
+  const [inviteModalVisible, setInviteModalVisible] = useState(false);
+  const [inviteCode, setInviteCode] = useState('');
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteError, setInviteError] = useState('');
+  const [inviteCopied, setInviteCopied] = useState(false);
 
   // Session guard + prefill on mount
   useEffect(() => {
@@ -620,6 +630,83 @@ export default function CoachOnboardingScreen() {
       setSaveError(err.message || 'Er is een fout opgetreden. Probeer opnieuw.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleStartFirstClient = async () => {
+    console.log('[CoachOnboarding] Start met eerste cliënt pressed');
+    setInviteError('');
+    setInviteLoading(true);
+    setInviteCopied(false);
+    try {
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      if (!currentSession?.user?.id) throw new Error('Geen sessie');
+      const userId = currentSession.user.id;
+
+      // Mark onboarding completed first
+      await supabase.from('profiles').update({
+        onboarding_completed: true,
+        role: 'coach',
+        updated_at: new Date().toISOString(),
+      }).eq('id', userId);
+      console.log('[CoachOnboarding] onboarding_completed saved');
+
+      // Check for existing unused active invite
+      const { data: existing } = await supabase
+        .from('client_invites')
+        .select('id, code')
+        .eq('coach_id', userId)
+        .eq('is_active', true)
+        .is('used_at', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (existing?.code) {
+        console.log('[CoachOnboarding] Reusing existing invite code:', existing.code);
+        setInviteCode(existing.code);
+        setInviteModalVisible(true);
+        return;
+      }
+
+      // Create new invite
+      const { data, error } = await supabase.rpc('create_client_invite', { p_expires_at: null });
+      if (error) throw error;
+      const invite = Array.isArray(data) ? data[0] : data;
+      const code = typeof invite === 'string' ? invite : invite?.code ?? invite?.invite_code ?? String(invite);
+      console.log('[CoachOnboarding] New invite code created:', code);
+      setInviteCode(code);
+      setInviteModalVisible(true);
+    } catch (err: any) {
+      console.error('[CoachOnboarding] Error creating invite:', err.message);
+      setInviteError('Kon uitnodigingscode niet aanmaken. Probeer opnieuw.');
+    } finally {
+      setInviteLoading(false);
+    }
+  };
+
+  const handleCopyInviteCode = async () => {
+    if (!inviteCode) return;
+    console.log('[CoachOnboarding] Copying invite code:', inviteCode);
+    try {
+      await Clipboard.setStringAsync(inviteCode);
+      setInviteCopied(true);
+      setTimeout(() => setInviteCopied(false), 2500);
+    } catch (err: any) {
+      console.error('[CoachOnboarding] Copy error:', err.message);
+    }
+  };
+
+  const handleShareInviteCode = async () => {
+    if (!inviteCode) return;
+    console.log('[CoachOnboarding] Sharing invite code:', inviteCode);
+    try {
+      await Share.share({
+        message: `Hoi! Via deze code kun je je koppelen aan mij als coach in de app: ${inviteCode}`,
+        title: 'Coach uitnodigingscode',
+      });
+    } catch (err: any) {
+      console.error('[CoachOnboarding] Share error:', err.message);
     }
   };
 
@@ -1448,39 +1535,143 @@ export default function CoachOnboardingScreen() {
                   Je kunt nu starten met coachen en betalingen ontvangen.
                 </Text>
 
-                <PrimaryButton
-                  label="Naar dashboard"
+                {!!inviteError && (
+                  <View style={styles.saveErrorBox}>
+                    <Text style={styles.saveErrorText}>{inviteError}</Text>
+                  </View>
+                )}
+
+                {/* Primary CTA */}
+                <TouchableOpacity
+                  style={[styles.primaryButtonContainer, inviteLoading && styles.buttonDisabled]}
+                  onPress={handleStartFirstClient}
+                  disabled={inviteLoading}
+                  activeOpacity={0.9}
+                >
+                  <LinearGradient
+                    colors={inviteLoading
+                      ? [bcctColors.primaryOrangeDisabled, bcctColors.primaryOrangeDisabled]
+                      : [bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.primaryButton}
+                  >
+                    {inviteLoading ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={styles.primaryButtonText}>Start met je eerste cliënt</Text>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+
+                {/* Secondary: go straight to dashboard */}
+                <TouchableOpacity
+                  style={styles.skipLink}
                   onPress={async () => {
-                    console.log('[CoachOnboarding] Naar dashboard pressed — persisting onboarding_completed');
+                    console.log('[CoachOnboarding] Naar dashboard pressed');
                     try {
-                      const { data: { session: currentSession } } = await supabase.auth.getSession();
-                      if (currentSession?.user?.id) {
-                        const { error } = await supabase
-                          .from('profiles')
-                          .update({
-                            onboarding_completed: true,
-                            role: 'coach',
-                            updated_at: new Date().toISOString(),
-                          })
-                          .eq('id', currentSession.user.id);
-                        if (error) {
-                          console.error('[CoachOnboarding] Failed to mark onboarding_completed:', error.message);
-                        } else {
-                          console.log('[CoachOnboarding] onboarding_completed=true saved for user:', currentSession.user.id);
-                        }
+                      const { data: { session: s } } = await supabase.auth.getSession();
+                      if (s?.user?.id) {
+                        await supabase.from('profiles').update({
+                          onboarding_completed: true,
+                          role: 'coach',
+                          updated_at: new Date().toISOString(),
+                        }).eq('id', s.user.id);
                       }
-                    } catch (err: any) {
-                      console.error('[CoachOnboarding] Error persisting onboarding_completed:', err.message);
+                    } catch (e: any) {
+                      console.error('[CoachOnboarding] Dashboard nav error:', e.message);
                     }
                     router.replace('/(app)/coach');
                   }}
-                />
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.skipText, { color: bcctColors.textSecondary }]}>Naar dashboard</Text>
+                </TouchableOpacity>
               </View>
             )}
 
           </ScrollView>
         </Animated.View>
       </KeyboardAvoidingView>
+
+      {/* ── Invite code modal ── */}
+      <Modal
+        isVisible={inviteModalVisible}
+        onBackdropPress={() => {
+          console.log('[CoachOnboarding] Invite modal closed');
+          setInviteModalVisible(false);
+          router.replace('/(app)/coach');
+        }}
+        style={{ justifyContent: 'flex-end', margin: 0 }}
+        backdropOpacity={0.5}
+        useNativeDriver
+        hideModalContentWhileAnimating
+      >
+        <View style={[styles.inviteModal, { backgroundColor: colors.card }]}>
+          {/* Drag handle */}
+          <View style={styles.inviteModalHandle} />
+
+          {/* Header */}
+          <Text style={[styles.inviteModalTitle, { color: colors.text }]}>
+            Nodig je eerste cliënt uit
+          </Text>
+          <Text style={[styles.inviteModalSubtitle, { color: bcctColors.textSecondary }]}>
+            Deel je persoonlijke coachcode zodat je cliënt kan koppelen.
+          </Text>
+
+          {/* Code display */}
+          <View style={[styles.inviteCodeBox, { backgroundColor: colors.background, borderColor: bcctColors.primaryOrange }]}>
+            <Text style={[styles.inviteCodeText, { color: bcctColors.primaryOrange }]}>
+              {inviteCode}
+            </Text>
+          </View>
+
+          {/* Action buttons */}
+          <View style={styles.inviteActions}>
+            <TouchableOpacity
+              style={[styles.inviteActionBtn, { borderColor: inviteCopied ? bcctColors.success : colors.border, backgroundColor: inviteCopied ? bcctColors.success + '15' : colors.background }]}
+              onPress={handleCopyInviteCode}
+              activeOpacity={0.8}
+            >
+              <Ionicons name={inviteCopied ? 'checkmark-circle' : 'copy-outline'} size={20} color={inviteCopied ? bcctColors.success : colors.text} />
+              <Text style={[styles.inviteActionText, { color: inviteCopied ? bcctColors.success : colors.text }]}>
+                {inviteCopied ? 'Gekopieerd!' : 'Code kopiëren'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.inviteActionBtn, { borderColor: colors.border, backgroundColor: colors.background }]}
+              onPress={handleShareInviteCode}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="share-outline" size={20} color={colors.text} />
+              <Text style={[styles.inviteActionText, { color: colors.text }]}>Delen</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Go to dashboard */}
+          <TouchableOpacity
+            style={[styles.primaryButtonContainer, { marginTop: 8 }]}
+            onPress={() => {
+              console.log('[CoachOnboarding] Naar dashboard from invite modal');
+              setInviteModalVisible(false);
+              router.replace('/(app)/coach');
+            }}
+            activeOpacity={0.9}
+          >
+            <LinearGradient
+              colors={[bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.primaryButton}
+            >
+              <Text style={styles.primaryButtonText}>Naar dashboard</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+
+          <View style={{ height: 24 }} />
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1882,5 +2073,62 @@ const styles = StyleSheet.create({
     ...bcctTypography.small,
     flex: 1,
     lineHeight: 20,
+  },
+
+  // Invite modal
+  inviteModal: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 8,
+  },
+  inviteModalHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
+  inviteModalTitle: {
+    ...bcctTypography.h2,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  inviteModalSubtitle: {
+    ...bcctTypography.body,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  inviteCodeBox: {
+    borderWidth: 2,
+    borderRadius: 16,
+    paddingVertical: 20,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  inviteCodeText: {
+    fontSize: 28,
+    fontWeight: '700',
+    letterSpacing: 4,
+  },
+  inviteActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
+  },
+  inviteActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1.5,
+    borderRadius: 12,
+    paddingVertical: 14,
+  },
+  inviteActionText: {
+    ...bcctTypography.bodyMedium,
   },
 });
