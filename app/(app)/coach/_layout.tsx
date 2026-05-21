@@ -123,6 +123,7 @@ export default function CoachLayout() {
         }}
       />
       {/* Hidden screens */}
+      <Tabs.Screen name="notifications" options={{ href: null }} />
       <Tabs.Screen name="theme-detail" options={{ href: null }} />
       <Tabs.Screen name="client-detail" options={{ href: null }} />
       <Tabs.Screen name="client" options={{ href: null }} />

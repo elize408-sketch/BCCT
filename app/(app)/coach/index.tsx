@@ -86,6 +86,7 @@ export default function CoachDashboardScreen() {
   const [tipIndex, setTipIndex] = useState(0);
   const [tipsVisible, setTipsVisible] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [modalTitle, setModalTitle] = useState("");
   const [modalMessage, setModalMessage] = useState("");
 
@@ -138,6 +139,14 @@ export default function CoachDashboardScreen() {
         console.log("[Coach Dashboard] Profile loaded:", profileData?.full_name);
         setProfile(profileData);
       }
+
+      // Fetch unread notifications count
+      const { count: unreadNotifCount } = await supabase
+        .from("notifications")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .eq("is_read", false);
+      setUnreadCount(unreadNotifCount ?? 0);
 
       // SOURCE OF TRUTH: count only status='active' rows — must match Clients screen
       const { count: clientsCount, error: clientsError } = await supabase
@@ -349,12 +358,17 @@ export default function CoachDashboardScreen() {
               <TouchableOpacity
                 style={styles.bellButton}
                 onPress={() => {
-                  console.log('[CoachDashboard] Notification bell pressed');
-                  showModal('Notificaties', 'Notificaties komen binnenkort');
+                  console.log('[CoachDashboard] Notification bell pressed — navigating to notifications');
+                  router.push('/(app)/coach/notifications');
                 }}
                 activeOpacity={0.7}
               >
                 <Ionicons name="notifications-outline" size={22} color={bcctColors.textSecondary} />
+                {unreadCount > 0 && (
+                  <View style={styles.bellBadge}>
+                    <Text style={styles.bellBadgeText}>{unreadCount > 99 ? '99+' : String(unreadCount)}</Text>
+                  </View>
+                )}
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.bellButton}
@@ -712,6 +726,24 @@ const styles = StyleSheet.create({
     backgroundColor: "#F3F4F6",
     alignItems: "center",
     justifyContent: "center",
+    position: "relative",
+  },
+  bellBadge: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: "#FF3B30",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 3,
+  },
+  bellBadgeText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "700",
   },
   avatarButton: {
     width: 40,
