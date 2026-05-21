@@ -77,7 +77,10 @@ export default function CoachSettingsScreen() {
       id: "profile",
       title: "Profiel bewerken",
       icon: "edit" as const,
-      onPress: () => showModal("Binnenkort", "Profiel bewerken komt binnenkort beschikbaar."),
+      onPress: () => {
+        console.log('[Coach Settings] Navigating to edit-profile');
+        router.push('/(app)/coach/edit-profile');
+      },
     },
     {
       id: "notifications",

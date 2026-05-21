@@ -133,6 +133,7 @@ export default function CoachLayout() {
       <Tabs.Screen name="facturatie" options={{ href: null }} />
       <Tabs.Screen name="chat-detail" options={{ href: null }} />
       <Tabs.Screen name="new-chat" options={{ href: null }} />
+      <Tabs.Screen name="edit-profile" options={{ href: null }} />
     </Tabs>
   );
 }
