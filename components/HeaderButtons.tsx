@@ -1,8 +1,12 @@
-import React from "react";
-import { Pressable, StyleSheet, Alert, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Pressable, StyleSheet, Alert, View, Image, Text } from "react-native";
 import { IconSymbol } from "@/components/IconSymbol";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@react-navigation/native";
+import { useRouter } from "expo-router";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
+import { bcctColors } from "@/styles/bcctTheme";
 
 interface HeaderRightButtonProps {
   onTipsPress?: () => void;
@@ -10,10 +14,36 @@ interface HeaderRightButtonProps {
 
 export function HeaderRightButton({ onTipsPress }: HeaderRightButtonProps) {
   const theme = useTheme();
+  const router = useRouter();
+  const { user } = useAuth();
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [initials, setInitials] = useState<string>("?");
+
+  useEffect(() => {
+    if (!user?.id) return;
+    console.log("[HeaderButtons] Fetching profile for avatar, userId:", user.id);
+    supabase
+      .from("profiles")
+      .select("avatar_url, full_name")
+      .eq("id", user.id)
+      .single()
+      .then(({ data, error }) => {
+        if (error) {
+          console.warn("[HeaderButtons] Could not fetch profile:", error.message);
+          return;
+        }
+        console.log("[HeaderButtons] Profile fetched, avatar_url:", data?.avatar_url);
+        if (data?.avatar_url) setAvatarUrl(data.avatar_url);
+        if (data?.full_name) {
+          const parts = (data.full_name as string).trim().split(" ");
+          setInitials(parts.map((p: string) => p[0]).join("").toUpperCase().slice(0, 2));
+        }
+      });
+  }, [user?.id]);
 
   const handleAvatarPress = () => {
-    console.log("[HeaderButtons] User avatar pressed");
-    Alert.alert("Not Implemented", "This feature is not implemented yet");
+    console.log("[HeaderButtons] Avatar pressed — navigating to profiel");
+    router.push("/(tabs)/profiel");
   };
 
   const handleTipsPress = () => {
@@ -26,8 +56,19 @@ export function HeaderRightButton({ onTipsPress }: HeaderRightButtonProps) {
       <Pressable onPress={handleTipsPress} style={styles.headerButtonContainer}>
         <Ionicons name="bulb-outline" size={22} color={theme.colors.primary} />
       </Pressable>
-      <Pressable onPress={handleAvatarPress} style={styles.headerButtonContainer}>
-        <IconSymbol ios_icon_name="plus" android_material_icon_name="add" color={theme.colors.primary} />
+      <Pressable
+        onPress={handleAvatarPress}
+        accessibilityLabel="Open profiel"
+        style={styles.avatarButton}
+      >
+        {avatarUrl ? (
+          <Image
+            source={{ uri: avatarUrl }}
+            style={styles.avatarImage}
+          />
+        ) : (
+          <Text style={styles.avatarInitials}>{initials}</Text>
+        )}
       </Pressable>
     </View>
   );
@@ -54,5 +95,28 @@ const styles = StyleSheet.create({
   },
   headerButtonContainer: {
     padding: 6,
+  },
+  avatarButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: bcctColors.primaryOrangeLight,
+    borderWidth: 2,
+    borderColor: bcctColors.primaryOrange,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    marginLeft: 4,
+  },
+  avatarImage: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+  },
+  avatarInitials: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#fff",
+    letterSpacing: 0.5,
   },
 });
