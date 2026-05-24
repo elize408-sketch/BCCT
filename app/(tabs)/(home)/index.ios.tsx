@@ -132,6 +132,11 @@ export default function HomeScreen() {
     router.push('/(tabs)/profiel');
   };
 
+  const handleMijnReisPress = () => {
+    console.log('[HomeScreen] Mijn Reis pressed');
+    router.push('/(tabs)/mijn-reis');
+  };
+
   return (
     <>
       <Stack.Screen
@@ -241,7 +246,12 @@ export default function HomeScreen() {
                 </View>
                 <Text style={styles.actionLabel}>Mijn Profiel</Text>
               </TouchableOpacity>
-              <View style={[styles.actionBtn, { backgroundColor: 'transparent', elevation: 0, shadowOpacity: 0 }]} />
+              <TouchableOpacity style={styles.actionBtn} onPress={handleMijnReisPress}>
+                <View style={styles.actionIcon}>
+                  <Ionicons name="flag-outline" size={24} color="#4A90D9" />
+                </View>
+                <Text style={styles.actionLabel}>Mijn Reis</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>

@@ -33,6 +33,7 @@ import {
 } from "lucide-react-native";
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { createAssignment, listAssignments, HomeworkAssignment } from "@/utils/homeworkApi";
+import TimelineList, { TimelineItem } from "@/components/TimelineList";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -104,7 +105,7 @@ interface CoachNote {
 
 // ─── Tab definition ───────────────────────────────────────────────────────────
 
-type TabKey = "logs" | "huiswerk" | "betalingen" | "afspraken" | "notities";
+type TabKey = "logs" | "huiswerk" | "betalingen" | "afspraken" | "notities" | "tijdlijn";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "logs", label: "Dagelijkse logs" },
@@ -112,6 +113,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "betalingen", label: "Betalingen" },
   { key: "afspraken", label: "Afspraken" },
   { key: "notities", label: "Notities" },
+  { key: "tijdlijn", label: "Tijdlijn" },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1270,6 +1272,913 @@ const tabContentStyles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700",
     color: bcctColors.textPrimary,
+  },
+});
+
+// ─── Timeline Tab ─────────────────────────────────────────────────────────────
+
+const STANDARD_TRAJECTORY_TITLES = [
+  "Intakegesprek",
+  "Doelen bepalen",
+  "Plan van aanpak",
+  "Week 1",
+  "Week 2",
+  "Tussenevaluatie",
+  "Verdieping",
+  "Eindgesprek",
+  "Evaluatie & vervolg",
+];
+
+function TijdlijnTab({
+  coachId,
+  clientId,
+}: {
+  coachId: string;
+  clientId: string;
+}) {
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const { height: screenHeight } = useWindowDimensions();
+
+  const [items, setItems] = useState<TimelineItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [editingItem, setEditingItem] = useState<TimelineItem | null>(null);
+  const [formTitle, setFormTitle] = useState("");
+  const [formDescription, setFormDescription] = useState("");
+  const [formDueDate, setFormDueDate] = useState<Date | null>(null);
+  const [formStatus, setFormStatus] = useState<TimelineItem["status"]>("todo");
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [insertingTemplate, setInsertingTemplate] = useState(false);
+
+  const fetchItems = useCallback(async () => {
+    if (!coachId || !clientId) return;
+    setLoading(true);
+    try {
+      console.log("[TijdlijnTab] Fetching timeline items, coachId:", coachId, "clientId:", clientId);
+      const { data, error } = await supabase
+        .from("client_timeline_items")
+        .select("*")
+        .eq("coach_id", coachId)
+        .eq("client_id", clientId)
+        .order("order_index", { ascending: true });
+
+      if (error) {
+        if (isTableMissingError(error)) {
+          console.warn("[TijdlijnTab] Table client_timeline_items does not exist yet");
+          setItems([]);
+          return;
+        }
+        console.error("[TijdlijnTab] Fetch error:", error.message);
+        return;
+      }
+      console.log("[TijdlijnTab] Fetched items:", data?.length ?? 0);
+      setItems((data as TimelineItem[]) ?? []);
+    } catch (e: any) {
+      console.error("[TijdlijnTab] fetchItems exception:", e);
+    } finally {
+      setLoading(false);
+    }
+  }, [coachId, clientId]);
+
+  useEffect(() => {
+    fetchItems();
+  }, [fetchItems]);
+
+  const openNewModal = useCallback(() => {
+    console.log("[TijdlijnTab] Open new item modal");
+    setEditingItem(null);
+    setFormTitle("");
+    setFormDescription("");
+    setFormDueDate(null);
+    setFormStatus("todo");
+    setShowDatePicker(false);
+    setModalVisible(true);
+  }, []);
+
+  const openEditModal = useCallback((item: TimelineItem) => {
+    console.log("[TijdlijnTab] Open edit modal for item:", item.id, item.title);
+    setEditingItem(item);
+    setFormTitle(item.title);
+    setFormDescription(item.description ?? "");
+    setFormDueDate(item.due_date ? new Date(item.due_date) : null);
+    setFormStatus(item.status);
+    setShowDatePicker(false);
+    setModalVisible(true);
+  }, []);
+
+  const closeModal = useCallback(() => {
+    console.log("[TijdlijnTab] Close modal");
+    setModalVisible(false);
+    setShowDatePicker(false);
+  }, []);
+
+  const handleSave = async () => {
+    if (!formTitle.trim()) return;
+    console.log("[TijdlijnTab] Save pressed, editing:", editingItem?.id ?? "new", "title:", formTitle, "status:", formStatus);
+    setSaving(true);
+    try {
+      const dueDateStr = formDueDate ? formDueDate.toISOString().split("T")[0] : null;
+
+      if (editingItem) {
+        // If switching to active, first unset any other active items
+        if (formStatus === "active" && editingItem.status !== "active") {
+          console.log("[TijdlijnTab] Unsetting other active items before marking this one active");
+          await supabase
+            .from("client_timeline_items")
+            .update({ status: "todo" })
+            .eq("coach_id", coachId)
+            .eq("client_id", clientId)
+            .eq("status", "active");
+        }
+
+        const completedAt =
+          formStatus === "completed" && editingItem.status !== "completed"
+            ? new Date().toISOString()
+            : formStatus !== "completed"
+            ? null
+            : editingItem.completed_at;
+
+        const { error } = await supabase
+          .from("client_timeline_items")
+          .update({
+            title: formTitle.trim(),
+            description: formDescription.trim() || null,
+            due_date: dueDateStr,
+            status: formStatus,
+            completed_at: completedAt,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", editingItem.id);
+
+        if (error) {
+          console.error("[TijdlijnTab] Update error:", error.message);
+          Alert.alert("Fout", "Kon de stap niet opslaan. Probeer opnieuw.");
+          return;
+        }
+        console.log("[TijdlijnTab] Item updated successfully:", editingItem.id);
+      } else {
+        // Insert new item
+        if (formStatus === "active") {
+          console.log("[TijdlijnTab] Unsetting other active items before inserting new active item");
+          await supabase
+            .from("client_timeline_items")
+            .update({ status: "todo" })
+            .eq("coach_id", coachId)
+            .eq("client_id", clientId)
+            .eq("status", "active");
+        }
+
+        const { error } = await supabase
+          .from("client_timeline_items")
+          .insert({
+            coach_id: coachId,
+            client_id: clientId,
+            title: formTitle.trim(),
+            description: formDescription.trim() || null,
+            due_date: dueDateStr,
+            status: formStatus,
+            item_type: "session",
+            order_index: items.length,
+            completed_at: formStatus === "completed" ? new Date().toISOString() : null,
+          });
+
+        if (error) {
+          console.error("[TijdlijnTab] Insert error:", error.message);
+          Alert.alert("Fout", "Kon de stap niet toevoegen. Probeer opnieuw.");
+          return;
+        }
+        console.log("[TijdlijnTab] New item inserted successfully");
+      }
+
+      setModalVisible(false);
+      await fetchItems();
+    } catch (e: any) {
+      console.error("[TijdlijnTab] handleSave exception:", e);
+      Alert.alert("Fout", "Er is iets misgegaan. Probeer opnieuw.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleInsertTemplate = async () => {
+    console.log("[TijdlijnTab] Insert standard trajectory template pressed");
+    setInsertingTemplate(true);
+    try {
+      const rows = STANDARD_TRAJECTORY_TITLES.map((title, i) => ({
+        coach_id: coachId,
+        client_id: clientId,
+        title,
+        status: "todo" as const,
+        order_index: i,
+        description: null,
+        due_date: null,
+        item_type: "session",
+      }));
+
+      const { error } = await supabase.from("client_timeline_items").insert(rows);
+      if (error) {
+        console.error("[TijdlijnTab] Template insert error:", error.message);
+        Alert.alert("Fout", "Kon het standaard traject niet aanmaken. Probeer opnieuw.");
+        return;
+      }
+      console.log("[TijdlijnTab] Standard trajectory inserted successfully");
+      await fetchItems();
+    } catch (e: any) {
+      console.error("[TijdlijnTab] handleInsertTemplate exception:", e);
+    } finally {
+      setInsertingTemplate(false);
+    }
+  };
+
+  const showActionSheet = useCallback((item: TimelineItem) => {
+    console.log("[TijdlijnTab] Long-press action sheet for item:", item.id, item.title);
+    const currentIndex = items.findIndex((i) => i.id === item.id);
+    const canMoveUp = currentIndex > 0;
+    const canMoveDown = currentIndex < items.length - 1;
+
+    Alert.alert(
+      item.title,
+      undefined,
+      [
+        {
+          text: "Bewerken",
+          onPress: () => {
+            console.log("[TijdlijnTab] Action: Bewerken for item:", item.id);
+            openEditModal(item);
+          },
+        },
+        ...(canMoveUp
+          ? [
+              {
+                text: "Verplaatsen omhoog",
+                onPress: async () => {
+                  console.log("[TijdlijnTab] Action: Move up item:", item.id);
+                  const prevItem = items[currentIndex - 1];
+                  await Promise.all([
+                    supabase
+                      .from("client_timeline_items")
+                      .update({ order_index: prevItem.order_index })
+                      .eq("id", item.id),
+                    supabase
+                      .from("client_timeline_items")
+                      .update({ order_index: item.order_index })
+                      .eq("id", prevItem.id),
+                  ]);
+                  await fetchItems();
+                },
+              },
+            ]
+          : []),
+        ...(canMoveDown
+          ? [
+              {
+                text: "Verplaatsen omlaag",
+                onPress: async () => {
+                  console.log("[TijdlijnTab] Action: Move down item:", item.id);
+                  const nextItem = items[currentIndex + 1];
+                  await Promise.all([
+                    supabase
+                      .from("client_timeline_items")
+                      .update({ order_index: nextItem.order_index })
+                      .eq("id", item.id),
+                    supabase
+                      .from("client_timeline_items")
+                      .update({ order_index: item.order_index })
+                      .eq("id", nextItem.id),
+                  ]);
+                  await fetchItems();
+                },
+              },
+            ]
+          : []),
+        {
+          text: "Verwijderen",
+          style: "destructive",
+          onPress: async () => {
+            console.log("[TijdlijnTab] Action: Delete item:", item.id);
+            const { error } = await supabase
+              .from("client_timeline_items")
+              .delete()
+              .eq("id", item.id);
+            if (error) {
+              console.error("[TijdlijnTab] Delete error:", error.message);
+              Alert.alert("Fout", "Kon de stap niet verwijderen.");
+              return;
+            }
+            console.log("[TijdlijnTab] Item deleted:", item.id);
+            await fetchItems();
+          },
+        },
+        { text: "Annuleren", style: "cancel" },
+      ]
+    );
+  }, [items, openEditModal, fetchItems, coachId, clientId]);
+
+  const sheetHeight = screenHeight * 0.88;
+  const footerPaddingBottom = Math.max(insets.bottom, 16);
+  const isSaveDisabled = saving || !formTitle.trim();
+  const dueDateLabel = formDueDate
+    ? formDueDate.toLocaleDateString("nl-NL", { day: "numeric", month: "short", year: "numeric" })
+    : "Geen streefdatum";
+  const modalTitle = editingItem ? "Stap bewerken" : "Nieuwe stap";
+
+  const statusOptions: { key: TimelineItem["status"]; label: string }[] = [
+    { key: "todo", label: "Todo" },
+    { key: "active", label: "Actief" },
+    { key: "completed", label: "Voltooid" },
+    { key: "skipped", label: "Overgeslagen" },
+  ];
+
+  if (loading) {
+    return (
+      <View style={tabContentStyles.container}>
+        {[0, 1, 2].map((i) => (
+          <SkeletonRow key={i} />
+        ))}
+      </View>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <>
+        <View style={tabContentStyles.container}>
+          <EmptyState
+            icon={<FileText size={28} color={bcctColors.primaryOrange} strokeWidth={2} />}
+            title="Nog geen tijdlijn"
+            subtitle="Maak een trajectplanning zodat je cliënt precies ziet waar jullie staan."
+          />
+          <AnimatedPressable
+            onPress={() => {
+              console.log("[TijdlijnTab] Eerste stap toevoegen pressed");
+              openNewModal();
+            }}
+            style={tlStyles.primaryBtn}
+          >
+            <LinearGradient
+              colors={[bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={tlStyles.primaryBtnGradient}
+            >
+              <Text style={tlStyles.primaryBtnText}>+ Eerste stap toevoegen</Text>
+            </LinearGradient>
+          </AnimatedPressable>
+          <AnimatedPressable
+            onPress={() => {
+              console.log("[TijdlijnTab] Standaard coachingtraject pressed");
+              handleInsertTemplate();
+            }}
+            style={[tlStyles.outlineBtn, { opacity: insertingTemplate ? 0.6 : 1 }]}
+            disabled={insertingTemplate}
+          >
+            {insertingTemplate ? (
+              <ActivityIndicator size="small" color={bcctColors.primaryOrange} />
+            ) : (
+              <Text style={tlStyles.outlineBtnText}>Standaard coachingtraject</Text>
+            )}
+          </AnimatedPressable>
+        </View>
+
+        {/* Add/Edit modal */}
+        <TijdlijnModal
+          visible={modalVisible}
+          modalTitle={modalTitle}
+          formTitle={formTitle}
+          formDescription={formDescription}
+          formDueDate={formDueDate}
+          formStatus={formStatus}
+          showDatePicker={showDatePicker}
+          saving={saving}
+          isSaveDisabled={isSaveDisabled}
+          dueDateLabel={dueDateLabel}
+          sheetHeight={sheetHeight}
+          footerPaddingBottom={footerPaddingBottom}
+          statusOptions={statusOptions}
+          colors={colors}
+          onChangeTitle={setFormTitle}
+          onChangeDescription={setFormDescription}
+          onChangeStatus={setFormStatus}
+          onToggleDatePicker={() => setShowDatePicker((v) => !v)}
+          onChangeDueDate={(date) => {
+            setFormDueDate(date);
+            setShowDatePicker(false);
+          }}
+          onClearDueDate={() => {
+            setFormDueDate(null);
+            setShowDatePicker(false);
+          }}
+          onCancel={closeModal}
+          onSave={handleSave}
+        />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <View style={tabContentStyles.container}>
+        <TimelineList
+          items={items}
+          onItemPress={openEditModal}
+          onItemLongPress={showActionSheet}
+        />
+        <AnimatedPressable
+          onPress={() => {
+            console.log("[TijdlijnTab] Stap toevoegen pressed");
+            openNewModal();
+          }}
+          style={tlStyles.primaryBtn}
+        >
+          <LinearGradient
+            colors={[bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={tlStyles.primaryBtnGradient}
+          >
+            <Text style={tlStyles.primaryBtnText}>+ Stap toevoegen</Text>
+          </LinearGradient>
+        </AnimatedPressable>
+      </View>
+
+      {/* Add/Edit modal */}
+      <TijdlijnModal
+        visible={modalVisible}
+        modalTitle={modalTitle}
+        formTitle={formTitle}
+        formDescription={formDescription}
+        formDueDate={formDueDate}
+        formStatus={formStatus}
+        showDatePicker={showDatePicker}
+        saving={saving}
+        isSaveDisabled={isSaveDisabled}
+        dueDateLabel={dueDateLabel}
+        sheetHeight={sheetHeight}
+        footerPaddingBottom={footerPaddingBottom}
+        statusOptions={statusOptions}
+        colors={colors}
+        onChangeTitle={setFormTitle}
+        onChangeDescription={setFormDescription}
+        onChangeStatus={setFormStatus}
+        onToggleDatePicker={() => setShowDatePicker((v) => !v)}
+        onChangeDueDate={(date) => {
+          setFormDueDate(date);
+          setShowDatePicker(false);
+        }}
+        onClearDueDate={() => {
+          setFormDueDate(null);
+          setShowDatePicker(false);
+        }}
+        onCancel={closeModal}
+        onSave={handleSave}
+      />
+    </>
+  );
+}
+
+const tlStyles = StyleSheet.create({
+  primaryBtn: {
+    marginTop: 12,
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+  primaryBtnGradient: {
+    height: 48,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  primaryBtnText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  outlineBtn: {
+    marginTop: 10,
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: bcctColors.primaryOrange,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  outlineBtnText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: bcctColors.primaryOrange,
+  },
+});
+
+// ─── Tijdlijn Modal ───────────────────────────────────────────────────────────
+
+function TijdlijnModal({
+  visible,
+  modalTitle,
+  formTitle,
+  formDescription,
+  formDueDate,
+  formStatus,
+  showDatePicker,
+  saving,
+  isSaveDisabled,
+  dueDateLabel,
+  sheetHeight,
+  footerPaddingBottom,
+  statusOptions,
+  colors,
+  onChangeTitle,
+  onChangeDescription,
+  onChangeStatus,
+  onToggleDatePicker,
+  onChangeDueDate,
+  onClearDueDate,
+  onCancel,
+  onSave,
+}: {
+  visible: boolean;
+  modalTitle: string;
+  formTitle: string;
+  formDescription: string;
+  formDueDate: Date | null;
+  formStatus: TimelineItem["status"];
+  showDatePicker: boolean;
+  saving: boolean;
+  isSaveDisabled: boolean;
+  dueDateLabel: string;
+  sheetHeight: number;
+  footerPaddingBottom: number;
+  statusOptions: { key: TimelineItem["status"]; label: string }[];
+  colors: { card: string; background: string; text: string; border: string };
+  onChangeTitle: (v: string) => void;
+  onChangeDescription: (v: string) => void;
+  onChangeStatus: (v: TimelineItem["status"]) => void;
+  onToggleDatePicker: () => void;
+  onChangeDueDate: (date: Date) => void;
+  onClearDueDate: () => void;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <Modal
+      isVisible={visible}
+      onBackdropPress={onCancel}
+      onBackButtonPress={onCancel}
+      animationIn="slideInUp"
+      animationOut="slideOutDown"
+      backdropOpacity={0.5}
+      style={tlModalStyles.modal}
+      avoidKeyboard={false}
+      useNativeDriver
+      hideModalContentWhileAnimating
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={tlModalStyles.kavWrapper}
+      >
+        <View style={[tlModalStyles.sheet, { backgroundColor: colors.card, height: sheetHeight }]}>
+          {/* Drag handle */}
+          <View style={tlModalStyles.handle} />
+
+          {/* Header */}
+          <View style={tlModalStyles.headerRow}>
+            <Text style={[tlModalStyles.title, { color: colors.text }]}>
+              {modalTitle}
+            </Text>
+          </View>
+
+          {/* Scrollable form */}
+          <ScrollView
+            style={tlModalStyles.scrollArea}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={tlModalStyles.scrollContent}
+          >
+            {/* Onderwerp */}
+            <Text style={[tlModalStyles.label, { color: bcctColors.textSecondary }]}>
+              Onderwerp *
+            </Text>
+            <TextInput
+              style={[
+                tlModalStyles.input,
+                {
+                  backgroundColor: colors.background,
+                  color: colors.text,
+                  borderColor: colors.border,
+                },
+              ]}
+              placeholder="Bijv. Intakegesprek"
+              placeholderTextColor={bcctColors.textSecondary}
+              value={formTitle}
+              onChangeText={onChangeTitle}
+              returnKeyType="next"
+              editable={!saving}
+            />
+
+            {/* Beschrijving */}
+            <Text style={[tlModalStyles.label, { color: bcctColors.textSecondary }]}>
+              Beschrijving (optioneel)
+            </Text>
+            <TextInput
+              style={[
+                tlModalStyles.input,
+                tlModalStyles.textArea,
+                {
+                  backgroundColor: colors.background,
+                  color: colors.text,
+                  borderColor: colors.border,
+                },
+              ]}
+              placeholder="Beschrijf deze stap..."
+              placeholderTextColor={bcctColors.textSecondary}
+              value={formDescription}
+              onChangeText={onChangeDescription}
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+              editable={!saving}
+            />
+
+            {/* Streefdatum */}
+            <Text style={[tlModalStyles.label, { color: bcctColors.textSecondary }]}>
+              Streefdatum (optioneel)
+            </Text>
+            <View style={tlModalStyles.dateRow}>
+              <AnimatedPressable
+                style={[
+                  tlModalStyles.dateBtn,
+                  {
+                    backgroundColor: colors.background,
+                    borderColor: colors.border,
+                  },
+                ]}
+                onPress={() => {
+                  console.log("[TijdlijnModal] Toggle date picker pressed");
+                  onToggleDatePicker();
+                }}
+                disabled={saving}
+              >
+                <Calendar size={16} color={bcctColors.primaryOrange} strokeWidth={2} />
+                <Text
+                  style={[
+                    tlModalStyles.dateBtnText,
+                    { color: formDueDate ? colors.text : bcctColors.textSecondary },
+                  ]}
+                >
+                  {dueDateLabel}
+                </Text>
+              </AnimatedPressable>
+              {formDueDate ? (
+                <AnimatedPressable
+                  style={tlModalStyles.clearDateBtn}
+                  onPress={() => {
+                    console.log("[TijdlijnModal] Clear due date pressed");
+                    onClearDueDate();
+                  }}
+                  disabled={saving}
+                >
+                  <Text style={tlModalStyles.clearDateBtnText}>Wissen</Text>
+                </AnimatedPressable>
+              ) : null}
+            </View>
+
+            {showDatePicker ? (
+              <DateTimePicker
+                value={formDueDate ?? new Date()}
+                mode="date"
+                display={Platform.OS === "ios" ? "inline" : "default"}
+                onChange={(_event, date) => {
+                  if (date) onChangeDueDate(date);
+                }}
+                style={tlModalStyles.datePicker}
+              />
+            ) : null}
+
+            {/* Status */}
+            <Text style={[tlModalStyles.label, { color: bcctColors.textSecondary }]}>
+              Status
+            </Text>
+            <View style={tlModalStyles.statusRow}>
+              {statusOptions.map((opt) => {
+                const isSelected = formStatus === opt.key;
+                return (
+                  <AnimatedPressable
+                    key={opt.key}
+                    style={[
+                      tlModalStyles.statusChip,
+                      {
+                        backgroundColor: isSelected
+                          ? bcctColors.primaryOrange
+                          : colors.background,
+                        borderColor: isSelected
+                          ? bcctColors.primaryOrange
+                          : colors.border,
+                      },
+                    ]}
+                    onPress={() => {
+                      console.log("[TijdlijnModal] Status selected:", opt.key);
+                      onChangeStatus(opt.key);
+                    }}
+                    disabled={saving}
+                  >
+                    <Text
+                      style={[
+                        tlModalStyles.statusChipText,
+                        { color: isSelected ? "#fff" : colors.text },
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </AnimatedPressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+
+          {/* Sticky footer */}
+          <View style={[tlModalStyles.footer, { paddingBottom: footerPaddingBottom }]}>
+            <AnimatedPressable
+              style={tlModalStyles.cancelBtn}
+              onPress={() => {
+                console.log("[TijdlijnModal] Annuleren pressed");
+                onCancel();
+              }}
+              disabled={saving}
+            >
+              <Text style={tlModalStyles.cancelBtnText}>Annuleren</Text>
+            </AnimatedPressable>
+
+            <AnimatedPressable
+              style={[tlModalStyles.saveBtn, { opacity: isSaveDisabled ? 0.45 : 1 }]}
+              onPress={() => {
+                console.log("[TijdlijnModal] Opslaan pressed, title:", formTitle, "status:", formStatus);
+                onSave();
+              }}
+              disabled={isSaveDisabled}
+            >
+              <LinearGradient
+                colors={[bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={tlModalStyles.saveBtnGradient}
+              >
+                {saving ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={tlModalStyles.saveBtnText}>Opslaan</Text>
+                )}
+              </LinearGradient>
+            </AnimatedPressable>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+const tlModalStyles = StyleSheet.create({
+  modal: {
+    justifyContent: "flex-end",
+    margin: 0,
+  },
+  kavWrapper: {
+    width: "100%",
+  },
+  sheet: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 0,
+    overflow: "hidden",
+  },
+  handle: {
+    width: 36,
+    height: 4,
+    backgroundColor: "rgba(0,0,0,0.2)",
+    borderRadius: 2,
+    alignSelf: "center",
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  headerRow: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 16,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: "700",
+    lineHeight: 24,
+  },
+  scrollArea: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+  },
+  label: {
+    ...bcctTypography.label,
+    marginBottom: 6,
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    minHeight: 48,
+    ...bcctTypography.body,
+    marginBottom: 16,
+  },
+  textArea: {
+    minHeight: 80,
+    paddingTop: 13,
+  },
+  dateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 16,
+  },
+  dateBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    minHeight: 48,
+  },
+  dateBtnText: {
+    ...bcctTypography.body,
+  },
+  clearDateBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  clearDateBtnText: {
+    fontSize: 14,
+    color: bcctColors.error,
+    fontWeight: "500",
+  },
+  datePicker: {
+    marginBottom: 16,
+  },
+  statusRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 16,
+  },
+  statusChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1.5,
+  },
+  statusChipText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  footer: {
+    flexDirection: "row",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(0,0,0,0.08)",
+  },
+  cancelBtn: {
+    flex: 1,
+    height: 52,
+    borderWidth: 1.5,
+    borderRadius: 12,
+    borderColor: bcctColors.borderGray,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "transparent",
+  },
+  cancelBtnText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: bcctColors.textPrimary,
+  },
+  saveBtn: {
+    flex: 1,
+    height: 52,
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+  saveBtnGradient: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  saveBtnText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
   },
 });
 
@@ -2473,6 +3382,12 @@ export default function ClientDetailScreen() {
               data={notes}
               loading={false}
               onNew={openNoteModal}
+            />
+          )}
+          {activeTab === "tijdlijn" && (
+            <TijdlijnTab
+              coachId={coachProfileId ?? ""}
+              clientId={clientId as string}
             />
           )}
         </View>
