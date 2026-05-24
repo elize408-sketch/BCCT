@@ -99,18 +99,55 @@ function resolveImageSource(source: string | number | ImageSourcePropType | unde
 }
 
 async function uploadImageToStorage(uri: string, bucket: string, path: string): Promise<string> {
-  console.log(`[uploadImageToStorage] Uploading to bucket="${bucket}" path="${path}"`);
-  const response = await fetch(uri);
-  const blob = await response.blob();
+  console.log(`[uploadImageToStorage] Reading file from URI: ${uri}`);
+
+  // Lazy-load to keep top-of-file imports unchanged for unrelated paths
+  const FileSystem = await import('expo-file-system/legacy');
+  const { decode } = await import('base64-arraybuffer');
+
+  // Diagnostic — confirm the source file exists and has bytes
+  try {
+    const info = await FileSystem.getInfoAsync(uri);
+    console.log(`[uploadImageToStorage] Source file info:`, {
+      exists: info.exists,
+      size: (info as any).size,
+      uri,
+    });
+    if (!info.exists) throw new Error('Source file does not exist at URI');
+  } catch (infoErr: any) {
+    console.warn('[uploadImageToStorage] getInfoAsync failed (continuing):', infoErr?.message);
+  }
+
+  // Read as base64 — this works reliably on iOS/Android for file:// URIs
+  const base64 = await FileSystem.readAsStringAsync(uri, {
+    encoding: 'base64' as FileSystem.EncodingType,
+  });
+  console.log(`[uploadImageToStorage] Base64 length: ${base64.length}`);
+
+  const arrayBuffer = decode(base64);
+  console.log(`[uploadImageToStorage] ArrayBuffer byteLength: ${arrayBuffer.byteLength}`);
+
+  if (arrayBuffer.byteLength === 0) {
+    throw new Error('Decoded image is 0 bytes — aborting upload');
+  }
+
+  // Pick contentType from path extension
+  const ext = path.split('.').pop()?.toLowerCase() || 'jpg';
+  const contentType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+
+  console.log(`[uploadImageToStorage] Uploading to bucket="${bucket}" path="${path}" contentType="${contentType}" size=${arrayBuffer.byteLength}`);
 
   const { error: uploadError } = await supabase.storage
     .from(bucket)
-    .upload(path, blob, { contentType: 'image/jpeg', upsert: true });
+    .upload(path, arrayBuffer, { contentType, upsert: true });
 
-  if (uploadError) throw uploadError;
+  if (uploadError) {
+    console.error('[uploadImageToStorage] Supabase upload error:', uploadError);
+    throw uploadError;
+  }
 
   const { data } = supabase.storage.from(bucket).getPublicUrl(path);
-  console.log(`[uploadImageToStorage] Public URL: ${data.publicUrl}`);
+  console.log(`[uploadImageToStorage] Upload succeeded. Public URL: ${data.publicUrl}`);
   return data.publicUrl;
 }
 
