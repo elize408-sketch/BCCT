@@ -14,6 +14,7 @@ import { useTheme } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { IconSymbol } from "@/components/IconSymbol";
+import CoachConnectCard from "@/components/CoachConnectCard";
 import { useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import Slider from "@react-native-community/slider";
@@ -106,6 +107,9 @@ export default function ClientHomeScreen() {
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
 
+  const [hasCoach, setHasCoach] = useState<boolean | null>(null); // null = unknown / loading
+  const [coachCheckRefreshKey, setCoachCheckRefreshKey] = useState(0);
+
   const expandAnim = useRef(new Animated.Value(0)).current;
 
   const showModal = (title: string, message: string) => {
@@ -113,6 +117,35 @@ export default function ClientHomeScreen() {
     setModalMessage(message);
     setModalVisible(true);
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    const userId = user?.id;
+    if (!userId) {
+      console.log("[Client] hasCoach effect — no user id yet");
+      setHasCoach(null);
+      return;
+    }
+    console.log("[Client] hasCoach effect — checking coach_clients for clientId:", userId);
+    (async () => {
+      const { data, error } = await supabase
+        .from("coach_clients")
+        .select("coach_id")
+        .eq("client_id", userId)
+        .eq("status", "active")
+        .limit(1);
+      if (cancelled) return;
+      if (error) {
+        console.error("[Client] coach_clients query error:", error.message);
+        setHasCoach(null);
+        return;
+      }
+      const linked = (data?.length ?? 0) > 0;
+      console.log("[Client] coach_clients result count:", data?.length ?? 0, "linked:", linked);
+      setHasCoach(linked);
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id, coachCheckRefreshKey]);
 
   useEffect(() => {
     const checkSession = async () => {
@@ -377,6 +410,18 @@ export default function ClientHomeScreen() {
             <Text style={[styles.name, { color: colors.text }]}>{userName}</Text>
           </View>
         </View>
+
+        {/* Coach connection card — visible only when no active coach link */}
+        {hasCoach === false && (
+          <View style={{ paddingHorizontal: 0, marginBottom: 16, marginTop: -4 }}>
+            <CoachConnectCard
+              onConnected={() => {
+                console.log("[Client] CoachConnectCard onConnected — bumping refresh key");
+                setCoachCheckRefreshKey(k => k + 1);
+              }}
+            />
+          </View>
+        )}
 
         {/* Check-in summary card */}
         <View style={[styles.checkinCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
