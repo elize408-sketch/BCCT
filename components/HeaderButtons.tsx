@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Alert, View, Image, Text } from "react-native";
 import { IconSymbol } from "@/components/IconSymbol";
 import { Ionicons } from "@expo/vector-icons";
@@ -19,6 +19,23 @@ export function HeaderRightButton({ onTipsPress }: HeaderRightButtonProps) {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [initials, setInitials] = useState<string>("?");
+  const [unreadCount, setUnreadCount] = useState(0);
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+
+  const fetchUnreadCount = useCallback(async (userId: string) => {
+    console.log("[HeaderButtons] Fetching unread notification count for userId:", userId);
+    const { count, error } = await supabase
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("is_read", false);
+    if (error) {
+      console.warn("[HeaderButtons] Could not fetch notification count:", error.message);
+      return;
+    }
+    console.log("[HeaderButtons] Unread notifications:", count ?? 0);
+    setUnreadCount(count ?? 0);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -42,8 +59,45 @@ export function HeaderRightButton({ onTipsPress }: HeaderRightButtonProps) {
             setInitials(parts.map((p: string) => p[0]).join("").toUpperCase().slice(0, 2));
           }
         });
-    }, [user?.id])
+
+      fetchUnreadCount(user.id);
+    }, [user?.id, fetchUnreadCount])
   );
+
+  // Realtime subscription for notifications bell badge
+  useEffect(() => {
+    if (!user?.id) return;
+    const userId = user.id;
+    const channelName = `notifications-bell-${userId}`;
+    console.log("[HeaderButtons] Subscribing to realtime notifications channel:", channelName);
+
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          console.log("[HeaderButtons] Realtime notification event:", payload.eventType);
+          fetchUnreadCount(userId);
+        }
+      )
+      .subscribe((status) => {
+        console.log("[HeaderButtons] Realtime channel status:", status);
+      });
+
+    channelRef.current = channel;
+
+    return () => {
+      console.log("[HeaderButtons] Unsubscribing from realtime notifications channel:", channelName);
+      supabase.removeChannel(channel);
+      channelRef.current = null;
+    };
+  }, [user?.id, fetchUnreadCount]);
 
   const handleAvatarPress = () => {
     console.log("[HeaderButtons] Avatar pressed — navigating to profiel");
@@ -55,10 +109,20 @@ export function HeaderRightButton({ onTipsPress }: HeaderRightButtonProps) {
     onTipsPress?.();
   };
 
+  const hasUnread = unreadCount > 0;
+  const badgeDisplay = unreadCount > 9 ? "9+" : String(unreadCount);
+
   return (
     <View style={styles.rightGroup}>
       <Pressable onPress={handleTipsPress} style={styles.headerButtonContainer}>
-        <Ionicons name="bulb-outline" size={22} color={theme.colors.primary} />
+        <View>
+          <Ionicons name="bulb-outline" size={22} color={theme.colors.primary} />
+          {hasUnread && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{badgeDisplay}</Text>
+            </View>
+          )}
+        </View>
       </Pressable>
       <Pressable
         onPress={handleAvatarPress}
@@ -122,5 +186,22 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#fff",
     letterSpacing: 0.5,
+  },
+  badge: {
+    position: "absolute",
+    top: -4,
+    right: -6,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: bcctColors.error,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 3,
+  },
+  badgeText: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#fff",
   },
 });
