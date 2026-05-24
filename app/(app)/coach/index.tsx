@@ -390,7 +390,7 @@ export default function CoachDashboardScreen() {
               >
                 {profile?.avatar_url ? (
                   <Image
-                    source={{ uri: profile.avatar_url }}
+                    source={{ uri: `${profile.avatar_url}${profile.avatar_url.includes('?') ? '&' : '?'}t=${profile.updated_at ? new Date(profile.updated_at).getTime() : Date.now()}` }}
                     style={styles.avatarImage}
                   />
                 ) : (

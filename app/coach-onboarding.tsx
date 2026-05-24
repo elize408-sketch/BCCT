@@ -453,6 +453,17 @@ export default function CoachOnboardingScreen() {
       const url = await uploadImageToStorage(asset.uri, 'company-logos', `${userId}/brand-logo.jpg`);
       setBrandLogoUrl(url);
       console.log('[CoachOnboarding] Brand logo uploaded:', url);
+
+      // Persist to profiles immediately
+      const { error: brandLogoPersistErr } = await supabase
+        .from('profiles')
+        .update({ logo_url: url, updated_at: new Date().toISOString() })
+        .eq('id', userId);
+      if (brandLogoPersistErr) {
+        console.error('[CoachOnboarding] Error persisting logo_url:', brandLogoPersistErr.message);
+      } else {
+        console.log('[CoachOnboarding] logo_url persisted to profiles');
+      }
     } catch (err: any) {
       console.error('[CoachOnboarding] Brand logo upload error:', err.message);
       setBrandLogoError('Logo kon niet worden geüpload. Probeer opnieuw.');
@@ -497,6 +508,17 @@ export default function CoachOnboardingScreen() {
       const url = await uploadImageToStorage(asset.uri, 'avatars', `${userId}/avatar.jpg`);
       setAvatarUrl(url);
       console.log('[CoachOnboarding] Avatar uploaded:', url);
+
+      // Persist to profiles immediately so other screens (e.g. dashboard header) pick it up
+      const { error: persistErr } = await supabase
+        .from('profiles')
+        .update({ avatar_url: url, updated_at: new Date().toISOString() })
+        .eq('id', userId);
+      if (persistErr) {
+        console.error('[CoachOnboarding] Error persisting avatar_url to profiles:', persistErr.message);
+      } else {
+        console.log('[CoachOnboarding] avatar_url persisted to profiles');
+      }
     } catch (err: any) {
       console.error('[CoachOnboarding] Avatar upload error:', err.message);
       setAvatarError('Foto kon niet worden geüpload. Probeer opnieuw.');
@@ -534,6 +556,17 @@ export default function CoachOnboardingScreen() {
       const url = await uploadImageToStorage(asset.uri, 'company-logos', `${userId}/logo.jpg`);
       setLogoUrl(url);
       console.log('[CoachOnboarding] Logo uploaded:', url);
+
+      // Persist to profiles immediately
+      const { error: logoPersistErr } = await supabase
+        .from('profiles')
+        .update({ company_logo_url: url, updated_at: new Date().toISOString() })
+        .eq('id', userId);
+      if (logoPersistErr) {
+        console.error('[CoachOnboarding] Error persisting company_logo_url:', logoPersistErr.message);
+      } else {
+        console.log('[CoachOnboarding] company_logo_url persisted to profiles');
+      }
     } catch (err: any) {
       console.error('[CoachOnboarding] Logo upload error:', err.message);
       setLogoError('Logo kon niet worden geüpload. Probeer opnieuw.');

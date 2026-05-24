@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useState } from "react";
 import { Pressable, StyleSheet, Alert, View, Image, Text } from "react-native";
 import { IconSymbol } from "@/components/IconSymbol";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@react-navigation/native";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { bcctColors } from "@/styles/bcctTheme";
@@ -17,29 +17,33 @@ export function HeaderRightButton({ onTipsPress }: HeaderRightButtonProps) {
   const router = useRouter();
   const { user } = useAuth();
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [initials, setInitials] = useState<string>("?");
 
-  useEffect(() => {
-    if (!user?.id) return;
-    console.log("[HeaderButtons] Fetching profile for avatar, userId:", user.id);
-    supabase
-      .from("profiles")
-      .select("avatar_url, full_name")
-      .eq("id", user.id)
-      .single()
-      .then(({ data, error }) => {
-        if (error) {
-          console.warn("[HeaderButtons] Could not fetch profile:", error.message);
-          return;
-        }
-        console.log("[HeaderButtons] Profile fetched, avatar_url:", data?.avatar_url);
-        if (data?.avatar_url) setAvatarUrl(data.avatar_url);
-        if (data?.full_name) {
-          const parts = (data.full_name as string).trim().split(" ");
-          setInitials(parts.map((p: string) => p[0]).join("").toUpperCase().slice(0, 2));
-        }
-      });
-  }, [user?.id]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!user?.id) return;
+      console.log("[HeaderButtons] Fetching profile for avatar, userId:", user.id);
+      supabase
+        .from("profiles")
+        .select("avatar_url, full_name, updated_at")
+        .eq("id", user.id)
+        .single()
+        .then(({ data, error }) => {
+          if (error) {
+            console.warn("[HeaderButtons] Could not fetch profile:", error.message);
+            return;
+          }
+          console.log("[HeaderButtons] Profile fetched, avatar_url:", data?.avatar_url);
+          setAvatarUrl(data?.avatar_url || null);
+          setUpdatedAt(data?.updated_at || null);
+          if (data?.full_name) {
+            const parts = (data.full_name as string).trim().split(" ");
+            setInitials(parts.map((p: string) => p[0]).join("").toUpperCase().slice(0, 2));
+          }
+        });
+    }, [user?.id])
+  );
 
   const handleAvatarPress = () => {
     console.log("[HeaderButtons] Avatar pressed — navigating to profiel");
@@ -63,7 +67,7 @@ export function HeaderRightButton({ onTipsPress }: HeaderRightButtonProps) {
       >
         {avatarUrl ? (
           <Image
-            source={{ uri: avatarUrl }}
+            source={{ uri: `${avatarUrl}${avatarUrl.includes('?') ? '&' : '?'}t=${updatedAt ? new Date(updatedAt).getTime() : Date.now()}` }}
             style={styles.avatarImage}
           />
         ) : (
