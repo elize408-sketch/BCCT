@@ -4,14 +4,17 @@ import { useTheme } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import CoachSummaryCard from "@/components/CoachSummaryCard";
+import CoachConnectCard from "@/components/CoachConnectCard";
 import { bcctColors } from "@/styles/bcctTheme";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { useMyCoaches } from "@/hooks/useMyCoaches";
 
 export default function HomeScreen() {
   const theme = useTheme();
   const router = useRouter();
   const { user } = useAuth();
+  const { coaches, loading: coachesLoading } = useMyCoaches();
   const [chatLoading, setChatLoading] = useState(false);
   const [firstName, setFirstName] = useState('Cliënt');
 
@@ -148,6 +151,16 @@ export default function HomeScreen() {
             Hier is je overzicht van vandaag
           </Text>
         </View>
+
+        {/* Coach connect card — shown only when no coach is linked */}
+        {!coachesLoading && coaches.length === 0 && (
+          <CoachConnectCard
+            onConnected={() => {
+              console.log('[HomeScreen] Coach connected, refreshing');
+              router.replace('/(tabs)/(home)');
+            }}
+          />
+        )}
 
         {/* Coaches blok */}
         <CoachSummaryCard onViewAll={handleViewAllCoaches} />
