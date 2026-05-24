@@ -51,61 +51,34 @@ export default function CoachConnectCard({ onConnected }: Props) {
     setError('');
 
     try {
-      console.log('[CoachConnectCard] Calling find_coach_by_invite_code RPC with code:', trimmed);
-      const { data: rpcRows, error: lookupError } = await supabase.rpc('find_coach_by_invite_code', {
+      console.log('[CoachConnectCard] Calling link_client_to_coach_by_code RPC with code:', trimmed);
+      const { data, error: rpcError } = await supabase.rpc('link_client_to_coach_by_code', {
         p_code: trimmed,
       });
 
-      console.log('[CoachConnectCard] RPC result — rows:', rpcRows, 'error:', lookupError);
+      console.log('[CoachConnectCard] RPC result — data:', data, 'error:', rpcError);
 
-      if (lookupError) {
-        console.error('[CoachConnectCard] RPC error:', lookupError);
-        setError('Kon coach niet ophalen, probeer opnieuw');
-        return;
-      }
-
-      const coach = Array.isArray(rpcRows) && rpcRows.length > 0 ? rpcRows[0] : null;
-      if (!coach) {
-        setError('Coachcode niet gevonden');
-        return;
-      }
-
-      if (coach.id === user.id) {
-        setError('Je kunt jezelf niet koppelen');
-        return;
-      }
-
-      console.log('[CoachConnectCard] Inserting coach_clients link — coach_id:', coach.id, 'client_id:', user.id);
-      const { error: linkErr } = await supabase
-        .from('coach_clients')
-        .insert({
-          coach_id: coach.id,
-          client_id: user.id,
-          status: 'active',
-          started_at: new Date().toISOString(),
-        });
-
-      console.log('[CoachConnectCard] Insert result — error:', linkErr);
-
-      if (linkErr) {
-        console.error('[CoachConnectCard] Link insert error:', linkErr);
-        if (linkErr.code === '23505' || /duplicate/i.test(linkErr.message)) {
-          setError('Je bent al gekoppeld aan deze coach');
-          return;
-        }
+      if (rpcError) {
+        console.error('[CoachConnectCard] RPC error:', rpcError);
         setError('Kon niet koppelen, probeer opnieuw');
         return;
       }
 
-      // Best-effort: mark matching client_invites row as used
-      await supabase
-        .from('client_invites')
-        .update({ used_at: new Date().toISOString(), used_by: user.id })
-        .eq('coach_id', coach.id)
-        .eq('code', trimmed)
-        .is('used_at', null);
+      // RPC returns jsonb: { success: boolean, message: string, coach_name?: string, ... }
+      const result = (data ?? {}) as {
+        success?: boolean;
+        message?: string;
+        coach_name?: string | null;
+        already_linked?: boolean;
+      };
 
-      const coachName = coach.full_name ?? 'je coach';
+      if (!result.success) {
+        console.warn('[CoachConnectCard] Link failed:', result.message);
+        setError(result.message || 'Kon niet koppelen');
+        return;
+      }
+
+      const coachName = result.coach_name ?? 'je coach';
       console.log('[CoachConnectCard] Success — linked to coach:', coachName);
 
       Alert.alert(
