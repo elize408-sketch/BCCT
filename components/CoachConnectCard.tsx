@@ -51,16 +51,21 @@ export default function CoachConnectCard({ onConnected }: Props) {
     setError('');
 
     try {
-      console.log('[CoachConnectCard] Looking up coach with invite_code:', trimmed);
-      const { data: coach, error: lookupError } = await supabase
-        .from('profiles')
-        .select('id, full_name, invite_code')
-        .ilike('invite_code', trimmed)
-        .maybeSingle();
+      console.log('[CoachConnectCard] Calling find_coach_by_invite_code RPC with code:', trimmed);
+      const { data: rpcRows, error: lookupError } = await supabase.rpc('find_coach_by_invite_code', {
+        p_code: trimmed,
+      });
 
-      console.log('[CoachConnectCard] Lookup result — coach:', coach, 'error:', lookupError);
+      console.log('[CoachConnectCard] RPC result — rows:', rpcRows, 'error:', lookupError);
 
-      if (lookupError || !coach) {
+      if (lookupError) {
+        console.error('[CoachConnectCard] RPC error:', lookupError);
+        setError('Kon coach niet ophalen, probeer opnieuw');
+        return;
+      }
+
+      const coach = Array.isArray(rpcRows) && rpcRows.length > 0 ? rpcRows[0] : null;
+      if (!coach) {
         setError('Coachcode niet gevonden');
         return;
       }
