@@ -34,6 +34,8 @@ import {
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { createAssignment, listAssignments, HomeworkAssignment } from "@/utils/homeworkApi";
 import TimelineList, { TimelineItem } from "@/components/TimelineList";
+import LifeWheelView, { LifeWheelScores, calculateLifeWheelAverage } from "@/components/LifeWheelView";
+import LifeWheelForm from "@/components/LifeWheelForm";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -105,7 +107,7 @@ interface CoachNote {
 
 // ─── Tab definition ───────────────────────────────────────────────────────────
 
-type TabKey = "logs" | "huiswerk" | "betalingen" | "afspraken" | "notities" | "tijdlijn";
+type TabKey = "logs" | "huiswerk" | "betalingen" | "afspraken" | "notities" | "tijdlijn" | "levenswiel";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "logs", label: "Dagelijkse logs" },
@@ -114,6 +116,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "afspraken", label: "Afspraken" },
   { key: "notities", label: "Notities" },
   { key: "tijdlijn", label: "Tijdlijn" },
+  { key: "levenswiel", label: "Levenswiel" },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1770,6 +1773,526 @@ const tlStyles = StyleSheet.create({
   },
 });
 
+// ─── Levenswiel Tab ───────────────────────────────────────────────────────────
+
+interface LifeWheelAssessment {
+  id: string;
+  coach_id: string | null;
+  client_id: string;
+  health: number;
+  work_score: number;
+  finance_score: number;
+  relationship_score: number;
+  family_score: number;
+  personal_growth_score: number;
+  social_score: number;
+  mental_health_score: number;
+  notes: string | null;
+  created_at: string;
+}
+
+function assessmentToScores(a: LifeWheelAssessment): LifeWheelScores {
+  return {
+    health: a.health,
+    work_score: a.work_score,
+    finance_score: a.finance_score,
+    relationship_score: a.relationship_score,
+    family_score: a.family_score,
+    personal_growth_score: a.personal_growth_score,
+    social_score: a.social_score,
+    mental_health_score: a.mental_health_score,
+  };
+}
+
+function LevenswielTab({
+  coachId,
+  clientId,
+}: {
+  coachId: string;
+  clientId: string;
+}) {
+  const { height: screenHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+
+  const [assessments, setAssessments] = useState<LifeWheelAssessment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [addModalVisible, setAddModalVisible] = useState(false);
+  const [detailModalVisible, setDetailModalVisible] = useState(false);
+  const [selectedAssessment, setSelectedAssessment] = useState<LifeWheelAssessment | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const fetchAssessments = useCallback(async () => {
+    if (!coachId || !clientId) return;
+    setLoading(true);
+    console.log("[LevenswielTab] Fetching assessments, coachId:", coachId, "clientId:", clientId);
+    try {
+      const { data, error } = await supabase
+        .from("life_wheel_assessments")
+        .select("*")
+        .eq("coach_id", coachId)
+        .eq("client_id", clientId)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        if (isTableMissingError(error)) {
+          console.warn("[LevenswielTab] Table life_wheel_assessments does not exist yet");
+          setAssessments([]);
+          return;
+        }
+        if (error.code === "42501" || error.message?.includes("row-level security")) {
+          console.error("[LevenswielTab] RLS error — check policies:", error.message);
+        } else {
+          console.error("[LevenswielTab] Fetch error:", error.message);
+        }
+        return;
+      }
+      console.log("[LevenswielTab] Fetched assessments:", data?.length ?? 0);
+      setAssessments((data as LifeWheelAssessment[]) ?? []);
+    } catch (e: any) {
+      console.error("[LevenswielTab] fetchAssessments exception:", e);
+    } finally {
+      setLoading(false);
+    }
+  }, [coachId, clientId]);
+
+  useEffect(() => {
+    fetchAssessments();
+  }, [fetchAssessments]);
+
+  const openAddModal = useCallback(() => {
+    console.log("[LevenswielTab] Open add modal");
+    setAddModalVisible(true);
+  }, []);
+
+  const closeAddModal = useCallback(() => {
+    console.log("[LevenswielTab] Close add modal");
+    setAddModalVisible(false);
+  }, []);
+
+  const openDetailModal = useCallback((item: LifeWheelAssessment) => {
+    console.log("[LevenswielTab] Open detail modal for assessment:", item.id);
+    setSelectedAssessment(item);
+    setDetailModalVisible(true);
+  }, []);
+
+  const closeDetailModal = useCallback(() => {
+    console.log("[LevenswielTab] Close detail modal");
+    setDetailModalVisible(false);
+    setSelectedAssessment(null);
+  }, []);
+
+  const handleSave = async (scores: LifeWheelScores, notes: string) => {
+    console.log("[LevenswielTab] Save start, scores:", scores);
+    setSaving(true);
+    try {
+      const payload = {
+        coach_id: coachId,
+        client_id: clientId,
+        ...scores,
+        notes: notes.trim() || null,
+      };
+      const { error } = await supabase.from("life_wheel_assessments").insert(payload);
+      if (error) {
+        if (error.code === "42501" || error.message?.includes("row-level security")) {
+          console.error("[LevenswielTab] RLS error on insert — check policies:", error.message);
+        } else {
+          console.error("[LevenswielTab] Insert error:", error.message);
+        }
+        Alert.alert("Fout", "Kon de meting niet opslaan. Probeer opnieuw.");
+        return;
+      }
+      console.log("[LevenswielTab] Assessment saved successfully");
+      setAddModalVisible(false);
+      await fetchAssessments();
+    } catch (e: any) {
+      console.error("[LevenswielTab] handleSave exception:", e);
+      Alert.alert("Fout", "Er is iets misgegaan. Probeer opnieuw.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const sheetHeight = screenHeight * 0.88;
+  const footerPaddingBottom = Math.max(insets.bottom, 16);
+
+  if (loading) {
+    return (
+      <View style={tabContentStyles.container}>
+        {[0, 1, 2].map((i) => (
+          <SkeletonRow key={i} />
+        ))}
+      </View>
+    );
+  }
+
+  const latest = assessments[0] ?? null;
+  const history = assessments.slice(1);
+  const latestScores = latest ? assessmentToScores(latest) : null;
+  const latestDate = latest ? formatDate(latest.created_at) : null;
+  const latestAvg = latestScores ? String(calculateLifeWheelAverage(latestScores)) : null;
+  const selectedScores = selectedAssessment ? assessmentToScores(selectedAssessment) : null;
+  const selectedDate = selectedAssessment ? formatDate(selectedAssessment.created_at) : null;
+
+  if (assessments.length === 0) {
+    return (
+      <>
+        <View style={tabContentStyles.container}>
+          <EmptyState
+            icon={<FileText size={28} color={bcctColors.primaryOrange} strokeWidth={2} />}
+            title="Nog geen levenswiel ingevuld"
+            subtitle="Maak een eerste meting om inzicht te krijgen in de balans van je cliënt."
+          />
+          <AnimatedPressable
+            onPress={() => {
+              console.log("[LevenswielTab] Eerste meting toevoegen pressed");
+              openAddModal();
+            }}
+            style={lwStyles.primaryBtn}
+          >
+            <LinearGradient
+              colors={[bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={lwStyles.primaryBtnGradient}
+            >
+              <Text style={lwStyles.primaryBtnText}>+ Eerste meting toevoegen</Text>
+            </LinearGradient>
+          </AnimatedPressable>
+        </View>
+
+        <Modal
+          isVisible={addModalVisible}
+          onBackdropPress={closeAddModal}
+          onBackButtonPress={closeAddModal}
+          animationIn="slideInUp"
+          animationOut="slideOutDown"
+          backdropOpacity={0.5}
+          style={lwStyles.modal}
+          avoidKeyboard={false}
+          useNativeDriver
+          hideModalContentWhileAnimating
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            style={lwStyles.kavWrapper}
+          >
+            <View style={[lwStyles.sheet, { height: sheetHeight }]}>
+              <View style={lwStyles.handle} />
+              <View style={lwStyles.headerRow}>
+                <Text style={lwStyles.sheetTitle}>Nieuwe meting</Text>
+              </View>
+              <LifeWheelForm
+                saving={saving}
+                onCancel={closeAddModal}
+                onSave={handleSave}
+              />
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <View style={tabContentStyles.container}>
+        {/* Latest card */}
+        <View style={lwStyles.card}>
+          <View style={lwStyles.cardHeader}>
+            <Text style={lwStyles.cardTitle}>Laatste meting</Text>
+            <Text style={lwStyles.cardDate}>{latestDate}</Text>
+          </View>
+          {latestScores && <LifeWheelView scores={latestScores} showAverage />}
+          {latest?.notes ? (
+            <Text style={lwStyles.notesPreview} numberOfLines={2}>
+              {latest.notes}
+            </Text>
+          ) : null}
+        </View>
+
+        {/* New measurement button */}
+        <AnimatedPressable
+          onPress={() => {
+            console.log("[LevenswielTab] Nieuwe meting pressed");
+            openAddModal();
+          }}
+          style={lwStyles.primaryBtn}
+        >
+          <LinearGradient
+            colors={[bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={lwStyles.primaryBtnGradient}
+          >
+            <Text style={lwStyles.primaryBtnText}>+ Nieuwe meting</Text>
+          </LinearGradient>
+        </AnimatedPressable>
+
+        {/* History */}
+        {history.length > 0 && (
+          <View style={lwStyles.historySection}>
+            <Text style={lwStyles.sectionHeader}>Geschiedenis</Text>
+            {history.map((item) => {
+              const itemScores = assessmentToScores(item);
+              const avg = calculateLifeWheelAverage(itemScores);
+              const avgDisplay = String(avg);
+              const dateDisplay = formatDate(item.created_at);
+              return (
+                <AnimatedPressable
+                  key={item.id}
+                  onPress={() => openDetailModal(item)}
+                  style={lwStyles.historyCard}
+                >
+                  <View style={lwStyles.historyCardLeft}>
+                    <Text style={lwStyles.historyDate}>{dateDisplay}</Text>
+                    {item.notes ? (
+                      <Text style={lwStyles.historyNotes} numberOfLines={1}>
+                        {item.notes}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Text style={lwStyles.historyAvg}>{avgDisplay}</Text>
+                </AnimatedPressable>
+              );
+            })}
+          </View>
+        )}
+      </View>
+
+      {/* Add modal */}
+      <Modal
+        isVisible={addModalVisible}
+        onBackdropPress={closeAddModal}
+        onBackButtonPress={closeAddModal}
+        animationIn="slideInUp"
+        animationOut="slideOutDown"
+        backdropOpacity={0.5}
+        style={lwStyles.modal}
+        avoidKeyboard={false}
+        useNativeDriver
+        hideModalContentWhileAnimating
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={lwStyles.kavWrapper}
+        >
+          <View style={[lwStyles.sheet, { height: sheetHeight }]}>
+            <View style={lwStyles.handle} />
+            <View style={lwStyles.headerRow}>
+              <Text style={lwStyles.sheetTitle}>Nieuwe meting</Text>
+            </View>
+            <LifeWheelForm
+              saving={saving}
+              onCancel={closeAddModal}
+              onSave={handleSave}
+            />
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Detail modal */}
+      <Modal
+        isVisible={detailModalVisible}
+        onBackdropPress={closeDetailModal}
+        onBackButtonPress={closeDetailModal}
+        animationIn="slideInUp"
+        animationOut="slideOutDown"
+        backdropOpacity={0.5}
+        style={lwStyles.modal}
+        useNativeDriver
+        hideModalContentWhileAnimating
+      >
+        <View style={[lwStyles.sheet, { height: sheetHeight }]}>
+          <View style={lwStyles.handle} />
+          <View style={lwStyles.headerRow}>
+            <Text style={lwStyles.sheetTitle}>Meting</Text>
+            <Text style={lwStyles.sheetSubtitle}>{selectedDate}</Text>
+          </View>
+          <ScrollView
+            style={lwStyles.detailScroll}
+            contentContainerStyle={lwStyles.detailScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {selectedScores && <LifeWheelView scores={selectedScores} showAverage />}
+            {selectedAssessment?.notes ? (
+              <View style={lwStyles.detailNotesBlock}>
+                <Text style={lwStyles.detailNotesLabel}>Notities</Text>
+                <Text style={lwStyles.detailNotesText}>{selectedAssessment.notes}</Text>
+              </View>
+            ) : null}
+          </ScrollView>
+          <View style={[lwStyles.detailFooter, { paddingBottom: footerPaddingBottom }]}>
+            <AnimatedPressable onPress={closeDetailModal} style={lwStyles.primaryBtn}>
+              <LinearGradient
+                colors={[bcctColors.primaryOrange, bcctColors.primaryOrangeDark]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={lwStyles.primaryBtnGradient}
+              >
+                <Text style={lwStyles.primaryBtnText}>Sluiten</Text>
+              </LinearGradient>
+            </AnimatedPressable>
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
+}
+
+const lwStyles = StyleSheet.create({
+  modal: {
+    margin: 0,
+    justifyContent: "flex-end",
+  },
+  kavWrapper: {
+    justifyContent: "flex-end",
+  },
+  sheet: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    overflow: "hidden",
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: bcctColors.borderGray,
+    alignSelf: "center",
+    marginTop: 10,
+    marginBottom: 6,
+  },
+  headerRow: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: bcctColors.borderGray,
+  },
+  sheetTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: bcctColors.textPrimary,
+  },
+  sheetSubtitle: {
+    fontSize: 13,
+    color: bcctColors.textSecondary,
+    marginTop: 2,
+  },
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: bcctColors.borderGray,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: bcctColors.textPrimary,
+  },
+  cardDate: {
+    fontSize: 13,
+    color: bcctColors.textSecondary,
+  },
+  notesPreview: {
+    fontSize: 13,
+    color: bcctColors.textSecondary,
+    marginTop: 10,
+    lineHeight: 18,
+  },
+  primaryBtn: {
+    marginTop: 4,
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+  primaryBtnGradient: {
+    height: 52,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  primaryBtnText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  historySection: {
+    marginTop: 16,
+  },
+  sectionHeader: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: bcctColors.textPrimary,
+    marginBottom: 10,
+  },
+  historyCard: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: bcctColors.borderGray,
+  },
+  historyCardLeft: {
+    flex: 1,
+    gap: 3,
+  },
+  historyDate: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: bcctColors.textPrimary,
+  },
+  historyNotes: {
+    fontSize: 13,
+    color: bcctColors.textSecondary,
+  },
+  historyAvg: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: bcctColors.primaryOrange,
+    marginLeft: 12,
+  },
+  detailScroll: {
+    flex: 1,
+  },
+  detailScrollContent: {
+    padding: 20,
+    paddingBottom: 16,
+  },
+  detailNotesBlock: {
+    marginTop: 16,
+    padding: 14,
+    backgroundColor: bcctColors.lightBackground,
+    borderRadius: 10,
+  },
+  detailNotesLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: bcctColors.textSecondary,
+    marginBottom: 6,
+  },
+  detailNotesText: {
+    fontSize: 15,
+    color: bcctColors.textPrimary,
+    lineHeight: 22,
+  },
+  detailFooter: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: bcctColors.borderGray,
+  },
+});
+
 // ─── Tijdlijn Modal ───────────────────────────────────────────────────────────
 
 function TijdlijnModal({
@@ -3386,6 +3909,12 @@ export default function ClientDetailScreen() {
           )}
           {activeTab === "tijdlijn" && (
             <TijdlijnTab
+              coachId={coachProfileId ?? ""}
+              clientId={clientId as string}
+            />
+          )}
+          {activeTab === "levenswiel" && (
+            <LevenswielTab
               coachId={coachProfileId ?? ""}
               clientId={clientId as string}
             />

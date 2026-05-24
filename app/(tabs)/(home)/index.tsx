@@ -136,6 +136,11 @@ export default function HomeScreen() {
     router.push('/(tabs)/mijn-reis');
   };
 
+  const handleMijnGroeiPress = () => {
+    console.log('[HomeScreen] Mijn Groei pressed');
+    router.push('/(tabs)/mijn-groei');
+  };
+
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
       {/* Scrollable top section */}
@@ -243,6 +248,16 @@ export default function HomeScreen() {
               </View>
               <Text style={styles.actionLabel}>Mijn Reis</Text>
             </TouchableOpacity>
+          </View>
+          {/* Row 4 */}
+          <View style={styles.actionsRow}>
+            <TouchableOpacity style={styles.actionBtn} onPress={handleMijnGroeiPress}>
+              <View style={styles.actionIcon}>
+                <Ionicons name="leaf-outline" size={24} color="#4A90D9" />
+              </View>
+              <Text style={styles.actionLabel}>Mijn Groei</Text>
+            </TouchableOpacity>
+            <View style={[styles.actionBtn, { backgroundColor: 'transparent', elevation: 0, shadowOpacity: 0 }]} />
           </View>
         </View>
       </View>
