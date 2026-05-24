@@ -12,16 +12,14 @@ import {
   Image,
   Pressable,
 } from 'react-native';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter, useNavigation } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { Send, ChevronLeft } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bcctColors } from '@/styles/bcctTheme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useHeaderHeight } from '@react-navigation/elements';
-
-// FloatingTabBar height constant (icon 40 + gap 4 + label ~14 + paddingTop 8 = ~66)
-const TAB_BAR_HEIGHT = 66;
 
 interface Message {
   id: string;
@@ -67,11 +65,23 @@ export default function ChatDetailScreen() {
 
   const flatListRef = useRef<FlatList>(null);
   const headerHeight = useHeaderHeight();
+  const navigation = useNavigation();
 
   const headerTitle = otherName ?? 'Chat';
 
-  // Bottom padding for input container = tab bar height + safe area bottom + breathing room
-  const inputBarBottomPadding = TAB_BAR_HEIGHT + insets.bottom + 8;
+  // Hide the NativeTabs tab bar while this screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      const parent = navigation.getParent('(tabs)' as never) ?? navigation.getParent();
+      parent?.setOptions({ tabBarStyle: { display: 'none' } });
+      return () => {
+        parent?.setOptions({ tabBarStyle: undefined });
+      };
+    }, [navigation])
+  );
+
+  // Bottom padding for input container = safe area bottom (home indicator) + breathing room
+  const inputBarBottomPadding = Math.max(insets.bottom, 8);
 
   const loadMessages = useCallback(async () => {
     if (!id || !user) return;
