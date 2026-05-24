@@ -26,6 +26,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { generateCoachCode } from '@/utils/api';
 import { bcctColors, bcctTypography } from '@/styles/bcctTheme';
 
 const TOTAL_STEPS = 10;
@@ -651,30 +652,48 @@ export default function CoachOnboardingScreen() {
       }).eq('id', userId);
       console.log('[CoachOnboarding] onboarding_completed saved');
 
-      // Check for existing unused active invite
-      const { data: existing } = await supabase
-        .from('client_invites')
-        .select('id, code')
-        .eq('coach_id', userId)
-        .eq('is_active', true)
-        .is('used_at', null)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
+      // Read profile invite_code + prefix sources
+      const { data: profile, error: profileErr } = await supabase
+        .from('profiles')
+        .select('invite_code, business_name, company_name, full_name')
+        .eq('id', userId)
+        .maybeSingle();
+      if (profileErr) throw profileErr;
 
-      if (existing?.code) {
-        console.log('[CoachOnboarding] Reusing existing invite code:', existing.code);
-        setInviteCode(existing.code);
-        setInviteModalVisible(true);
-        return;
+      let code = profile?.invite_code?.trim() || '';
+      if (!code) {
+        code = generateCoachCode(profile, userId);
+        console.log('[CoachOnboarding] Generated new branded code:', code);
+        const { error: updateErr } = await supabase
+          .from('profiles')
+          .update({ invite_code: code, updated_at: new Date().toISOString() })
+          .eq('id', userId);
+        if (updateErr) throw updateErr;
+      } else {
+        console.log('[CoachOnboarding] Using existing profiles.invite_code:', code);
       }
 
-      // Create new invite
-      const { data, error } = await supabase.rpc('create_client_invite', { p_expires_at: null });
-      if (error) throw error;
-      const invite = Array.isArray(data) ? data[0] : data;
-      const code = typeof invite === 'string' ? invite : invite?.code ?? invite?.invite_code ?? String(invite);
-      console.log('[CoachOnboarding] New invite code created:', code);
+      // Ensure matching active client_invites row exists for join flow
+      const { data: existingInvite } = await supabase
+        .from('client_invites')
+        .select('id')
+        .eq('coach_id', userId)
+        .eq('code', code)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (!existingInvite) {
+        const { error: insertErr } = await supabase
+          .from('client_invites')
+          .insert({ coach_id: userId, code, is_active: true, used_at: null });
+        if (insertErr) {
+          console.error('[CoachOnboarding] Error syncing client_invites row:', insertErr);
+          // Non-fatal — continue
+        } else {
+          console.log('[CoachOnboarding] Synced client_invites row');
+        }
+      }
+
       setInviteCode(code);
       setInviteModalVisible(true);
     } catch (err: any) {

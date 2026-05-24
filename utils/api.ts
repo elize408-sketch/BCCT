@@ -233,3 +233,35 @@ export const authenticatedDelete = async <T = any>(endpoint: string, data: any =
     body: JSON.stringify(data),
   });
 };
+
+/**
+ * Generate a branded coach invite code from a profile.
+ * Prefix priority: business_name -> company_name -> full_name -> "COACH"
+ * Suffix is deterministic: last 6 chars of the user UUID (dashes stripped, uppercased).
+ * Format: PREFIX-SUFFIX, prefix max 12 chars, uppercase, alphanumeric only.
+ *
+ * Examples:
+ *  - { business_name: "EM Office" }, userId "...71BE99" -> "EMOFFICE-71BE99"
+ *  - { company_name: "Flow Family" }, userId "...2A8D14" -> "FLOWFAMILY-2A8D14" (truncated to 12)
+ *  - { full_name: "Elize Jansen" }, userId "...8F3C77" -> "ELIZE-8F3C77"
+ *  - {}, userId "...5A023E" -> "COACH-5A023E"
+ */
+export const generateCoachCode = (
+  profile: { business_name?: string | null; company_name?: string | null; full_name?: string | null } | null | undefined,
+  userId: string
+): string => {
+  const sanitize = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12);
+
+  let prefix = "";
+  if (profile?.business_name) prefix = sanitize(profile.business_name);
+  if (!prefix && profile?.company_name) prefix = sanitize(profile.company_name);
+  if (!prefix && profile?.full_name) {
+    // Use only the first word of full_name (first name)
+    const firstName = profile.full_name.trim().split(/\s+/)[0] || "";
+    prefix = sanitize(firstName);
+  }
+  if (!prefix) prefix = "COACH";
+
+  const suffix = (userId || "").replace(/-/g, "").slice(-6).toUpperCase() || "000000";
+  return `${prefix}-${suffix}`;
+};

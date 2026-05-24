@@ -17,6 +17,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { IconSymbol } from "@/components/IconSymbol";
 import { useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
+import { generateCoachCode } from "@/utils/api";
 import { bcctColors, bcctTypography } from "@/styles/bcctTheme";
 import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from "expo-linear-gradient";
@@ -217,25 +218,76 @@ export default function CoachClientsScreen() {
     console.log("[Coach Clients] Creating invite code");
     setGeneratingCode(true);
     try {
-      const { data, error } = await supabase.rpc('create_client_invite', {
-        p_expires_at: null,
-      });
-
-      if (error) {
-        console.error("[Coach Clients] Error creating invite:", error);
-        showModal("Fout", "Kon uitnodigingscode niet aanmaken");
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.error("[Coach Clients] No user found");
+        showModal("Fout", "Niet ingelogd");
         return;
       }
 
-      console.log("[Coach Clients] Invite code created:", data);
+      // Fetch profile to read existing invite_code and prefix sources
+      const { data: profile, error: profileErr } = await supabase
+        .from('profiles')
+        .select('invite_code, business_name, company_name, full_name')
+        .eq('id', user.id)
+        .maybeSingle();
 
-      // RPC may return an object (row) or array — extract the code string correctly
-      const invite = Array.isArray(data) ? data[0] : data;
-      const code = typeof invite === 'string' ? invite : invite?.code ?? invite?.invite_code ?? String(invite);
+      if (profileErr) {
+        console.error("[Coach Clients] Error loading profile:", profileErr);
+        showModal("Fout", "Kon profiel niet laden");
+        return;
+      }
+
+      let code = profile?.invite_code?.trim() || "";
+
+      if (!code) {
+        // Generate branded code and persist to profiles.invite_code (one-time)
+        code = generateCoachCode(profile, user.id);
+        console.log("[Coach Clients] Generated new branded code:", code);
+
+        const { error: updateErr } = await supabase
+          .from('profiles')
+          .update({ invite_code: code, updated_at: new Date().toISOString() })
+          .eq('id', user.id);
+
+        if (updateErr) {
+          console.error("[Coach Clients] Error saving invite_code to profile:", updateErr);
+          showModal("Fout", "Kon uitnodigingscode niet opslaan");
+          return;
+        }
+      } else {
+        console.log("[Coach Clients] Using existing profiles.invite_code:", code);
+      }
+
+      // Ensure a matching active row exists in client_invites for the join flow
+      const { data: existingInvite } = await supabase
+        .from('client_invites')
+        .select('id')
+        .eq('coach_id', user.id)
+        .eq('code', code)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (!existingInvite) {
+        const { error: insertErr } = await supabase
+          .from('client_invites')
+          .insert({
+            coach_id: user.id,
+            code,
+            is_active: true,
+            used_at: null,
+          });
+        if (insertErr) {
+          // Non-fatal — log but still show the code
+          console.error("[Coach Clients] Error syncing client_invites row:", insertErr);
+        } else {
+          console.log("[Coach Clients] Synced client_invites row for code:", code);
+        }
+      }
+
       setGeneratedInviteCode(code);
-      
       setInviteCodeModalVisible(true);
-      
+
       // Refresh invites list
       fetchInvites();
     } catch (error: any) {
