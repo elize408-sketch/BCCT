@@ -69,9 +69,10 @@ export default function ChatDetailScreen() {
 
   const headerTitle = otherName ?? 'Chat';
 
-  // Hide the NativeTabs tab bar while this screen is focused
+  // Hide the NativeTabs tab bar while this screen is focused (native only)
   useFocusEffect(
     useCallback(() => {
+      if (Platform.OS === 'web') return;
       const parent = navigation.getParent('(tabs)' as never) ?? navigation.getParent();
       parent?.setOptions({ tabBarStyle: { display: 'none' } });
       return () => {

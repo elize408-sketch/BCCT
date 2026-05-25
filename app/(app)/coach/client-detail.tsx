@@ -16,7 +16,7 @@ import {
 import Modal from "react-native-modal";
 import { useTheme } from "@react-navigation/native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { useFocusEffect } from "expo-router";
+
 import { IconSymbol } from "@/components/IconSymbol";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { supabase } from "@/lib/supabase";
@@ -236,11 +236,9 @@ function HuiswerkTab({ clientId, clientName }: { clientId: string; clientName: s
     }
   }, [clientId, session]);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadAssignments();
-    }, [loadAssignments])
-  );
+  useEffect(() => {
+    loadAssignments();
+  }, [loadAssignments]);
 
   const openModal = useCallback(() => {
     console.log("[Huiswerk] Button pressed");
@@ -1065,11 +1063,9 @@ function AfsprakenTab({ clientId, clientName, coachId }: { clientId: string; cli
     }
   }, [clientId, coachId]);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadAppointments();
-    }, [loadAppointments])
-  );
+  useEffect(() => {
+    loadAppointments();
+  }, [loadAppointments]);
 
   const openModal = useCallback(() => {
     console.log("[ClientDetail] Nieuwe afspraak pressed, clientId:", clientId);
