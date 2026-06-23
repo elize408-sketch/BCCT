@@ -73,14 +73,13 @@ function OnboardingRedirect() {
     if (authLoading) return;
     if (!user) return;
 
-    // Only redirect from the main tabs area or root
-    const isOnMainTabs = pathname.startsWith("/(tabs)") || pathname === "/";
+    // Only fire when on the main tabs area or root index
+    const isOnMainTabs = pathname.startsWith('/(tabs)') || pathname === '/';
     if (!isOnMainTabs) return;
 
-    console.log('[Routing] auth user id:', user?.id);
     supabase
       .from('profiles')
-      .select('id, role, onboarding_completed, subscription_active, subscription_plan')
+      .select('id, role, onboarding_completed')
       .eq('id', user.id)
       .single()
       .then(({ data: profile, error }) => {
@@ -88,17 +87,25 @@ function OnboardingRedirect() {
           console.warn('[OnboardingRedirect] Could not fetch profile (non-fatal):', error.message);
           return;
         }
-        console.log('[Routing] profile id:', profile?.id);
-        console.log('[Routing] role:', profile?.role);
-        console.log('[Routing] onboarding_completed:', profile?.onboarding_completed);
-        console.log('[Routing] subscription_active:', profile?.subscription_active);
 
+        console.log('[Routing] role:', profile?.role, 'onboarding_completed:', profile?.onboarding_completed);
+
+        // Onboarding not completed → send to onboarding regardless of role
         if (!profile?.onboarding_completed || !profile?.role) {
-          console.log('[OnboardingRedirect] onboarding_completed=false or role missing, redirecting to coach-welcome-onboarding');
-          router.replace("/coach-welcome-onboarding");
-        } else {
-          console.log('[Routing] decision: skipping onboarding, going to app');
+          console.log('[OnboardingRedirect] onboarding incomplete, redirecting to coach-welcome-onboarding');
+          router.replace('/coach-welcome-onboarding');
+          return;
         }
+
+        // CRITICAL: Coaches must NEVER land on /(tabs) — redirect to coach portal
+        if (profile.role === 'coach') {
+          console.log('[OnboardingRedirect] Coach detected on /(tabs) — redirecting to coach portal');
+          router.replace('/(app)/coach');
+          return;
+        }
+
+        // Clients stay on /(tabs) — no redirect needed
+        console.log('[Routing] Client on tabs — no redirect needed');
       });
   }, [user, authLoading, pathname, router]);
 
