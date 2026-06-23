@@ -18,6 +18,17 @@ export default function AppLayout() {
           title: 'Huiswerk sturen',
         }}
       />
+      <Stack.Screen
+        name="chat-conversation"
+        options={{
+          headerShown: true,
+          headerStyle: { backgroundColor: '#FFFFFF' },
+          headerTintColor: '#F97316',
+          headerTitleStyle: { fontWeight: '600', color: '#1F2937' },
+          headerShadowVisible: true,
+          headerBackButtonDisplayMode: 'minimal',
+        }}
+      />
     </Stack>
   );
 }

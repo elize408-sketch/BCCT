@@ -100,15 +100,15 @@ export default function HomeScreen() {
 
         console.log("[HomeScreen] Navigating to conversation:", conversationId);
         router.push({
-          pathname: '/(tabs)/(chat)/[id]',
-          params: { id: conversationId, otherName: coachName },
+          pathname: '/(app)/chat-conversation',
+          params: { conversationId, otherName: coachName },
         });
       } else {
-        router.push('/(tabs)/(chat)/');
+        router.push('/(tabs)/(chat)');
       }
     } catch (err) {
       console.error("[HomeScreen] Error in handleChatPress:", err);
-      router.push('/(tabs)/(chat)/');
+      router.push('/(tabs)/(chat)');
     } finally {
       setChatLoading(false);
     }

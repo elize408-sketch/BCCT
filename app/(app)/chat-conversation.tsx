@@ -49,8 +49,8 @@ function getInitials(name: string): string {
   return name.slice(0, 2).toUpperCase();
 }
 
-export default function ChatDetailScreen() {
-  const { id, otherName } = useLocalSearchParams<{ id: string; otherName?: string }>();
+export default function ChatConversationScreen() {
+  const { conversationId: id, otherName } = useLocalSearchParams<{ conversationId: string; otherName?: string }>();
   const { user } = useAuth();
   const router = useRouter();
 
@@ -290,7 +290,6 @@ export default function ChatDetailScreen() {
       <Stack.Screen
         options={{
           title: headerTitle,
-          headerShown: true,
           headerLeft: () => backButton,
           headerBackButtonDisplayMode: 'minimal',
         }}
