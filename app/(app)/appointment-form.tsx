@@ -15,7 +15,6 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { bcctColors } from '@/styles/bcctTheme';
-import { apiGet, apiPost, apiPut, apiDelete } from '@/utils/api';
 import { supabase } from '@/lib/supabase';
 
 const ORANGE = '#F97316';
@@ -170,8 +169,13 @@ export default function AppointmentFormScreen() {
   useEffect(() => {
     if (!isEdit) return;
     console.log('[AppointmentForm] Edit mode — fetching appointment:', appointmentId);
-    apiGet<Appointment>(`/api/appointments/${appointmentId}`)
-      .then((data) => {
+    supabase
+      .from('appointments')
+      .select('*')
+      .eq('id', appointmentId)
+      .single()
+      .then(({ data, error }) => {
+        if (error || !data) { Alert.alert('Fout', 'Kon afspraak niet laden'); return; }
         console.log('[AppointmentForm] Loaded appointment for edit:', data?.id);
         setSelectedClientId(data.client_id);
         setTitle(data.title ?? '');
@@ -182,10 +186,6 @@ export default function AppointmentFormScreen() {
         setDate(start);
         setStartTime(start);
         setEndTime(end);
-      })
-      .catch((err) => {
-        console.error('[AppointmentForm] Error loading appointment for edit:', err);
-        Alert.alert('Fout', 'Kon afspraak niet laden');
       })
       .finally(() => setLoading(false));
   }, [appointmentId, isEdit]);
@@ -219,11 +219,15 @@ export default function AppointmentFormScreen() {
     setSubmitting(true);
 
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
       if (isEdit) {
-        await apiPut(`/api/appointments/${appointmentId}`, payload);
+        const { error } = await supabase.from('appointments').update(payload).eq('id', appointmentId);
+        if (error) throw error;
         console.log('[AppointmentForm] Appointment updated successfully');
       } else {
-        await apiPost('/api/appointments', payload);
+        const { error } = await supabase.from('appointments').insert({ ...payload, coach_id: user.id });
+        if (error) throw error;
         console.log('[AppointmentForm] Appointment created successfully');
       }
       router.back();
@@ -254,7 +258,8 @@ export default function AppointmentFormScreen() {
             console.log('[AppointmentForm] Confirmed delete, appointmentId:', appointmentId);
             setDeleting(true);
             try {
-              await apiDelete(`/api/appointments/${appointmentId}`);
+              const { error } = await supabase.from('appointments').delete().eq('id', appointmentId);
+              if (error) throw error;
               console.log('[AppointmentForm] Appointment deleted successfully');
               router.back();
             } catch (err: any) {

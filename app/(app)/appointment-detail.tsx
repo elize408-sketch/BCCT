@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { bcctColors, bcctTypography } from '@/styles/bcctTheme';
-import { apiGet, apiDelete } from '@/utils/api';
+import { supabase } from '@/lib/supabase';
 
 const ORANGE = '#F97316';
 
@@ -81,9 +81,19 @@ export default function AppointmentDetailScreen() {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiGet<Appointment>(`/api/appointments/${appointmentId}`);
+      const { data, error } = await supabase
+        .from('appointments')
+        .select('*, client:profiles!appointments_client_id_fkey(id, full_name, avatar_url)')
+        .eq('id', appointmentId)
+        .single();
+      if (error) throw error;
       console.log('[AppointmentDetail] Fetched appointment:', data?.id);
-      setAppointment(data);
+      setAppointment({
+        ...data,
+        client: data.client
+          ? { id: data.client.id, name: data.client.full_name ?? 'Cliënt', avatar_url: data.client.avatar_url }
+          : { id: '', name: 'Onbekend', avatar_url: null },
+      });
     } catch (err: any) {
       console.error('[AppointmentDetail] Fetch error:', err);
       setError('Kon afspraak niet laden');
@@ -115,7 +125,8 @@ export default function AppointmentDetailScreen() {
             console.log('[AppointmentDetail] Confirmed delete, appointmentId:', appointmentId);
             setDeleting(true);
             try {
-              await apiDelete(`/api/appointments/${appointmentId}`);
+              const { error } = await supabase.from('appointments').delete().eq('id', appointmentId);
+              if (error) throw error;
               console.log('[AppointmentDetail] Appointment deleted successfully');
               router.back();
             } catch (err: any) {

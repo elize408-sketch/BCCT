@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { bcctColors, bcctTypography } from '@/styles/bcctTheme';
-import { apiGet } from '@/utils/api';
+import { supabase } from '@/lib/supabase';
 
 const ORANGE = '#F97316';
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -90,13 +90,34 @@ export default function AppointmentsScreen() {
 
   const fetchAppointments = useCallback(async (date: Date) => {
     const dateStr = toDateString(date);
+    const nextDay = new Date(date);
+    nextDay.setDate(nextDay.getDate() + 1);
+    const nextDayStr = toDateString(nextDay);
     console.log('[Appointments] Fetching appointments for date:', dateStr);
     setLoading(true);
     setError(null);
     try {
-      const data = await apiGet<Appointment[]>(`/api/appointments?date=${dateStr}`);
-      console.log('[Appointments] Fetched', data?.length ?? 0, 'appointments');
-      setAppointments(Array.isArray(data) ? data : []);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setAppointments([]); return; }
+
+      const { data, error } = await supabase
+        .from('appointments')
+        .select('*, client:profiles!appointments_client_id_fkey(id, full_name, avatar_url)')
+        .eq('coach_id', user.id)
+        .gte('start_time', `${dateStr}T00:00:00`)
+        .lt('start_time', `${nextDayStr}T00:00:00`)
+        .order('start_time');
+
+      if (error) throw error;
+
+      const mapped = (data ?? []).map((a: any) => ({
+        ...a,
+        client: a.client
+          ? { id: a.client.id, name: a.client.full_name ?? 'Cliënt', avatar_url: a.client.avatar_url }
+          : { id: '', name: 'Onbekend', avatar_url: null },
+      }));
+      console.log('[Appointments] Fetched', mapped.length, 'appointments');
+      setAppointments(mapped);
     } catch (err: any) {
       console.error('[Appointments] Fetch error:', err);
       setError('Kon afspraken niet laden');
