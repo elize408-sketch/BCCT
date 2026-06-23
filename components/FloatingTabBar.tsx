@@ -81,7 +81,12 @@ export default function FloatingTabBar({ tabs }: FloatingTabBarProps) {
     router.push(route);
   };
 
+  // Hide on any screen outside the tabs (app stack, chat conversation, etc.)
+  const shouldHide = pathname.startsWith('/(app)') || pathname.startsWith('/chat');
+
   const safeBottom = Math.min(insets.bottom, 8) + 6;
+
+  if (shouldHide) return null;
 
   return (
     <View style={[styles.container, { paddingTop: 8, paddingBottom: safeBottom }]}>

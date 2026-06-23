@@ -18,6 +18,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bcctColors } from '@/styles/bcctTheme';
 import { useHeaderHeight } from '@react-navigation/elements';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface Message {
   id: string;
@@ -62,6 +63,7 @@ export default function ChatConversationScreen() {
 
   const flatListRef = useRef<FlatList>(null);
   const headerHeight = useHeaderHeight();
+  const insets = useSafeAreaInsets();
 
   const headerTitle = otherName ?? 'Chat';
 
@@ -325,7 +327,7 @@ export default function ChatConversationScreen() {
             />
           )}
 
-          <View style={styles.inputBar}>
+          <View style={[styles.inputBar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
             <TextInput
               style={styles.textInput}
               value={inputText}
