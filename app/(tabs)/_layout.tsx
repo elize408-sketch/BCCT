@@ -53,7 +53,7 @@ export default function TabLayout() {
         <Stack.Screen name="huiswerk" />
         <Stack.Screen name="notities" />
         <Stack.Screen name="voortgang" />
-        <Stack.Screen name="(chat)/[id]" options={{ href: null }} />
+
       </Stack>
       <FloatingTabBar tabs={tabs} />
     </>

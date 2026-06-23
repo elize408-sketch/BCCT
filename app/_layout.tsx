@@ -131,7 +131,8 @@ export default function RootLayout() {
                 <Stack.Screen name="paywall" />
                 <Stack.Screen name="stripe-return" />
                 <Stack.Screen name="stripe-onboarding-webview" />
-                <Stack.Screen name="(app)" />
+                <Stack.Screen name="(tabs)" />
+                <Stack.Screen name="(app)" options={{ presentation: 'fullScreenModal', animation: 'slide_from_right' }} />
               </Stack>
               <SystemBars style="auto" />
             </GestureHandlerRootView>
