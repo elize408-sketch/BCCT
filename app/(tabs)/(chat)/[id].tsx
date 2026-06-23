@@ -12,8 +12,7 @@ import {
   Image,
   Pressable,
 } from 'react-native';
-import { Stack, useLocalSearchParams, useRouter, useNavigation } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Send, ChevronLeft } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -65,24 +64,14 @@ export default function ChatDetailScreen() {
 
   const flatListRef = useRef<FlatList>(null);
   const headerHeight = useHeaderHeight();
-  const navigation = useNavigation();
 
   const headerTitle = otherName ?? 'Chat';
 
-  // Hide the NativeTabs tab bar while this screen is focused (native only)
-  useFocusEffect(
-    useCallback(() => {
-      if (Platform.OS === 'web') return;
-      const parent = navigation.getParent('(tabs)' as never) ?? navigation.getParent();
-      parent?.setOptions({ tabBarStyle: { display: 'none' } });
-      return () => {
-        parent?.setOptions({ tabBarStyle: undefined });
-      };
-    }, [navigation])
-  );
-
-  // Bottom padding for input container = safe area bottom (home indicator) + breathing room
-  const inputBarBottomPadding = Math.max(insets.bottom, 8);
+  // Bottom padding for input container = native tab bar + safe area bottom + breathing room
+  const IOS_TAB_BAR_HEIGHT = 49;
+  const inputBarBottomPadding = Platform.OS === 'ios'
+    ? IOS_TAB_BAR_HEIGHT + Math.max(insets.bottom, 8) + 8
+    : Math.max(insets.bottom, 8);
 
   const loadMessages = useCallback(async () => {
     if (!id || !user) return;
@@ -318,7 +307,7 @@ export default function ChatDetailScreen() {
         <KeyboardAvoidingView
           style={styles.flex}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={headerHeight}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight + IOS_TAB_BAR_HEIGHT : 0}
         >
           {loading ? (
             <View style={styles.loadingContainer}>
