@@ -26,6 +26,8 @@ interface ConversationRow {
   otherAvatar: string | null;
   lastMessage: string | null;
   lastMessageAt: string | null;
+  lastMessageSenderId: string | null;
+  hasUnread: boolean;
 }
 
 interface LinkedCoach {
@@ -220,7 +222,7 @@ export default function ChatListScreen() {
       convIds.map((cid) =>
         supabase
           .from('messages')
-          .select('body, created_at')
+          .select('body, created_at, sender_id, read_at')
           .eq('conversation_id', cid)
           .order('created_at', { ascending: false })
           .limit(1)
@@ -228,11 +230,21 @@ export default function ChatListScreen() {
       )
     );
 
-    const lastMessages: Record<string, { body: string; created_at: string }> = {};
+    const lastMessages: Record<string, { body: string; created_at: string; sender_id: string; read_at: string | null }> = {};
     lastMsgResults.forEach(({ cid, data }) => {
-      if (data && data.length > 0) lastMessages[cid] = data[0];
+      if (data && data.length > 0) lastMessages[cid] = data[0] as { body: string; created_at: string; sender_id: string; read_at: string | null };
     });
     console.log('[ChatList] Last messages fetched for', Object.keys(lastMessages).length, 'conversations');
+
+    const { data: unreadMsgs } = await supabase
+      .from('messages')
+      .select('conversation_id')
+      .in('conversation_id', convIds)
+      .neq('sender_id', userId)
+      .is('read_at', null);
+
+    const unreadConvIds = new Set((unreadMsgs ?? []).map((m: { conversation_id: string }) => m.conversation_id));
+    console.log('[ChatList] Unread conversation count:', unreadConvIds.size);
 
     const built: ConversationRow[] = existingConvs.map((conv) => {
       const coach = coachProfiles.find((p) => p.id === conv.coach_id);
@@ -244,6 +256,8 @@ export default function ChatListScreen() {
         otherAvatar: coach?.avatar_url ?? null,
         lastMessage: lastMsg?.body ?? null,
         lastMessageAt: lastMsg?.created_at ?? null,
+        lastMessageSenderId: lastMsg?.sender_id ?? null,
+        hasUnread: unreadConvIds.has(conv.id),
       };
     });
 
@@ -283,7 +297,7 @@ export default function ChatListScreen() {
       ...convList.map((conv) =>
         supabase
           .from('messages')
-          .select('body, created_at')
+          .select('body, created_at, sender_id, read_at')
           .eq('conversation_id', conv.id)
           .order('created_at', { ascending: false })
           .limit(1)
@@ -296,13 +310,24 @@ export default function ChatListScreen() {
     }
 
     const clientProfiles = profilesResult.data ?? [];
-    const lastMessages: Record<string, { body: string; created_at: string }> = {};
+    const lastMessages: Record<string, { body: string; created_at: string; sender_id: string; read_at: string | null }> = {};
     lastMsgResults.forEach((r) => {
-      const result = r as { cid: string; data: { body: string; created_at: string }[] | null };
+      const result = r as { cid: string; data: { body: string; created_at: string; sender_id: string; read_at: string | null }[] | null };
       if (result.data && result.data.length > 0) {
         lastMessages[result.cid] = result.data[0];
       }
     });
+
+    const convIds = convList.map((c) => c.id);
+    const { data: unreadMsgs } = await supabase
+      .from('messages')
+      .select('conversation_id')
+      .in('conversation_id', convIds)
+      .neq('sender_id', userId)
+      .is('read_at', null);
+
+    const unreadConvIds = new Set((unreadMsgs ?? []).map((m: { conversation_id: string }) => m.conversation_id));
+    console.log('[ChatList] Coach unread conversation count:', unreadConvIds.size);
 
     const built: ConversationRow[] = convList.map((conv) => {
       const client = clientProfiles.find((p) => p.id === conv.client_id);
@@ -314,6 +339,8 @@ export default function ChatListScreen() {
         otherAvatar: client?.avatar_url ?? null,
         lastMessage: lastMsg?.body ?? null,
         lastMessageAt: lastMsg?.created_at ?? null,
+        lastMessageSenderId: lastMsg?.sender_id ?? null,
+        hasUnread: unreadConvIds.has(conv.id),
       };
     });
 
@@ -405,8 +432,12 @@ export default function ChatListScreen() {
 
   const renderConversationItem = ({ item }: { item: ConversationRow }) => {
     const timeLabel = formatConversationTime(item.lastMessageAt);
-    const previewText = item.lastMessage ?? 'Nog geen berichten';
     const isNoMessages = !item.lastMessage;
+
+    const isMine = item.lastMessageSenderId === user?.id;
+    const senderFirstName = item.otherName.split(' ')[0];
+    const prefix = isMine ? 'Jij' : senderFirstName;
+    const previewText = item.lastMessage ? `${prefix}: ${item.lastMessage}` : 'Nog geen berichten';
 
     return (
       <TouchableOpacity
@@ -419,13 +450,16 @@ export default function ChatListScreen() {
         </View>
         <View style={styles.rowContent}>
           <View style={styles.rowTop}>
-            <Text style={styles.rowName} numberOfLines={1}>
+            <Text style={[styles.rowName, item.hasUnread && styles.rowNameUnread]} numberOfLines={1}>
               {item.otherName}
             </Text>
-            {timeLabel ? <Text style={styles.rowTime}>{timeLabel}</Text> : null}
+            <View style={styles.rowTopRight}>
+              {timeLabel ? <Text style={styles.rowTime}>{timeLabel}</Text> : null}
+              {item.hasUnread && <View style={styles.unreadDot} />}
+            </View>
           </View>
           <Text
-            style={[styles.rowPreview, isNoMessages && styles.rowPreviewEmpty]}
+            style={[styles.rowPreview, isNoMessages && styles.rowPreviewEmpty, item.hasUnread && styles.rowPreviewUnread]}
             numberOfLines={1}
           >
             {previewText}
@@ -629,6 +663,24 @@ const styles = StyleSheet.create({
   rowPreviewEmpty: {
     fontStyle: 'italic',
     color: bcctColors.primaryOrangeLight,
+  },
+  rowNameUnread: {
+    fontWeight: '700',
+  },
+  rowTopRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  rowPreviewUnread: {
+    color: '#1F2937',
+    fontWeight: '500',
+  },
+  unreadDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#F97316',
   },
   separator: {
     height: 1,
