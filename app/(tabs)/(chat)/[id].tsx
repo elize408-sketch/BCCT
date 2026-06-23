@@ -67,11 +67,11 @@ export default function ChatDetailScreen() {
 
   const headerTitle = otherName ?? 'Chat';
 
-  // Bottom padding for input container = native tab bar + safe area bottom + breathing room
   const IOS_TAB_BAR_HEIGHT = 49;
-  const inputBarBottomPadding = Platform.OS === 'ios'
-    ? IOS_TAB_BAR_HEIGHT + Math.max(insets.bottom, 8) + 8
-    : Math.max(insets.bottom, 8);
+  // Outer container must be pushed above the native tab bar
+  const containerBottomPadding = Platform.OS === 'ios' ? IOS_TAB_BAR_HEIGHT + insets.bottom : insets.bottom;
+  // Input bar just needs a small internal padding
+  const inputBarInternalPadding = 8;
 
   const loadMessages = useCallback(async () => {
     if (!id || !user) return;
@@ -303,11 +303,11 @@ export default function ChatDetailScreen() {
           headerBackButtonDisplayMode: 'minimal',
         }}
       />
-      <View style={styles.flex}>
+      <View style={[styles.flex, { paddingBottom: containerBottomPadding }]}>
         <KeyboardAvoidingView
           style={styles.flex}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight + IOS_TAB_BAR_HEIGHT : 0}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight + IOS_TAB_BAR_HEIGHT + insets.bottom : 0}
         >
           {loading ? (
             <View style={styles.loadingContainer}>
@@ -334,7 +334,7 @@ export default function ChatDetailScreen() {
             />
           )}
 
-          <View style={[styles.inputBar, { paddingBottom: inputBarBottomPadding }]}>
+          <View style={[styles.inputBar, { paddingBottom: inputBarInternalPadding }]}>
             <TextInput
               style={styles.textInput}
               value={inputText}
