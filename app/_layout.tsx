@@ -73,7 +73,7 @@ function OnboardingRedirect() {
     if (authLoading) return;
     if (!user) return;
 
-    // Only fire when on the main tabs area or root index
+    // Fire for any /(tabs)/* sub-route or the root index
     const isOnMainTabs = pathname.startsWith('/(tabs)') || pathname === '/';
     if (!isOnMainTabs) return;
 
