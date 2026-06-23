@@ -93,7 +93,8 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
   const user = (auth?.user ?? session?.user ?? null) as { id?: string } | null;
   const authLoading = (auth?.loading ?? false) as boolean;
 
-  const [isSubscribed, setIsSubscribed] = useState(false);
+  // Paywall disabled — always subscribed until RevenueCat is re-enabled
+  const [isSubscribed, setIsSubscribed] = useState(true);
   const [offerings, setOfferings] = useState<PurchasesOfferings | null>(null);
   const [currentOffering, setCurrentOffering] =
     useState<PurchasesOffering | null>(null);
