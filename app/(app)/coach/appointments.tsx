@@ -20,6 +20,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { bcctColors, bcctTypography } from "@/styles/bcctTheme";
 import { useRouter } from "expo-router";
+import { useNavigationState } from "@react-navigation/native";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -168,6 +169,7 @@ async function enrichWithClients(appts: Appointment[]): Promise<Appointment[]> {
 export default function CoachAppointmentsScreen() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const isNavReady = useNavigationState(state => state != null);
 
   // ── View mode ─────────────────────────────────────────────────────────────
   const [viewMode, setViewMode] = useState<ViewMode>("dag");
@@ -697,6 +699,14 @@ export default function CoachAppointmentsScreen() {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   if (authLoading) {
+    return (
+      <View style={[styles.container, styles.loadingWrap]}>
+        <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
+      </View>
+    );
+  }
+
+  if (!isNavReady) {
     return (
       <View style={[styles.container, styles.loadingWrap]}>
         <ActivityIndicator size="large" color={bcctColors.primaryOrange} />
