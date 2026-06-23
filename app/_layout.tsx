@@ -2,6 +2,7 @@
 import "react-native-reanimated";
 import React, { useEffect } from "react";
 import { Stack, usePathname, useRouter } from "expo-router";
+import FloatingTabBar, { TabBarItem } from '@/components/FloatingTabBar';
 import * as SplashScreen from "expo-splash-screen";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -20,6 +21,13 @@ SplashScreen.preventAutoHideAsync();
 export const unstable_settings = {
   initialRouteName: "index",
 };
+
+const TABS: TabBarItem[] = [
+  { name: '(home)', route: '/(tabs)/(home)/', icon: 'home', label: 'Home' },
+  { name: '(chat)', route: '/(tabs)/(chat)/', icon: 'chat', label: 'Chat' },
+  { name: 'appointments', route: '/(tabs)/appointments', icon: 'appointments', label: 'Afspraken' },
+  { name: 'profiel', route: '/(tabs)/profiel', icon: 'profiel', label: 'Profiel' },
+];
 
 
 function SubscriptionRedirect() {
@@ -135,6 +143,7 @@ export default function RootLayout() {
                 <Stack.Screen name="(app)" options={{ presentation: 'card' }} />
               </Stack>
               <SystemBars style="auto" />
+              <FloatingTabBar tabs={TABS} />
             </GestureHandlerRootView>
           </TipsProvider>
         </SubscriptionProvider>
