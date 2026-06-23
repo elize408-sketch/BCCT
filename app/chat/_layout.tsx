@@ -1,7 +1,7 @@
 import { Stack } from 'expo-router';
 import { bcctColors } from '@/styles/bcctTheme';
 
-export default function ChatStackLayout() {
+export default function ChatLayout() {
   return (
     <Stack
       screenOptions={{
@@ -14,8 +14,6 @@ export default function ChatStackLayout() {
         },
         headerShadowVisible: true,
       }}
-    >
-      <Stack.Screen name="index" options={{ headerShown: false }} />
-    </Stack>
+    />
   );
 }

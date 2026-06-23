@@ -335,7 +335,7 @@ export default function ChatListScreen() {
   const handleConversationPress = (row: ConversationRow) => {
     console.log('[ChatList] Opening conversation:', row.conversationId, 'with:', row.otherName);
     router.push({
-      pathname: '/(tabs)/(chat)/[id]',
+      pathname: '/chat/[id]',
       params: { id: row.conversationId, otherName: row.otherName },
     });
   };
@@ -362,7 +362,7 @@ export default function ChatListScreen() {
       if (existing && existing.length > 0) {
         console.log('[ChatList] Existing conversation found:', existing[0].id);
         router.push({
-          pathname: '/(tabs)/(chat)/[id]',
+          pathname: '/chat/[id]',
           params: { id: existing[0].id, otherName: coach.name },
         });
         setStartingConvFor(null);
@@ -391,7 +391,7 @@ export default function ChatListScreen() {
 
       console.log('[ChatList] Conversation created:', newId);
       router.push({
-        pathname: '/(tabs)/(chat)/[id]',
+        pathname: '/chat/[id]',
         params: { id: newId, otherName: coach.name },
       });
     } catch (err) {

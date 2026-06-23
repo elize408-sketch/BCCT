@@ -17,7 +17,6 @@ import { Send, ChevronLeft } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bcctColors } from '@/styles/bcctTheme';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useHeaderHeight } from '@react-navigation/elements';
 
 interface Message {
@@ -54,7 +53,6 @@ export default function ChatDetailScreen() {
   const { id, otherName } = useLocalSearchParams<{ id: string; otherName?: string }>();
   const { user } = useAuth();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [profiles, setProfiles] = useState<Record<string, SenderProfile>>({});
@@ -66,12 +64,6 @@ export default function ChatDetailScreen() {
   const headerHeight = useHeaderHeight();
 
   const headerTitle = otherName ?? 'Chat';
-
-  const IOS_TAB_BAR_HEIGHT = 49;
-  // Outer container must be pushed above the native tab bar
-  const containerBottomPadding = Platform.OS === 'ios' ? IOS_TAB_BAR_HEIGHT + insets.bottom : insets.bottom;
-  // Input bar just needs a small internal padding
-  const inputBarInternalPadding = 8;
 
   const loadMessages = useCallback(async () => {
     if (!id || !user) return;
@@ -303,11 +295,11 @@ export default function ChatDetailScreen() {
           headerBackButtonDisplayMode: 'minimal',
         }}
       />
-      <View style={[styles.flex, { paddingBottom: containerBottomPadding }]}>
+      <View style={styles.flex}>
         <KeyboardAvoidingView
           style={styles.flex}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight + IOS_TAB_BAR_HEIGHT + insets.bottom : 0}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight : 0}
         >
           {loading ? (
             <View style={styles.loadingContainer}>
@@ -334,7 +326,7 @@ export default function ChatDetailScreen() {
             />
           )}
 
-          <View style={[styles.inputBar, { paddingBottom: inputBarInternalPadding }]}>
+          <View style={styles.inputBar}>
             <TextInput
               style={styles.textInput}
               value={inputText}
@@ -489,6 +481,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     paddingHorizontal: 12,
     paddingTop: 10,
+    paddingBottom: 8,
     backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
     borderTopColor: bcctColors.borderGray,

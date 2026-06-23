@@ -132,6 +132,7 @@ export default function RootLayout() {
                 <Stack.Screen name="stripe-return" />
                 <Stack.Screen name="stripe-onboarding-webview" />
                 <Stack.Screen name="(app)" />
+                <Stack.Screen name="chat" />
               </Stack>
               <SystemBars style="auto" />
             </GestureHandlerRootView>
