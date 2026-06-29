@@ -83,7 +83,7 @@ export default function AppointmentDetailScreen() {
     try {
       const { data, error } = await supabase
         .from('appointments')
-        .select('*, client:profiles!client_id(id, full_name, avatar_url)')
+        .select('*, client:profiles!appointments_client_id_fkey(id, full_name, avatar_url)')
         .eq('id', appointmentId)
         .single();
       if (error) throw error;

@@ -102,7 +102,7 @@ export default function AppointmentsScreen() {
 
       const { data, error } = await supabase
         .from('appointments')
-        .select('*, client:profiles!client_id(id, full_name, avatar_url)')
+        .select('*, client:profiles!appointments_client_id_fkey(id, full_name, avatar_url)')
         .eq('coach_id', user.id)
         .gte('start_time', `${dateStr}T00:00:00`)
         .lt('start_time', `${nextDayStr}T00:00:00`)

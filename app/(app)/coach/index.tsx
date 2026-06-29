@@ -173,10 +173,10 @@ export default function CoachDashboardScreen() {
 
       const { data: todayApptData, error: todayApptError } = await supabase
         .from("appointments")
-        .select("id, starts_at, client_id")
+        .select("id, start_time, client_id")
         .eq("coach_id", userId)
-        .gte("starts_at", todayStart.toISOString())
-        .lte("starts_at", todayEnd.toISOString());
+        .gte("start_time", todayStart.toISOString())
+        .lte("start_time", todayEnd.toISOString());
 
       if (todayApptError) {
         console.error("[Coach Dashboard] Today appointments error:", todayApptError);
@@ -189,7 +189,7 @@ export default function CoachDashboardScreen() {
         .from("appointments")
         .select("*", { count: "exact", head: true })
         .eq("coach_id", userId)
-        .gte("starts_at", new Date().toISOString());
+        .gte("start_time", new Date().toISOString());
 
       if (appointmentsError) {
         console.error("[Coach Dashboard] Appointments count error:", appointmentsError);
@@ -222,7 +222,7 @@ export default function CoachDashboardScreen() {
         }
 
         const formatted = todayApptData.map((a: any) => {
-          const d = new Date(a.starts_at);
+          const d = new Date(a.start_time);
           const hh = String(d.getHours()).padStart(2, "0");
           const mm = String(d.getMinutes()).padStart(2, "0");
           return {
