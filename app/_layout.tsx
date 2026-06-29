@@ -14,6 +14,7 @@ import { SubscriptionProvider, useSubscription } from "@/contexts/SubscriptionCo
 import { TipsProvider } from "@/contexts/TipsContext";
 import { BCCTLightTheme, BCCTDarkTheme } from "@/styles/bcctTheme";
 import { supabase } from "@/lib/supabase";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Prevent the splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
@@ -74,39 +75,55 @@ function OnboardingRedirect() {
     if (!user) return;
 
     // Fire for any /(tabs)/* sub-route or the root index
-    const isOnMainTabs = pathname.startsWith('/(tabs)') || pathname === '/';
-    if (!isOnMainTabs) return;
+    const isOnClientTabs = pathname.startsWith('/(tabs)') || pathname === '/';
+    if (!isOnClientTabs) return;
 
-    supabase
-      .from('profiles')
-      .select('id, role, onboarding_completed')
-      .eq('id', user.id)
-      .single()
-      .then(({ data: profile, error }) => {
-        if (error) {
-          console.warn('[OnboardingRedirect] Could not fetch profile (non-fatal):', error.message);
-          return;
-        }
+    // Fast path: read cached role from AsyncStorage to avoid async Supabase gap
+    AsyncStorage.getItem('user_role').then((cachedRole) => {
+      if (cachedRole === 'coach') {
+        console.log('[OnboardingRedirect] Coach on /(tabs) — redirecting to coach portal immediately (cached)');
+        router.replace('/(app)/coach');
+        return;
+      }
 
-        console.log('[Routing] role:', profile?.role, 'onboarding_completed:', profile?.onboarding_completed);
+      // Fallback: fetch from Supabase if no cached role
+      supabase
+        .from('profiles')
+        .select('id, role, onboarding_completed')
+        .eq('id', user.id)
+        .single()
+        .then(({ data: profile, error }) => {
+          if (error) {
+            console.warn('[OnboardingRedirect] Could not fetch profile (non-fatal):', error.message);
+            return;
+          }
 
-        // Onboarding not completed → send to onboarding regardless of role
-        if (!profile?.onboarding_completed || !profile?.role) {
-          console.log('[OnboardingRedirect] onboarding incomplete, redirecting to coach-welcome-onboarding');
-          router.replace('/coach-welcome-onboarding');
-          return;
-        }
+          console.log('[Routing] role:', profile?.role, 'onboarding_completed:', profile?.onboarding_completed);
 
-        // CRITICAL: Coaches must NEVER land on /(tabs) — redirect to coach portal
-        if (profile.role === 'coach') {
-          console.log('[OnboardingRedirect] Coach detected on /(tabs) — redirecting to coach portal');
-          router.replace('/(app)/coach');
-          return;
-        }
+          // Cache the role for next time
+          if (profile?.role) {
+            AsyncStorage.setItem('user_role', profile.role);
+            console.log('[OnboardingRedirect] Cached user_role from Supabase fallback:', profile.role);
+          }
 
-        // Clients stay on /(tabs) — no redirect needed
-        console.log('[Routing] Client on tabs — no redirect needed');
-      });
+          // Onboarding not completed → send to onboarding regardless of role
+          if (!profile?.onboarding_completed || !profile?.role) {
+            console.log('[OnboardingRedirect] onboarding incomplete, redirecting to coach-welcome-onboarding');
+            router.replace('/coach-welcome-onboarding');
+            return;
+          }
+
+          // CRITICAL: Coaches must NEVER land on /(tabs) — redirect to coach portal
+          if (profile.role === 'coach') {
+            console.log('[OnboardingRedirect] Coach detected on /(tabs) — redirecting to coach portal');
+            router.replace('/(app)/coach');
+            return;
+          }
+
+          // Clients stay on /(tabs) — no redirect needed
+          console.log('[Routing] Client on tabs — no redirect needed');
+        });
+    });
   }, [user, authLoading, pathname, router]);
 
   return null;

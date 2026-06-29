@@ -1,6 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { User, Session } from '@supabase/supabase-js';
 
 /**
@@ -44,13 +45,19 @@ async function upsertProfileWithRole(
     console.error('[Auth] Profile upsert error:', error);
   } else {
     console.log('[Auth] profile upsert result: success', data);
+    // Cache the resolved role so guards can read it synchronously
+    await AsyncStorage.setItem('user_role', role);
+    console.log('[Auth] Cached user_role in AsyncStorage:', role);
   }
+
+  return role;
 }
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
+  role: string | null;
   signInWithPassword: (email: string, password: string, role: 'client' | 'coach') => Promise<void>;
   signUpWithPassword: (email: string, password: string, name?: string, role?: 'client' | 'coach') => Promise<void>;
   signInWithGoogle: () => Promise<void>;
@@ -64,15 +71,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [role, setRole] = useState<string | null>(null);
 
   useEffect(() => {
     console.log('[AuthContext] Bootstrapping session...');
-    
+
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       console.log('[AuthContext] Initial session:', session ? 'Found' : 'None');
       setSession(session);
       setUser(session?.user ?? null);
+
+      if (session?.user) {
+        // Populate role cache on boot — fast path for subsequent renders
+        try {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', session.user.id)
+            .single();
+          if (profile?.role) {
+            setRole(profile.role);
+            await AsyncStorage.setItem('user_role', profile.role);
+            console.log('[AuthContext] Boot: cached user_role:', profile.role);
+          }
+        } catch (e) {
+          console.warn('[AuthContext] Boot: could not fetch profile role (non-fatal):', e);
+        }
+      }
+
       setLoading(false);
     });
 
@@ -83,6 +110,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('[AuthContext] Auth state changed:', _event, session ? 'Session active' : 'No session');
       setSession(session);
       setUser(session?.user ?? null);
+      if (!session) {
+        setRole(null);
+      }
     });
 
     return () => {
@@ -105,9 +135,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     console.log('[AuthContext] Sign in successful:', data.user?.id, 'with role:', role);
 
-    // Ensure profile exists with role preserved
+    // Ensure profile exists with role preserved; also caches role in AsyncStorage
     if (data.user) {
-      await upsertProfileWithRole(data.user.id, role);
+      const resolvedRole = await upsertProfileWithRole(data.user.id, role);
+      setRole(resolvedRole);
     }
   };
 
@@ -132,7 +163,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Create initial profile with the selected role — never default blindly to 'client'
     if (data.user) {
-      await upsertProfileWithRole(data.user.id, role, name);
+      const resolvedRole = await upsertProfileWithRole(data.user.id, role, name);
+      setRole(resolvedRole);
     }
   };
 
@@ -170,13 +202,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     console.log('[AuthContext] Signing out');
     try {
       await supabase.auth.signOut();
-      console.log('[AuthContext] Sign out successful');
+      await AsyncStorage.removeItem('user_role');
+      console.log('[AuthContext] Sign out successful, cleared user_role cache');
     } catch (error) {
       console.error('[AuthContext] Sign out error:', error);
     } finally {
       // Always clear local state
       setUser(null);
       setSession(null);
+      setRole(null);
     }
   };
 
@@ -186,6 +220,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         session,
         loading,
+        role,
         signInWithPassword,
         signUpWithPassword,
         signInWithGoogle,
@@ -202,6 +237,7 @@ const AUTH_DEFAULT: AuthContextType = {
   user: null,
   session: null,
   loading: true,
+  role: null,
   signInWithPassword: async () => {},
   signUpWithPassword: async () => {},
   signInWithGoogle: async () => {},
